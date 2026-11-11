@@ -15,15 +15,13 @@
    - Contract `src/systems/mechanics.js`: ALCHEMY, SEALS, STATUS, IMBUE, skill timing, chain format.
    - Systems (done, tested): alchemy `previewAlchemy/alchemy` (elixirs `elixir_*`, `powder_1..4`, `guardian_talisman`; fail → +0, talisman → −1), seals star/moon/sun on drops, imbue skills (row 4 per class: `radiant_edge`, `ax_blood_rend`, `wz_frostfire_weave`, `ar_venom_tips`), statuses on elemental skills, 3-segment chain skills (`flame_slash`, `ax_rending_chop`, `ar_power_shot`, `wz_arcane_missiles`), descriptors carry `prep/recover/instant/chain/status`.
    - UI (done): Alchemy tab (default in `O` compose menu, 3 s fuse bar), seal badges, +7 glow, +7 banner, imbue buff icon, 5-row skill tree.
-   - Engine/world (agent was STOPPED mid-task for budget; code parses and a headless run of all 4 classes' attacks/skills/chains/alchemy event passes): `enemyManager.applyStatus` implemented in `enemyAI.js`; player applies roll statuses; alchemy SFX/VFX; models3d gained set-tier armor visuals + glow. **Unverified/possibly incomplete:** prep-phase wind-up/interrupt and full chain sequencing in `playerController.executeSkillDescriptor`, imbue weapon VFX. Review `playerController.js` diff first.
+   - Engine/world (done, verified headlessly): `enemyManager.applyStatus` in `enemyAI.js`; skill phases prep→release→recover with move-to-interrupt (`playerController._updateSkillPhase`), 3-segment chains for all 4 classes, imbue weapon visuals (`_syncImbueVisual`), alchemy SFX/VFX, set-tier armor visuals + glow in `models3d.js`.
 3. **Milestone 3 — environment (started):**
-   - Done: `src/world/villageBuilder.js` — walled Silk-Road town (curved roofs, pagoda, market, lanterns, crowd villagers, pigeons, smoke), wired via `_buildVillageScenery`; builds and updates headlessly.
+   - Done: `src/world/villageBuilder.js` — walled Silk-Road town (curved roofs, pagoda, market, lanterns, crowd villagers, pigeons, smoke), wired via `_buildVillageScenery`; builds and updates headlessly; all 6 NPCs, the dungeon portal and floor selector are reachable from spawn.
    - NOT done: tomb dungeon themes/room types/puzzles (`src/world/dungeonDecor.js` was never created — the agent was stopped before writing; dungeonGenerator dungeon methods are unchanged), `floorData.atmosphere` consumed by `renderer.js` (fog/ambient per theme), nearest-8 point-light pool.
 
 ## Known Limitations & Next Actions
 - **Run `npm install && npm run build && npm run dev` first** and fix anything the bundler/browser reports; nothing has been rendered in a browser yet.
-- Village smoke test found 0 interactables via `dg.interactables` — check that NPCs/portal/shrine are still registered & reachable in the new village (maybe stored under a different field).
-- Resume milestone 2 engine: prep/recover phases, chain sequencing, imbue VFX (see `src/systems/mechanics.js` TIMING/chain docs).
 - Resume milestone 3: dungeon themes (Sealed Catacombs, Sunken Temple, Ember Forge, Emperor's Tomb), processional hall / vault / trap gallery rooms, bell-order + rotating-statue puzzles, boss arena `bossArena` export, per-theme `atmosphere` → renderer fog/ambient, 8-light pool; then weather/ambient effects.
 - Headless test harness lives in `/tmp/asjcheck/` (JavaScriptCore + THREE stub; not committed). Recreate or port to `tests/` with Node.
 - Assets: do not import art from the Silkroad reference repo (extracted commercial assets); its design docs were used only for mechanics/ideas.
