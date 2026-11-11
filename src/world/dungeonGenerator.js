@@ -118,21 +118,22 @@ export const DUNGEON_THEMES = {
 };
 
 export const FLOOR_DEFINITIONS = [
+  // recommendedLevel mirrors floorMonsterLevel(floor) in src/systems/inventory.js (monster level & loot tier)
   { floor: 1, name: 'Mine Outskirts B1F', theme: 'cave', recommendedLevel: 1, isBossFloor: false, monsterTypes: ['slime', 'goblin'] },
-  { floor: 2, name: 'Goblin Tunnels B2F', theme: 'cave', recommendedLevel: 2, isBossFloor: false, monsterTypes: ['slime', 'goblin', 'bat'] },
-  { floor: 3, name: 'Chieftain Cavern B3F', theme: 'cave', recommendedLevel: 4, isBossFloor: true, bossId: 'goblin_king', bossName: 'Grimtooth the Goblin King', monsterTypes: ['goblin', 'wolf', 'slime'] },
-  { floor: 4, name: 'Damp Ossuary B4F', theme: 'crypt', recommendedLevel: 5, isBossFloor: false, monsterTypes: ['skeleton', 'bat', 'spider'] },
-  { floor: 5, name: 'Cursed Tombs B5F', theme: 'crypt', recommendedLevel: 7, isBossFloor: false, monsterTypes: ['skeleton', 'mage', 'spider'] },
-  { floor: 6, name: 'Necromancer Crypt B6F', theme: 'crypt', recommendedLevel: 9, isBossFloor: true, bossId: 'crypt_lich', bossName: 'Malakor the Undying Lich', monsterTypes: ['skeleton', 'mage'] },
-  { floor: 7, name: 'Overgrown Temple B7F', theme: 'ruins', recommendedLevel: 11, isBossFloor: false, monsterTypes: ['orc', 'wolf', 'mage'] },
-  { floor: 8, name: 'Hall of Pillars B8F', theme: 'ruins', recommendedLevel: 13, isBossFloor: false, monsterTypes: ['orc', 'golem', 'mage'] },
-  { floor: 9, name: 'Runic Core B9F', theme: 'ruins', recommendedLevel: 15, isBossFloor: true, bossId: 'ancient_golem', bossName: 'Aegis the Runic Colossus', monsterTypes: ['golem', 'orc', 'mage'] },
-  { floor: 10, name: 'Magma Conduit B10F', theme: 'lava', recommendedLevel: 17, isBossFloor: false, monsterTypes: ['orc', 'golem', 'bat'] },
-  { floor: 11, name: 'Obsidian Bastion B11F', theme: 'lava', recommendedLevel: 19, isBossFloor: false, monsterTypes: ['orc', 'mage', 'golem'] },
-  { floor: 12, name: 'Hellforge Altar B12F', theme: 'lava', recommendedLevel: 22, isBossFloor: true, bossId: 'infernal_overlord', bossName: 'Ignis the Hellforge Tyrant', monsterTypes: ['golem', 'orc', 'mage'] },
-  { floor: 13, name: 'Void Corridor B13F', theme: 'boss', recommendedLevel: 24, isBossFloor: false, monsterTypes: ['skeleton', 'mage', 'golem'] },
-  { floor: 14, name: 'Citadel of Shadows B14F', theme: 'boss', recommendedLevel: 27, isBossFloor: false, monsterTypes: ['orc', 'mage', 'golem'] },
-  { floor: 15, name: 'Heart of Chaos B15F', theme: 'boss', recommendedLevel: 30, isBossFloor: true, bossId: 'chaos_lord', bossName: 'Azrael, Lord of Chaos', monsterTypes: ['golem', 'mage', 'orc'] }
+  { floor: 2, name: 'Goblin Tunnels B2F', theme: 'cave', recommendedLevel: 3, isBossFloor: false, monsterTypes: ['slime', 'goblin', 'bat'] },
+  { floor: 3, name: 'Chieftain Cavern B3F', theme: 'cave', recommendedLevel: 5, isBossFloor: true, bossId: 'goblin_king', bossName: 'Grimtooth the Goblin King', monsterTypes: ['goblin', 'wolf', 'slime'] },
+  { floor: 4, name: 'Damp Ossuary B4F', theme: 'crypt', recommendedLevel: 9, isBossFloor: false, monsterTypes: ['skeleton', 'bat', 'spider'] },
+  { floor: 5, name: 'Cursed Tombs B5F', theme: 'crypt', recommendedLevel: 13, isBossFloor: false, monsterTypes: ['skeleton', 'mage', 'spider'] },
+  { floor: 6, name: 'Necromancer Crypt B6F', theme: 'crypt', recommendedLevel: 17, isBossFloor: true, bossId: 'crypt_lich', bossName: 'Malakor the Undying Lich', monsterTypes: ['skeleton', 'mage'] },
+  { floor: 7, name: 'Overgrown Temple B7F', theme: 'ruins', recommendedLevel: 21, isBossFloor: false, monsterTypes: ['orc', 'wolf', 'mage'] },
+  { floor: 8, name: 'Hall of Pillars B8F', theme: 'ruins', recommendedLevel: 25, isBossFloor: false, monsterTypes: ['orc', 'golem', 'mage'] },
+  { floor: 9, name: 'Runic Core B9F', theme: 'ruins', recommendedLevel: 28, isBossFloor: true, bossId: 'ancient_golem', bossName: 'Aegis the Runic Colossus', monsterTypes: ['golem', 'orc', 'mage'] },
+  { floor: 10, name: 'Magma Conduit B10F', theme: 'lava', recommendedLevel: 32, isBossFloor: false, monsterTypes: ['orc', 'golem', 'bat'] },
+  { floor: 11, name: 'Obsidian Bastion B11F', theme: 'lava', recommendedLevel: 36, isBossFloor: false, monsterTypes: ['orc', 'mage', 'golem'] },
+  { floor: 12, name: 'Hellforge Altar B12F', theme: 'lava', recommendedLevel: 40, isBossFloor: true, bossId: 'infernal_overlord', bossName: 'Ignis the Hellforge Tyrant', monsterTypes: ['golem', 'orc', 'mage'] },
+  { floor: 13, name: 'Void Corridor B13F', theme: 'boss', recommendedLevel: 44, isBossFloor: false, monsterTypes: ['skeleton', 'mage', 'golem'] },
+  { floor: 14, name: 'Citadel of Shadows B14F', theme: 'boss', recommendedLevel: 48, isBossFloor: false, monsterTypes: ['orc', 'mage', 'golem'] },
+  { floor: 15, name: 'Heart of Chaos B15F', theme: 'boss', recommendedLevel: 52, isBossFloor: true, bossId: 'chaos_lord', bossName: 'Azrael, Lord of Chaos', monsterTypes: ['golem', 'mage', 'orc'] }
 ];
 
 export const VILLAGE_NPCS = [

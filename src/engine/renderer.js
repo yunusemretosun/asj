@@ -552,6 +552,140 @@ export class Renderer {
   }
 
   /**
+   * Small burst where a projectile hits something (enemy, wall or end of range)
+   */
+  spawnProjectileImpact(pos, color = 0xa855f7, size = 1) {
+    const p = { x: pos?.x || 0, y: 0, z: pos?.z || 0 };
+    this.spawnHitSparks(p, color, Math.max(4, Math.round(8 * size)));
+    const geo = new THREE.SphereGeometry(0.35 * size, 10, 8);
+    const mat = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.85,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+    const flash = new THREE.Mesh(geo, mat);
+    flash.position.set(p.x, (pos?.y ?? 0.9), p.z);
+    this.vfxGroup.add(flash);
+    this.vfxList.push({
+      mesh: flash,
+      mat,
+      geo,
+      age: 0,
+      life: 0.18,
+      update: (t) => {
+        flash.scale.setScalar(0.6 + t * 1.2);
+        mat.opacity = (1 - t) * 0.85;
+      }
+    });
+  }
+
+  /**
+   * Targeted ground AoE (rain of arrows, meteor, inferno ring...) at a world point.
+   * type: 'rain' | 'meteor' | anything else (generic burst)
+   */
+  spawnTargetedAoE(type = 'rain', pos = { x: 0, y: 0, z: 0 }, options = {}) {
+    const kind = String(type || 'rain').toLowerCase();
+    const radius = Number(options.radius) || 3.5;
+    const color = options.color ?? (kind.includes('meteor') || kind.includes('fire') ? 0xff5522 : 0xd9f99d);
+    const x = pos?.x || 0;
+    const z = pos?.z || 0;
+
+    // Ground target marker
+    const markGeo = new THREE.RingGeometry(radius * 0.92, radius, 40);
+    const markMat = new THREE.MeshBasicMaterial({
+      color,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.8,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+    const mark = new THREE.Mesh(markGeo, markMat);
+    mark.rotation.x = -Math.PI / 2;
+    mark.position.set(x, 0.06, z);
+    this.vfxGroup.add(mark);
+    this.vfxList.push({
+      mesh: mark,
+      mat: markMat,
+      geo: markGeo,
+      age: 0,
+      life: 0.75,
+      update: (t) => {
+        markMat.opacity = (1 - t) * 0.8;
+        mark.rotation.z = t * 1.5;
+      }
+    });
+
+    if (kind.includes('meteor')) {
+      // A falling fireball that impacts the center
+      const geo = new THREE.IcosahedronGeometry(0.55, 1);
+      const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false });
+      const rock = new THREE.Mesh(geo, mat);
+      rock.position.set(x - 2, 9, z - 2);
+      this.vfxGroup.add(rock);
+      let impacted = false;
+      this.vfxList.push({
+        mesh: rock,
+        mat,
+        geo,
+        age: 0,
+        life: 0.32,
+        update: (t) => {
+          rock.position.set(x - 2 * (1 - t), 9 * (1 - t) + 0.4, z - 2 * (1 - t));
+          rock.rotation.x += 0.3;
+          if (t >= 0.98 && !impacted) {
+            impacted = true;
+            this.spawnShockwave({ x, y: 0, z }, radius, color, 0.5);
+            this.spawnHitSparks({ x, y: 0, z }, color, 26);
+            this.shake(0.4, 0.25);
+          }
+        }
+      });
+    } else if (kind.includes('rain') || kind.includes('arrow')) {
+      // Streaks falling inside the circle
+      const count = Number(options.count) || 18;
+      for (let i = 0; i < count; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const r = Math.sqrt(Math.random()) * radius;
+        const ax = x + Math.cos(a) * r;
+        const az = z + Math.sin(a) * r;
+        const delay = Math.random() * 0.45;
+        const geo = new THREE.CylinderGeometry(0.02, 0.02, 0.8, 4);
+        const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+        const streak = new THREE.Mesh(geo, mat);
+        streak.position.set(ax, 7, az);
+        this.vfxGroup.add(streak);
+        let landed = false;
+        const life = 0.75;
+        this.vfxList.push({
+          mesh: streak,
+          mat,
+          geo,
+          age: 0,
+          life,
+          update: (t) => {
+            const local = Math.max(0, (t * life - delay) / 0.22);
+            if (local <= 0) return;
+            const k = Math.min(1, local);
+            streak.position.y = 7 - k * 6.6;
+            mat.opacity = k < 1 ? 0.95 : Math.max(0, 0.95 - (local - 1) * 2);
+            if (k >= 1 && !landed) {
+              landed = true;
+              if (i % 3 === 0) this.spawnHitSparks({ x: ax, y: -0.5, z: az }, color, 3);
+            }
+          }
+        });
+      }
+      this.spawnShockwave({ x, y: 0, z }, radius * 0.8, color, 0.6);
+    } else {
+      this.spawnShockwave({ x, y: 0, z }, radius, color, 0.5);
+      this.spawnHitSparks({ x, y: 0, z }, color, 20);
+    }
+  }
+
+  /**
    * Spawn floating 3D -> 2D combat text (damage numbers, CRITS, EXP, status)
    */
   spawnFloatingText(worldPos, text, options = {}) {

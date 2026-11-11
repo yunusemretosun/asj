@@ -8,6 +8,8 @@ import { createDungeonGenerator } from './world/dungeonGenerator.js';
 import { createEnemyManager } from './world/enemyAI.js';
 import { createHUD } from './ui/hud.js';
 import { createMenus } from './ui/menus.js';
+import { openCharacterCreation } from './ui/characterCreation.js';
+import { createHeroPreview } from './engine/heroPreview.js';
 
 async function bootstrap() {
   const canvasContainer = document.getElementById('canvas-container') || document.body;
@@ -18,10 +20,8 @@ async function bootstrap() {
   const renderer = createRenderer(canvasContainer);
 
   // 2. Initialize Core RPG GameState (attaches inventory, skills, quests)
+  // Saves are loaded (or a new classed hero is created) from the title screen below.
   const gameState = createGame({ data: extractedData });
-  if (gameState.hasSave && gameState.hasSave(0)) {
-    gameState.load(0);
-  }
 
   // Shared gameContext object passed across Engine, World, Systems, and UI
   const gameContext = {
@@ -141,6 +141,10 @@ async function bootstrap() {
     player.syncEquipment();
   });
 
+  // Re-apply class look (body parts, colors, attack style) whenever the hero changes
+  gameState.on('loaded', () => player.applyHeroLook?.());
+  gameState.on('reset', () => player.applyHeroLook?.());
+
   gameState.on('death', () => {
     hud.toast?.('You have fallen! Returning to Oakhaven Village...', 'info');
     setTimeout(() => {
@@ -254,6 +258,42 @@ async function bootstrap() {
 
   requestAnimationFrame(animate);
   window.__ASJ_GAME__ = gameContext;
+
+  // 12. Title screen: pick a save slot, or choose a permanent class & design a new hero
+  await runTitleScreen();
+
+  async function runTitleScreen() {
+    const overlayRoot = document.getElementById('modal-root') || document.body;
+    const readSaves = () => [0, 1, 2].map((slot) => (gameState.getSaveInfo ? gameState.getSaveInfo(slot) : null));
+    let choice = null;
+    try {
+      choice = await openCharacterCreation(overlayRoot, {
+        saves: readSaves(),
+        createPreview: (canvas) => createHeroPreview(canvas),
+        onDeleteSave: (slot) => gameState.deleteSave?.(slot)
+      });
+    } catch (err) {
+      console.error('[ASJ] Character creation failed, starting default hero:', err);
+    }
+
+    if (choice?.mode === 'continue') {
+      const res = gameState.load(choice.slot);
+      if (res && res.ok === false) hud.toast?.(res.msg || 'Load failed', 'warn');
+    } else if (choice?.mode === 'new') {
+      gameState.newCharacter({
+        name: choice.name,
+        classId: choice.classId,
+        appearance: choice.appearance,
+        slot: choice.slot
+      });
+      gameState.save(choice.slot);
+    }
+
+    player.applyHeroLook?.();
+    returnToVillage();
+    const cls = gameState.heroClass;
+    if (cls) hud.toast?.(`${cls.icon} ${gameState.hero.name} the ${cls.name} arrives in Oakhaven.`, 'info');
+  }
 }
 
 bootstrap().catch((err) => {

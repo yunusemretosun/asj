@@ -6,8 +6,10 @@
 //   { uid, baseId, name, icon, type:'weapon'|'armor'|'accessory'|'consumable'|'material'|'quest',
 //     slot, subtype, tier, rarity, rarityName, color, level, reqLevel, stats:{...effective},
 //     affixes:[text], mods:[{stat,value,name}], plus, sockets, gems:[{element,tier}],
-//     setId, value (sell), price (buy), count, stackable, maxStack, desc }
+//     setId, setName, classOnly (class-locked set gear), value (sell), price (buy), count, stackable, maxStack, desc }
 // =============================================================================
+
+import { canClassUse, classWeaponSubtypes, getClass, DEFAULT_CLASS, CLASS_IDS } from './classes.js';
 
 export const SLOTS = ['weapon', 'shield', 'helmet', 'armor', 'boots', 'necklace', 'ring'];
 export const SLOT_NAMES = { weapon: 'Weapon', shield: 'Shield', helmet: 'Helmet', armor: 'Armor', boots: 'Boots', necklace: 'Necklace', ring: 'Ring' };
@@ -48,11 +50,41 @@ const newUid = () => `it${Date.now().toString(36)}${(_uidCounter++).toString(36)
 export const TIER_LEVELS = [1, 5, 10, 16, 22, 30, 40, 50];
 export const TIER_MATERIALS = ['Crude', 'Iron', 'Steel', 'Knight', 'Mithril', 'Rune', 'Dragon', 'Arkenveil'];
 
+/**
+ * Highest gear tier (0..7) a monster/chest of `level` may drop: highest t with TIER_LEVELS[t] <= level + 1.
+ * Drops are never more than this tier (see rollDropTier for the 15% one-tier-lower chance).
+ */
+export function tierForLevel(level) {
+  let t = 0;
+  for (let i = 0; i < TIER_LEVELS.length; i++) if (TIER_LEVELS[i] <= (level | 0) + 1) t = i;
+  return t;
+}
+export function rollDropTier(level) {
+  let t = tierForLevel(level);
+  if (t > 0 && Math.random() < 0.15) t--;
+  return t;
+}
+
+/**
+ * Dungeon floor -> monster level (and therefore loot level / tier band).
+ * The dungeon has 15 floors but heroes level to 60 and tier 8 needs level 50, so monster level is NOT the
+ * floor number any more. Floors 1-3 climb gently (1,3,5), then ~3.9 levels per floor up to 52 on floor 15:
+ *   floor : 1  2  3  4  5  6  7  8  9  10 11 12 13 14 15
+ *   level : 1  3  5  9  13 17 21 25 29 33 37 41 45 49 52
+ *   tier  : 1  1  2  3  3  4  5  5  6  6  7  7  8  8  8    (tier = tierForLevel(level), +/- 1 lower at 15%)
+ * enemyAI.spawnMonster uses this for monster level; gameState.getFloors uses it for recommendedLevel.
+ */
+export function floorMonsterLevel(floor) {
+  const f = Math.max(1, Math.round(Number(floor) || 1));
+  return f <= 3 ? 1 + 2 * (f - 1) : Math.round(5 + (f - 3) * 3.9);
+}
+
 const EQUIP_NAMES = {
   sword: ['Short Sword', 'Long Sword', 'Broad Sword', 'Knight Sword', 'Flamberge', 'Rune Blade', 'Dragon Slayer', 'Arkenveil Blade'],
   axe: ['Hand Axe', 'Battle Axe', 'War Axe', 'Bearded Axe', 'Executioner', 'Rune Axe', 'Dragon Cleaver', 'Titan Axe'],
   mace: ['Club', 'Mace', 'Morning Star', 'Flail', 'War Hammer', 'Rune Maul', 'Dragon Hammer', 'Thunder Maul'],
   staff: ['Wooden Staff', 'Oak Staff', 'Crystal Staff', 'Mystic Staff', 'Sage Staff', 'Rune Staff', 'Dragon Staff', 'Arcane Scepter'],
+  bow: ['Short Bow', 'Hunting Bow', 'Recurve Bow', 'Longbow', 'Composite Bow', 'Rune Bow', 'Dragonbone Bow', 'Arkenveil Greatbow'],
   shield: ['Wooden Buckler', 'Round Shield', 'Kite Shield', 'Heater Shield', 'Tower Shield', 'Rune Shield', 'Dragon Shield', 'Aegis of Arkenveil'],
   helmet: ['Leather Cap', 'Chain Coif', 'Iron Helm', 'Steel Helm', 'Knight Helm', 'Rune Helm', 'Dragon Helm', 'Crown of Arkenveil'],
   armor: ['Leather Vest', 'Chain Mail', 'Scale Mail', 'Plate Armor', 'Knight Plate', 'Rune Armor', 'Dragon Armor', 'Arkenveil Battleplate'],
@@ -62,7 +94,7 @@ const EQUIP_NAMES = {
 };
 const WEAPON_ATK = [[3, 6], [7, 12], [12, 19], [18, 28], [26, 39], [36, 53], [50, 72], [68, 96]];
 const ICONS = {
-  sword: '🗡️', axe: '🪓', mace: '🔨', staff: '🪄', shield: '🛡️', helmet: '⛑️', armor: '🥋', boots: '👢', necklace: '📿', ring: '💍',
+  sword: '🗡️', axe: '🪓', mace: '🔨', staff: '🪄', bow: '🏹', shield: '🛡️', helmet: '⛑️', armor: '🥋', boots: '👢', necklace: '📿', ring: '💍',
   hp: '🧪', mp: '🔷', elixir: '⚗️', scroll: '📜', crystal: '💎', stone: '🪨', charm: '🍀', quest: '📦', tonic: '🍶', antidote: '🌿',
 };
 
@@ -89,6 +121,7 @@ function buildEquipmentBases() {
     W('axe', { atkMin: Math.round(mn * 0.85), atkMax: Math.round(mx * 1.22), attackSpeedPct: -6 });
     W('mace', { atkMin: Math.round(mn * 1.12), atkMax: Math.round(mx * 1.04), critDmg: 10 + t * 3 });
     W('staff', { atkMin: Math.round(mn * 0.6), atkMax: Math.round(mx * 0.6), matk: Math.round((mn + mx) * 0.6), mp: 10 + t * 8 }, { pmul: 1.1 });
+    W('bow', { atkMin: Math.round(mn * 0.9), atkMax: Math.round(mx * 1.05), critRate: 2 + t });
     const A = (slot, type, stats) => registerItemBase({
       id: `${slot}_${t + 1}`, name: EQUIP_NAMES[slot][t], type, slot, subtype: slot, tier: t, reqLevel,
       stats, price: Math.round(price * (type === 'accessory' ? 1.3 : 0.9)), icon: ICONS[slot], material: TIER_MATERIALS[t],
@@ -217,6 +250,8 @@ export const UNIQUES = [
   { id: 'u_flamebrand', name: 'Flamebrand', base: 'sword', minLevel: 8, mods: { fireDmg: 14, atkPct: 15, str: 5 }, lore: 'Forged in the heart of the Ember Caverns.' },
   { id: 'u_frostbite', name: 'Frostbite Cleaver', base: 'axe', minLevel: 14, mods: { iceDmg: 20, critDmg: 30, dex: 6 }, lore: 'Its edge never thaws.' },
   { id: 'u_stormcaller', name: 'Stormcaller', base: 'staff', minLevel: 18, mods: { lightningDmg: 18, matkPct: 25, int: 10, cdr: 8 }, lore: 'Thunder answers its bearer.' },
+  { id: 'u_windpiercer', name: 'Windpiercer', base: 'bow', minLevel: 16, mods: { critRate: 8, attackSpeedPct: 12, dex: 8, atkPct: 12 }, lore: 'Its arrows outrun their own sound.' },
+  { id: 'u_emberheart', name: 'Emberheart Rod', base: 'staff', minLevel: 26, mods: { fireDmg: 22, matkPct: 30, int: 12, mpRegen: 2 }, lore: 'A coal that never cools.' },
   { id: 'u_skullcrusher', name: 'Skullcrusher', base: 'mace', minLevel: 24, mods: { atkPct: 25, critRate: 6, str: 10 }, lore: 'Favored by the orc warlords.' },
   { id: 'u_wall_of_ages', name: 'Wall of Ages', base: 'shield', minLevel: 20, mods: { defPct: 30, block: 10, allRes: 12, hp: 80 }, lore: 'It has never been breached.' },
   { id: 'u_wanderer', name: "Wanderer's Stride", base: 'boots', minLevel: 12, mods: { moveSpeedPct: 15, dodge: 6, staminaRegen: 10 }, lore: 'Light as the wind.' },
@@ -230,6 +265,117 @@ export const SETS = {
   archmage: { id: 'archmage', name: 'Archmage Regalia', minLevel: 20, pieces: { weapon: 'Archmage Staff', helmet: 'Archmage Circlet', necklace: 'Archmage Amulet' }, bonuses: { 2: { matkPct: 20, mp: 50 }, 3: { cdr: 12, mpRegen: 3 } } },
 };
 
+// ----------------------------------------------------------------------------- class tier sets
+// 4 classes x 8 tiers. Each set = named pieces registered as item bases `set_<class>_<tier 1..8>_<slot>`
+// (classOnly, setId = `<class>_<tier 1..8>`, tier, reqLevel = TIER_LEVELS[tier]). Pieces: weapon, helmet, armor,
+// boots (+ shield for knights). Bonuses at 2/3/4(/5 for knight) pieces, scaling with tier.
+// Visual hint for 3D: item.tier (0..7) picks the style tier, item.setId identifies the set, CLASS_SET_STYLE below.
+export const CLASS_SET_NAMES = {
+  knight: ['Militia', 'Garrison', 'Lamellar Warden', 'Jade Guard', 'Iron Lotus', 'Dragon Bastion', 'Celestial Aegis', 'Arkenveil Paladin'],
+  axeman: ['Nomad', 'Raider', 'Steppe Wolf', 'Bloodfang', 'Warlord', 'Ironhide Khan', 'Thunder Khan', 'Arkenveil Titan'],
+  wizard: ['Initiate', 'Scribe', 'Silk Mystic', 'Moon Sage', 'Star Oracle', 'Phoenix Magus', 'Void Archon', 'Arkenveil Archmage'],
+  archer: ['Scout', 'Ranger', 'Caravan Hawk', 'Wind Stalker', 'Falcon Lord', 'Storm Ranger', 'Shadow Hunter', 'Arkenveil Sentinel'],
+};
+const CLASS_SET_NOUNS = {
+  knight: { weapon: 'Sword', helmet: 'Helm', armor: 'Cuirass', boots: 'Greaves', shield: 'Shield' },
+  axeman: { weapon: 'Greataxe', helmet: 'Helm', armor: 'Hauberk', boots: 'Boots' },
+  wizard: { weapon: 'Staff', helmet: 'Hood', armor: 'Robe', boots: 'Slippers' },
+  archer: { weapon: 'Longbow', helmet: 'Cap', armor: 'Jerkin', boots: 'Boots' },
+};
+/** Suggested accent colours per class for 3D set styling (hex ints), tier brightens/embellishes. */
+export const CLASS_SET_STYLE = {
+  knight: { primary: 0x38bdf8, accent: 0xfacc15 }, axeman: { primary: 0xb91c1c, accent: 0x78350f },
+  wizard: { primary: 0x7c3aed, accent: 0xe0e7ff }, archer: { primary: 0x15803d, accent: 0xd6a85c },
+};
+const r1 = (v) => Math.round(v * 10) / 10;
+function classSetStats(cls, slot, t) {
+  const g = (ITEM_BASES[`${slot}_${t + 1}`] || {}).stats || {}; // generic base of same tier/slot
+  const up = (v, m = 1.12) => Math.max(1, Math.round(v * m));
+  if (slot === 'weapon') {
+    const w = ITEM_BASES[`${{ knight: 'sword', axeman: 'axe', wizard: 'staff', archer: 'bow' }[cls]}_${t + 1}`].stats;
+    const o = { ...w, atkMin: up(w.atkMin), atkMax: up(w.atkMax) };
+    if (cls === 'knight') o.hp = 6 + t * 6;
+    if (cls === 'axeman') o.critDmg = 8 + t * 3;
+    if (cls === 'wizard') { o.matk = up(w.matk); o.mp = up(w.mp); o.mpRegen = r1(0.4 + t * 0.15); }
+    if (cls === 'archer') { o.critRate = w.critRate + 2; o.attackSpeedPct = 3 + t; }
+    return o;
+  }
+  const def = (m) => ({ def: up(g.def, m) });
+  if (cls === 'knight') {
+    if (slot === 'shield') return { ...def(1.12), block: g.block + 2 };
+    if (slot === 'helmet') return { ...def(1.12), hp: up(g.hp + 6, 1.15) };
+    if (slot === 'armor') return { ...def(1.12), hp: up(g.hp, 1.15), block: 1 + Math.round(t * 0.5) };
+    return { ...def(1.12), moveSpeedPct: g.moveSpeedPct };
+  }
+  if (cls === 'axeman') {
+    if (slot === 'helmet') return { ...def(1.05), hp: g.hp + 6 + t * 4, critDmg: 4 + t * 2 };
+    if (slot === 'armor') return { ...def(1.1), hp: up(g.hp, 1.3), atk: 2 + t * 2 };
+    return { ...def(1.05), moveSpeedPct: g.moveSpeedPct, atk: 1 + t };
+  }
+  if (cls === 'wizard') { // robes: much lower defence, caster stats instead
+    if (slot === 'helmet') return { ...def(0.6), mp: 10 + t * 10, matk: 2 + t * 2 };
+    if (slot === 'armor') return { ...def(0.6), hp: g.hp, mp: 20 + t * 14, matk: 3 + t * 3, mpRegen: r1(0.5 + t * 0.2) };
+    return { ...def(0.6), moveSpeedPct: g.moveSpeedPct + 1, mpRegen: r1(0.3 + t * 0.1) };
+  }
+  // archer
+  if (slot === 'helmet') return { ...def(0.85), critRate: r1(1 + t * 0.5), dex: 1 + Math.round(t * 0.6) };
+  if (slot === 'armor') return { ...def(0.85), dodge: r1(2 + t * 0.6), attackSpeedPct: r1(2 + t * 0.8) };
+  return { ...def(0.85), moveSpeedPct: g.moveSpeedPct + 2, dodge: r1(1 + t * 0.4) };
+}
+function classSetBonuses(cls, t) {
+  const R = Math.round;
+  switch (cls) {
+    case 'knight': return {
+      2: { defPct: R(3 + t * 1.2), hp: 20 + t * 30 },
+      3: { block: 2 + R(t * 0.7), allRes: 2 + t * 2 },
+      4: { hpPct: 3 + t, hpRegen: r1(0.5 + t * 0.5) },
+      5: { defPct: R(4 + t * 1.5), thorns: 2 + t * 3 },
+    };
+    case 'axeman': return {
+      2: { atkPct: R(3 + t * 1.3), hp: 20 + t * 25 },
+      3: { critDmg: 8 + t * 5, hpPct: R(2 + t * 0.8) },
+      4: { atkPct: R(4 + t * 1.5), lifeSteal: r1(0.5 + t * 0.4) },
+    };
+    case 'wizard': return {
+      2: { matkPct: R(4 + t * 1.5), mp: 20 + t * 25 },
+      3: { mpRegen: r1(0.5 + t * 0.4), cdr: 2 + t },
+      4: { matkPct: R(5 + t * 2), mpPct: R(4 + t * 1.5) },
+    };
+    default: return { // archer
+      2: { critRate: r1(2 + t * 0.8), dodge: r1(2 + t * 0.5) },
+      3: { attackSpeedPct: R(4 + t * 1.5), moveSpeedPct: R(2 + t * 0.8) },
+      4: { critDmg: 10 + t * 5, atkPct: R(4 + t * 1.5) },
+    };
+  }
+}
+export const SET_BASE_IDS = []; // every class set piece base id (for drop pools)
+function buildClassSets() {
+  for (const cls of CLASS_IDS) {
+    for (let t = 0; t < 8; t++) {
+      const setName = CLASS_SET_NAMES[cls][t];
+      const id = `${cls}_${t + 1}`;
+      const reqLevel = TIER_LEVELS[t];
+      const pieces = {};
+      for (const slot of Object.keys(CLASS_SET_NOUNS[cls])) {
+        const name = `${setName} ${CLASS_SET_NOUNS[cls][slot]}`;
+        pieces[slot] = name;
+        const isWeapon = slot === 'weapon';
+        const subtype = isWeapon ? getClass(cls).weapons[0] : slot;
+        const gen = ITEM_BASES[`${isWeapon ? subtype : slot}_${t + 1}`];
+        const baseId = `set_${cls}_${t + 1}_${slot}`;
+        registerItemBase({
+          id: baseId, name, type: isWeapon ? 'weapon' : 'armor', slot, subtype, tier: t, reqLevel,
+          stats: classSetStats(cls, slot, t), price: Math.round(gen.price * 1.5), icon: ICONS[subtype] || ICONS[slot], material: TIER_MATERIALS[t],
+          classOnly: cls, setId: id, setName, noDrop: false,
+        });
+        SET_BASE_IDS.push(baseId);
+      }
+      SETS[id] = { id, name: `${setName} Set`, classId: cls, tier: t, minLevel: reqLevel, pieces, bonuses: classSetBonuses(cls, t) };
+    }
+  }
+}
+buildClassSets();
+
 // =============================================================================
 // Item creation
 // =============================================================================
@@ -242,6 +388,8 @@ const SOCKET_PRISM_RES = [3, 6, 9, 13, 18];
 export function recalcItem(item) {
   if (!item || item.stackable) return item;
   const r = RARITY[item.rarity] || RARITY.normal;
+  // legacy saves: class-set pieces saved before classOnly/setName existed
+  if (item.setId && SETS[item.setId]?.classId && !item.classOnly) { item.classOnly = SETS[item.setId].classId; item.setName = CLASS_SET_NAMES[item.classOnly][SETS[item.setId].tier]; }
   const plusMult = 1 + 0.1 * (item.plus || 0);
   const stats = {};
   for (const k in item.baseStats || {}) {
@@ -289,9 +437,13 @@ function rollRarity({ level = 1, magicFind = 0, isBoss = false, isElite = false,
   return r;
 }
 
-function pickEquipBase({ slot, subtype, level = 1 }) {
-  let cands = Object.values(ITEM_BASES).filter((b) => b.slot && (!slot || b.slot === slot) && (!subtype || b.subtype === subtype) && !b.questItem && !b.noDrop);
-  if (!cands.length) cands = Object.values(ITEM_BASES).filter((b) => b.slot);
+function pickEquipBase({ slot, subtype, level = 1, tier = null }) {
+  let cands = Object.values(ITEM_BASES).filter((b) => b.slot && !b.setId && (!slot || b.slot === slot) && (!subtype || b.subtype === subtype) && !b.questItem && !b.noDrop);
+  if (!cands.length) cands = Object.values(ITEM_BASES).filter((b) => b.slot && !b.setId);
+  if (tier != null) { // level-appropriate drops: only the requested tier band
+    const inTier = cands.filter((b) => b.tier === tier && (b.reqLevel || 1) <= level + 1);
+    if (inTier.length) return pick(inTier);
+  }
   const ok = cands.filter((b) => (b.reqLevel || 1) <= level + 1);
   const pool = ok.length ? ok : cands.sort((a, b) => (a.reqLevel || 1) - (b.reqLevel || 1)).slice(0, 4);
   const maxReq = Math.max(...pool.map((b) => b.reqLevel || 1));
@@ -299,6 +451,34 @@ function pickEquipBase({ slot, subtype, level = 1 }) {
     const gap = maxReq - (b.reqLevel || 1);
     return [b, gap === 0 ? 6 : gap <= 6 ? 2 : 0.3];
   }));
+}
+
+/** Re-pick a weapon base the class can use (75% of the time) when the picked base is unusable for it. */
+function classBiasBase(base, classId, level, tier = null) {
+  if (!base || !classId || (base.slot !== 'weapon' && base.slot !== 'shield')) return base;
+  if (canClassUse(classId, { slot: base.slot, subtype: base.subtype }).ok) return base;
+  if (Math.random() >= 0.75) return base;
+  const subs = classWeaponSubtypes(classId);
+  if (!subs.length) return base;
+  return pickEquipBase({ slot: 'weapon', subtype: pick(subs), level, tier }) || base;
+}
+
+/**
+ * Pick a class-set piece base of `tier`. 75% (classBias) the hero's class, otherwise one of the OTHER classes.
+ * Returns null if no piece matches (e.g. wizard + shield slot).
+ */
+function pickSetBase({ slot, subtype, tier, classId, classBias = 0.75 }) {
+  const own = classId && CLASS_IDS.includes(classId) ? classId : null;
+  const others = CLASS_IDS.filter((c) => c !== own);
+  const order = [];
+  if (own && Math.random() < classBias) order.push(own, ...others.sort(() => Math.random() - 0.5));
+  else order.push(...others.sort(() => Math.random() - 0.5), ...(own ? [own] : []));
+  if (own && classBias >= 1) order.splice(1); // shop: strictly the hero's class
+  for (const cls of order) {
+    const pool = SET_BASE_IDS.map((id) => ITEM_BASES[id]).filter((b) => b.classOnly === cls && b.tier === tier && (!slot || b.slot === slot) && (!subtype || b.subtype === subtype));
+    if (pool.length) return pick(pool);
+  }
+  return null;
 }
 
 function rollAffixes(slot, rarity, level, count) {
@@ -346,7 +526,18 @@ export function generateItem(opts = {}) {
     };
   }
   // ---- equipment
-  if (!base) base = pickEquipBase({ slot: normalizeSlot(opts.slot) || opts.slot, subtype: opts.subtype, level });
+  if (!base) {
+    const slotN = normalizeSlot(opts.slot) || opts.slot;
+    // gear tier: never above what `level` allows, 15% one lower (opts.tier forces an exact tier)
+    const tier = opts.tier != null ? clamp(opts.tier | 0, 0, 7) : rollDropTier(level);
+    // opts.setPiece: true = force a class set piece, false = never, undefined = roll opts.setChance (default 25%)
+    const wantSet = opts.setPiece === true || (opts.setPiece !== false && Math.random() < num(opts.setChance, 0.25));
+    if (wantSet) base = pickSetBase({ slot: slotN, subtype: opts.subtype, tier, classId: opts.classId, classBias: opts.classBias });
+    if (!base) {
+      base = pickEquipBase({ slot: slotN, subtype: opts.subtype, level, tier });
+      if (opts.classId && !opts.subtype) base = classBiasBase(base, opts.classId, level, tier);
+    }
+  }
   if (!base) return null;
   const rarity = RARITY[opts.rarity] ? opts.rarity : rollRarity({ level, magicFind: opts.magicFind, isBoss: opts.isBoss, isElite: opts.isElite, minRarity: opts.minRarity });
   const r = RARITY[rarity];
@@ -362,9 +553,13 @@ export function generateItem(opts = {}) {
   let mods = rollAffixes(base.slot, rarity, affixLevel, randi(r.affixes[0], r.affixes[1]));
   let baseName = base.name;
   let uniqueId = null, setId = null, lore = null;
-  if (rarity === 'unique') {
+  if (base.setId) {
+    // class set piece: keeps its set name whatever the rarity (no unique/affix renaming)
+    setId = base.setId;
+    baseName = base.name;
+  } else if (rarity === 'unique') {
     const uniq = opts.uniqueId ? UNIQUES.find((u) => u.id === opts.uniqueId) : null;
-    const sets = Object.values(SETS).filter((s) => s.pieces[base.slot] && s.minLevel <= level + 2);
+    const sets = Object.values(SETS).filter((s) => !s.classId && s.pieces[base.slot] && s.minLevel <= level + 2);
     const uniqs = UNIQUES.filter((u) => (ITEM_BASES[base.id]?.subtype === u.base) && u.minLevel <= level + 2);
     const useSet = opts.setId ? SETS[opts.setId] : (!uniq && sets.length && (Math.random() < 0.5 || !uniqs.length)) ? pick(sets) : null;
     const u = uniq || (!useSet && uniqs.length ? pick(uniqs) : null);
@@ -391,6 +586,7 @@ export function generateItem(opts = {}) {
     uid: newUid(), baseId: base.id, baseName, name: baseName, icon: base.icon, type: base.type, slot: base.slot, subtype: base.subtype,
     tier: base.tier || 0, material: base.material, rarity, level, reqLevel: Math.max(base.reqLevel || 1, uniqueId ? (UNIQUES.find((u) => u.id === uniqueId)?.minLevel || 1) : 1),
     baseStats, mods, gems: [], sockets: r.sockets, plus: clamp(num(opts.plus) | 0, 0, 10), setId, uniqueId, lore,
+    classOnly: base.classOnly || null, setName: base.setName || (setId && SETS[setId] ? SETS[setId].name : null),
     basePrice: base.price || 20, count: 1, stackable: false, desc: base.desc || '',
   };
   return recalcItem(item);
@@ -400,7 +596,7 @@ export function generateItem(opts = {}) {
  * Loot roll for a slain monster / opened chest.
  * Returns { gold, items:[item] }.
  */
-export function rollLoot(level = 1, { isBoss = false, isElite = false, isChest = false, magicFind = 0, goldFind = 0 } = {}) {
+export function rollLoot(level = 1, { isBoss = false, isElite = false, isChest = false, magicFind = 0, goldFind = 0, classId = null } = {}) {
   level = Math.max(1, level | 0);
   const items = [];
   const gf = 1 + Math.max(0, goldFind) / 100;
@@ -408,8 +604,10 @@ export function rollLoot(level = 1, { isBoss = false, isElite = false, isChest =
   const goldChance = isBoss || isElite || isChest ? 1 : 0.6;
   if (Math.random() < goldChance) gold = Math.round((level * rand(1.5, 4) + 2) * (isBoss ? 15 : isElite ? 3 : isChest ? 5 : 1) * gf);
   const equipRolls = isBoss ? 3 + (Math.random() < 0.5 ? 1 : 0) : isChest ? 1 + (Math.random() < 0.35 ? 1 : 0) : isElite ? (Math.random() < 0.45 ? 1 : 0) + (Math.random() < 0.2 ? 1 : 0) : (Math.random() < 0.1 ? 1 : 0);
+  // set-piece share of equipment drops: mobs 25%, elites 45%, chests 35%, bosses 70% (first boss drop always a set piece)
+  const setChance = isBoss ? 0.7 : isElite ? 0.45 : isChest ? 0.35 : 0.25;
   for (let i = 0; i < equipRolls; i++) {
-    items.push(generateItem({ level, magicFind, isBoss, isElite, minRarity: isBoss ? (i === 0 ? 'rare' : 'magic') : 'normal' }));
+    items.push(generateItem({ level, magicFind, isBoss, isElite, classId, setChance, setPiece: isBoss && i === 0 ? true : undefined, minRarity: isBoss ? (i === 0 ? 'rare' : 'magic') : 'normal' }));
   }
   const potionChance = isBoss ? 1 : isChest ? 0.6 : isElite ? 0.4 : 0.12;
   if (Math.random() < potionChance) {
@@ -506,7 +704,23 @@ export class Inventory {
   getShopInventory(id) { return this.getShop(id); }
   buyItem(shopId, idx, qty) { return this.buy(shopId, idx, qty); }
   sellItem(uid, qty) { return this.sell(uid, qty); }
-  generateItem(opts) { return generateItem(opts); }
+  generateItem(opts) {
+    if (typeof opts === 'string') return generateItem(opts);
+    const o = { ...(opts || {}), classId: opts && opts.classId !== undefined ? opts.classId : this.game?.classId };
+    // Chest path: opts.floor (preferred) or the legacy chest call { level: <floor number>, rarityBoost } -> floor mapped to loot level.
+    if (o.floor != null) { o.level = floorMonsterLevel(o.floor); delete o.floor; if (o.setChance == null) o.setChance = 0.35; }
+    else if (o.rarityBoost != null && o.level != null) { o.level = floorMonsterLevel(o.level); if (o.setChance == null) o.setChance = 0.35; }
+    return generateItem(o);
+  }
+  _classOf(it) {
+    if (!it || !it.slot) return null;
+    const c = canClassUse(this.game?.classId || DEFAULT_CLASS, it);
+    return { classReq: c.classReq, classOk: c.ok };
+  }
+  _annotate(it) {
+    const c = this._classOf(it);
+    return c ? { ...it, ...c } : it;
+  }
 
   _emit(...a) { if (this.game) this.game.emit(...a); }
   _changed(statsToo = false) {
@@ -518,9 +732,12 @@ export class Inventory {
   }
   _level() { return this.game ? this.game.hero.level : 1; }
 
-  grantStarterKit() {
-    const eq = (baseId) => { const it = generateItem({ baseId, rarity: 'normal', level: 1 }); this.equipment[it.slot] = it; };
-    eq('sword_1'); eq('shield_1'); eq('armor_1');
+  grantStarterKit(classId = this.game?.classId || DEFAULT_CLASS) {
+    const eq = (baseId) => { const it = generateItem({ baseId, rarity: 'normal', level: 1 }); if (it) this.equipment[it.slot] = it; };
+    const starter = getClass(classId).starter || {};
+    for (const k of ['weapon', 'shield', 'armor']) if (starter[k]) eq(starter[k]);
+    for (const k in starter) if (!['weapon', 'shield', 'armor'].includes(k) && starter[k]) eq(starter[k]);
+    if (getClass(classId).id === 'wizard') this.addItem(generateItem({ baseId: 'mp_potion_s', count: 3 }), { silent: true });
     this.addItem(generateItem({ baseId: 'hp_potion_s', count: 5 }), { silent: true });
     this.addItem(generateItem({ baseId: 'mp_potion_s', count: 3 }), { silent: true });
     this.addItem(generateItem({ baseId: 'scroll_return', count: 1 }), { silent: true });
@@ -662,6 +879,8 @@ export class Inventory {
   canEquip(item) {
     if (!isEquip(item)) return { ok: false, msg: 'Cannot equip this' };
     if ((item.reqLevel || 1) > this._level()) return { ok: false, msg: `Requires level ${item.reqLevel}` };
+    const cc = canClassUse(this.game?.classId || DEFAULT_CLASS, item);
+    if (!cc.ok) return { ok: false, msg: cc.msg };
     return { ok: true };
   }
 
@@ -828,7 +1047,7 @@ export class Inventory {
     this.addItem(f.item, { silent: true });
     return { ok: true, msg: `Withdrew ${f.item.name}` };
   }
-  getStorageView() { return { items: this.storage.slice(), size: this.storageSize }; }
+  getStorageView() { return { items: this.storage.map((it) => (it ? this._annotate(it) : it)), size: this.storageSize }; }
 
   // ---- shops -----------------------------------------------------------------
   restockShops(force = false) {
@@ -841,7 +1060,11 @@ export class Inventory {
         for (let i = 0; i < def.size; i++) {
           const slot = SLOTS[i % SLOTS.length];
           const rarity = weighted([['normal', 60], ['magic', 30], ['rare', lvl >= 5 ? 9 : 0], ['epic', lvl >= 15 ? 1 : 0]]);
-          const it = generateItem({ slot, level: Math.max(1, lvl + randi(-1, 2)), rarity });
+          const sl = Math.max(1, lvl + randi(-1, 2));
+          // generic stock, plus an occasional class set piece of the hero's current tier (hero's class only)
+          const setTry = ['weapon', 'helmet', 'armor', 'boots', 'shield'].includes(slot) && Math.random() < 0.3;
+          const it = (setTry && generateItem({ slot, level: sl, tier: tierForLevel(lvl), rarity, classId: this.game?.classId, setPiece: true, classBias: 1 }))
+            || generateItem({ slot, level: sl, rarity, classId: this.game?.classId, setPiece: false });
           if (it) stock.push(it);
         }
         this.shops[id] = { level: lvl, stock };
@@ -856,7 +1079,7 @@ export class Inventory {
     const def = SHOP_DEFS[id];
     if (!this.shops[id]) this.restockShops(true);
     const lvl = this._level();
-    const items = this.shops[id].stock.map((it, idx) => ({ ...it, idx, price: it.price, buyPrice: it.price, locked: (it.reqLevel || 1) > lvl + 5, unlimited: def.kind === 'fixed' }));
+    const items = this.shops[id].stock.map((it, idx) => ({ ...it, ...(this._classOf(it) || {}), idx, price: it.price, buyPrice: it.price, locked: (it.reqLevel || 1) > lvl + 5, unlimited: def.kind === 'fixed' }));
     return { id, name: def.name, kind: def.kind, items, gold: this.gold };
   }
 
@@ -1179,7 +1402,7 @@ export class Inventory {
   getView() {
     return {
       gold: this.gold,
-      bag: this.bag.slice(),
+      bag: this.bag.map((it) => (it ? this._annotate(it) : it)),
       bagSize: this.bagSize,
       equipment: { ...this.equipment, offhand: this.equipment.shield },
       quickSlots: this.getQuickSlotView(),
@@ -1189,7 +1412,7 @@ export class Inventory {
 
   getActiveSetBonuses() {
     const counts = this.getSetCounts();
-    return Object.entries(counts).map(([id, n]) => {
+    return Object.entries(counts).filter(([id]) => SETS[id]).map(([id, n]) => {
       const set = SETS[id];
       return { id, name: set.name, count: n, total: Object.keys(set.pieces).length, bonuses: Object.entries(set.bonuses).map(([need, mods]) => ({ need: Number(need), active: n >= Number(need), lines: Object.entries(mods).map(([k, v]) => formatStat(k, v)) })) };
     });
@@ -1212,13 +1435,15 @@ export class Inventory {
         const set = SETS[it.setId];
         const n = this.getSetCounts()[it.setId] || 0;
         lines.push(`${set.name} (${n}/${Object.keys(set.pieces).length})`);
+        for (const [slot, pname] of Object.entries(set.pieces)) lines.push(`  ${this.equipment[slot] && this.equipment[slot].setId === it.setId ? '[x]' : '[ ]'} ${pname}`);
         for (const [need, mods] of Object.entries(set.bonuses)) lines.push(`  (${need}) ${Object.entries(mods).map(([k, v]) => formatStat(k, v)).join(', ')}`);
       }
     } else if (it.desc) lines.push(it.desc);
+    const cc = it.slot ? canClassUse(this.game?.classId || DEFAULT_CLASS, it) : null;
     const typeLine = it.slot ? `${RARITY[it.rarity]?.name || ''} ${SLOT_NAMES[it.slot]}${it.subtype && it.subtype !== it.slot ? ' (' + it.subtype + ')' : ''}` : (it.subtype || it.type);
     return {
       name: it.name + (it.count > 1 ? ` x${it.count}` : ''), color: it.color || RARITY[it.rarity]?.color, rarity: it.rarity, rarityName: RARITY[it.rarity]?.name,
-      typeLine, lines, reqLevel: it.reqLevel || 1, meetsLevel: (it.reqLevel || 1) <= this._level(), value: it.value || 0, price: it.price || 0, lore: it.lore || null, icon: it.icon,
+      typeLine, lines, reqLevel: it.reqLevel || 1, meetsLevel: (it.reqLevel || 1) <= this._level(), classReq: cc ? cc.classReq : null, meetsClass: cc ? cc.ok : true, value: it.value || 0, price: it.price || 0, lore: it.lore || null, icon: it.icon,
     };
   }
 
@@ -1268,6 +1493,7 @@ function guessSubtype(slot, r) {
   if (/axe|cleaver/.test(t)) return 'axe';
   if (/mace|hammer|club|maul|flail/.test(t)) return 'mace';
   if (/staff|wand|scepter|rod/.test(t)) return 'staff';
+  if (/bow|longbow/.test(t)) return 'bow';
   return 'sword';
 }
 function readNum(r, ...keys) { for (const k of keys) { if (r[k] != null && Number.isFinite(Number(r[k]))) return Number(r[k]); if (r.stats && r.stats[k] != null && Number.isFinite(Number(r.stats[k]))) return Number(r.stats[k]); } return undefined; }

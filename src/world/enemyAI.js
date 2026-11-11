@@ -4,6 +4,8 @@ import {
   createMonsterMesh,
   createBossMesh
 } from '../engine/models3d.js';
+// rpg-systems: floor -> monster level mapping (see floorMonsterLevel docs in inventory.js)
+import { floorMonsterLevel } from '../systems/inventory.js';
 
 export const AI_STATE = {
   IDLE: 'IDLE',
@@ -801,7 +803,9 @@ export class EnemyManager {
 
   spawnMonster({ type = 'goblin', floor = 1, x = 0, z = 0, isElite = false, isBoss = false, customConfig = null }) {
     const base = MONSTER_CATALOG[type] || MONSTER_CATALOG.goblin;
-    const level = Math.max(1, Number(floor) || 1);
+    // rpg-systems: monster level is no longer the raw floor number; it comes from floorMonsterLevel(floor)
+    // (floor 15 -> level 52) so every gear tier is reachable. customConfig.level overrides it.
+    const level = Math.max(1, Number(customConfig?.level) || floorMonsterLevel(floor));
 
     // Level scaling curve matching ASJ progression
     const hpScale = 1 + (level - 1) * 0.34 + Math.pow(level - 1, 1.35) * 0.08;
@@ -845,7 +849,7 @@ export class EnemyManager {
       type,
       name,
       title: customConfig?.title || (isElite ? 'Elite Monster' : ''),
-      floor: level,
+      floor: Math.max(1, Number(floor) || 1), // real dungeon floor (boss summons re-map it via floorMonsterLevel)
       level,
       isElite,
       isBoss,

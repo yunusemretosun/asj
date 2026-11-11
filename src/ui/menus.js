@@ -116,7 +116,7 @@ export class MenuManager {
   update(dt, ctx) { if (ctx && ctx !== this.ctx) this._bindHost(ctx); }
 
   // ---------------------------------------------------------------- opening
-  isAnyMenuOpen() { return !!this.current; }
+  isAnyMenuOpen() { return !!this.current || document.documentElement.classList.contains('asj-creating'); }
   isOpen(name) { return name ? this.current === (ALIASES[String(name).toLowerCase()] || name) : !!this.current; }
   toggleMenu(name, data) {
     const n = ALIASES[String(name).toLowerCase()] || name;
@@ -169,6 +169,7 @@ export class MenuManager {
   }
 
   _onKey(e) {
+    if (document.documentElement.classList.contains('asj-creating')) return;
     const t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
     if (e.ctrlKey || e.altKey || e.metaKey) return;
@@ -260,7 +261,7 @@ export class MenuManager {
     if (it) { this._reg(it); attrs.push(`data-uid="${esc(it.uid)}"`); if (drag) attrs.push('draggable="true"'); }
     if (drop) attrs.push(`data-drop="${esc(drop)}"`);
     if (extra) attrs.push(extra);
-    const cls = ['item-slot', it ? 'has r-' + rarityOf(it) : '', big ? 'big' : '', selected ? 'selected' : ''].join(' ');
+    const cls = ['item-slot', it ? 'has r-' + rarityOf(it) : '', it && it.classOk === false ? 'cls-bad' : '', big ? 'big' : '', selected ? 'selected' : ''].join(' ');
     let inner = '';
     if (it) {
       inner = `<span>${esc(itemIcon(it))}</span>`;
@@ -288,6 +289,7 @@ export class MenuManager {
     }
     if (!stats && it.lines && it.lines.length) stats = it.lines.map((l) => `<div class="tip-affix">${esc(l)}</div>`).join('');
     const affixes = (it.affixes || []).map((a) => `<div class="tip-affix">✦ ${esc(a)}</div>`).join('');
+    const clsBad = it.classOk === false || it.meetsClass === false;
     const reqBad = p && it.reqLevel && p.level < it.reqLevel;
     const typeTxt = [RARITY_NAME[r] || r, SLOT_LABEL[it.slot] || it.type].filter(Boolean).join(' · ');
     return `<div class="tip-card r-${r} ${equipped ? 'equipped-tag' : ''}">
@@ -295,6 +297,7 @@ export class MenuManager {
       <div class="tip-sub">${esc(typeTxt)}${it.level ? ` · Lv ${it.level}` : ''}</div>
       ${stats}${affixes}
       ${it.desc ? `<div class="tip-desc">${esc(it.desc)}</div>` : ''}
+      ${it.classReq ? `<div class="tip-req ${clsBad ? 'bad' : ''}">Class: ${esc(it.classReq)}</div>` : ''}
       ${it.reqLevel ? `<div class="tip-req ${reqBad ? 'bad' : ''}">Requires Lv ${it.reqLevel}</div>` : ''}
       <div class="tip-foot"><span>${it.value ? `Sell <b class="arc-gold">${it.value}</b> G` : ''}</span><span>${it.count > 1 ? 'x' + it.count : ''}</span></div>
     </div>`;
@@ -471,9 +474,10 @@ export class MenuManager {
     const canSpend = (p.ap | 0) > 0;
     el.innerHTML = `<div class="char-layout">
       <div class="char-hero">
-        <div class="big-portrait">🧙</div>
+        <div class="big-portrait">${esc(p.classIcon || '🧙')}</div>
         <div class="cname">${esc(p.name || 'Hero')}</div>
         <div class="clvl">Level ${p.level || 1}</div>
+        ${p.className ? `<div class="class-badge" style="--cc:${esc(/^#[0-9a-fA-F]{3,8}$/.test(p.classColor || '') ? p.classColor : '#c9b27a')}"><span>${esc(p.classIcon || '')}</span> ${esc(p.className)}</div>` : ''}
         <div id="cs-hp"></div><div id="cs-sp"></div><div id="cs-xp"></div>
         <div class="pts-line"><span>Attribute Points</span><b>${p.ap | 0}</b></div>
         <div class="pts-line"><span>Skill Points</span><b>${p.skillPoints | 0}</b></div>
@@ -851,7 +855,7 @@ export class MenuManager {
     this._title = shop.name || 'Shop';
     const el = h('div');
     const rows = shop.items.map((it, i) => { this._reg({ ...it, uid: 'shop' + i }); return `<div class="shop-item r-${rarityOf(it)} ${inv.gold < (it.price || 0) ? 'poor' : ''}" data-act="buy" data-idx="${i}" data-uid="shop${i}">
-        <div class="item-slot has r-${rarityOf(it)}" style="width:40px;height:40px;font-size:22px">${esc(itemIcon(it))}</div>
+        <div class="item-slot has r-${rarityOf(it)} ${it.classOk === false ? 'cls-bad' : ''}" style="width:40px;height:40px;font-size:22px">${esc(itemIcon(it))}</div>
         <div><div class="si-name">${esc(it.name)}</div><div class="si-price">${it.price || 0} G</div></div></div>`; }).join('') || '<div class="arc-empty">Nothing for sale.</div>';
     el.innerHTML = `<div class="shop-layout"><div><div class="arc-section-title">For Sale</div><div class="shop-grid arc-scroll">${rows}</div></div>
       <div><div class="arc-section-title">Your Bag — click to sell</div>

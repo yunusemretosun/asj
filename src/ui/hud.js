@@ -244,7 +244,8 @@ export class HUD {
 
   _updateHero(p, dt) {
     const L = this._last;
-    this.elName.firstChild.textContent = p.name || 'Hero';
+    this.elName.firstChild.textContent = (p.classIcon ? p.classIcon + ' ' : '') + (p.name || 'Hero');
+    this.elName.firstChild.title = p.className || '';
     const g = this.elName.lastChild; const gt = `${Math.floor(p.gold || 0).toLocaleString()} G`;
     if (g.textContent !== gt) g.textContent = gt;
     if (L.level !== p.level) {
@@ -608,6 +609,8 @@ export function createHost(ctx = {}) {
       }
       return {
         name: h.name || 'Hero',
+        classId: h.classId, className: h.className, classIcon: h.classIcon, classColor: h.classColor,
+        attackStyle: h.attackStyle, appearance: h.appearance,
         level: h.level || 1,
         hp: Math.ceil(h.hp ?? s.maxHp ?? 100),
         maxHp: s.maxHp ?? h.maxHp ?? 100,

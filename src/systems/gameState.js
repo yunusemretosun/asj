@@ -10,9 +10,10 @@
 //   per frame: game.update(dt)
 // =============================================================================
 
-import { Inventory, applyItemData, rollLoot, generateItem, RARITY, SLOTS, getItemBase } from './inventory.js';
+import { Inventory, applyItemData, rollLoot, generateItem, RARITY, SLOTS, getItemBase, floorMonsterLevel } from './inventory.js';
 import { SkillSystem, applySkillData, BASIC_COMBO } from './skills.js';
 import { QuestSystem, applyQuestData } from './quests.js';
+import { CLASSES, DEFAULT_CLASS, getClass, isValidClass, sanitizeAppearance } from './classes.js';
 
 export const SAVE_VERSION = 1;
 export const SAVE_PREFIX = 'asj-save-';
@@ -134,25 +135,29 @@ export class GameState extends Emitter {
     this.storage = opts.storage !== undefined ? opts.storage : (typeof localStorage !== 'undefined' ? localStorage : null);
     this._statsDirty = true;
     this._stats = null;
-    this._newHero(opts.heroName);
+    this.activeSlot = 0;
+    this._newHero(opts.heroName, opts.classId, opts.appearance);
     this.inventory = new Inventory(this);
     this.skills = new SkillSystem(this);
     this.quests = new QuestSystem(this);
-    this.inventory.grantStarterKit();
-    this.skills.grantStarterSkills();
+    this.inventory.grantStarterKit(this.hero.classId);
+    this.skills.grantStarterSkills(this.hero.classId);
     this.fullRestore();
   }
 
   // --------------------------------------------------------------- hero setup
-  _newHero(name = 'Hero') {
+  _newHero(name = 'Hero', classId = DEFAULT_CLASS, appearance = null) {
+    const cls = getClass(isValidClass(classId) ? classId : DEFAULT_CLASS);
     this.hero = {
       name,
+      classId: cls.id,
+      appearance: sanitizeAppearance(appearance, cls.id),
       level: PROGRESSION.startLevel,
       exp: 0,
       gold: PROGRESSION.startGold,
       ap: 0,
       sp: 0,
-      attrs: { ...PROGRESSION.startAttrs },
+      attrs: { ...cls.startAttrs },
       hp: 1, mp: 1, stamina: 100,
       combo: 0,
       buffs: [],
@@ -177,6 +182,8 @@ export class GameState extends Emitter {
   // -------------------------------------------------------------- data access
   markDirty() { this._statsDirty = true; }
 
+  get classId() { return this.hero.classId || DEFAULT_CLASS; }
+  get heroClass() { return getClass(this.classId); }
   get level() { return this.hero.level; }
   get exp() { return this.hero.exp; }
   get expToNext() { return expToNext(this.hero.level); }
@@ -207,6 +214,7 @@ export class GameState extends Emitter {
   /** Collected stat modifiers from gear, passive skills and buffs. */
   getModifiers() {
     const mods = {};
+    addMods(mods, this.heroClass.statMods);
     addMods(mods, this.inventory ? this.inventory.getEquipStats() : null);
     addMods(mods, this.skills ? this.skills.getPassiveBonuses() : null);
     for (const b of this.hero.buffs) addMods(mods, b.mods, b.stacks || 1);
@@ -236,8 +244,14 @@ export class GameState extends Emitter {
 
     const wMin = this.inventory && this.inventory.equipment.weapon ? num(m.atkMin) : 1 + num(m.atkMin);
     const wMax = this.inventory && this.inventory.equipment.weapon ? num(m.atkMax) : 3 + num(m.atkMax);
-    const atkMin = Math.round((wMin + str * 0.6 + dex * 0.15 + L * 0.5 + num(m.atk)) * pct('atkPct'));
-    const atkMax = Math.max(atkMin, Math.round((wMax + str * 0.9 + dex * 0.25 + L * 0.5 + num(m.atk)) * pct('atkPct')));
+    // Physical attack scales from the class's primary attribute: archers draw their power
+    // from DEX (bows) the way melee classes draw it from STR. Wizards keep the STR formula
+    // for their (weak) staff swings; their real damage is MATK below.
+    const dexPrimary = this.heroClass.primary === 'dex';
+    const pMain = dexPrimary ? dex : str;
+    const pSub = dexPrimary ? str : dex;
+    const atkMin = Math.round((wMin + pMain * 0.6 + pSub * 0.15 + L * 0.5 + num(m.atk)) * pct('atkPct'));
+    const atkMax = Math.max(atkMin, Math.round((wMax + pMain * 0.9 + pSub * 0.25 + L * 0.5 + num(m.atk)) * pct('atkPct')));
     const res = {};
     for (const el of ELEMENTS) res[el] = clamp(Math.round(num(m[el + 'Res']) + num(m.allRes)), -100, 75);
     const elemDmg = {};
@@ -252,7 +266,8 @@ export class GameState extends Emitter {
       atkMin,
       atkMax,
       atk: Math.round((atkMin + atkMax) / 2),
-      matk: Math.round((int * 1.6 + L * 1 + num(m.matk)) * pct('matkPct')),
+      // INT -> MATK is tuned to match STR -> ATK (avg 0.75/pt), so every class's main stat is worth the same
+      matk: Math.round((int * 0.8 + L * 0.5 + num(m.matk)) * pct('matkPct')),
       def: Math.round((num(m.def) + str * 0.3 + dex * 0.2 + L * 0.5) * pct('defPct')),
       critRate: Math.round(clamp(5 + lck * 0.25 + dex * 0.05 + num(m.critRate), 0, 75) * 10) / 10,
       critDmg: Math.round(150 + lck * 0.6 + num(m.critDmg)),
@@ -344,7 +359,8 @@ export class GameState extends Emitter {
   resetAttributes() {
     const h = this.hero;
     let spent = 0;
-    for (const a of ATTRIBUTES) { spent += h.attrs[a] - PROGRESSION.startAttrs[a]; h.attrs[a] = PROGRESSION.startAttrs[a]; }
+    const base = this.heroClass.startAttrs;
+    for (const a of ATTRIBUTES) { spent += h.attrs[a] - base[a]; h.attrs[a] = base[a]; }
     h.ap += spent;
     this.markDirty();
     this.clampVitals();
@@ -545,6 +561,13 @@ export class GameState extends Emitter {
     return r;
   }
 
+  /** Basic-attack roll honouring the class attack style (wizard bolts use MATK). */
+  rollBasicAttack(defStats = {}, { mult = 1, ...rest } = {}) {
+    const magic = this.heroClass.attackStyle === 'magic_bolt';
+    return this.rollAttack(defStats, { ...rest, mult, magic });
+  }
+  getBasicAttackRoll(defStats, mult = 1) { return this.rollBasicAttack(defStats, { mult }); }
+
   /** Descriptor for basic attack combo stage (0-based). */
   getBasicAttack(stage = 0) {
     const c = BASIC_COMBO[clamp(stage | 0, 0, BASIC_COMBO.length - 1)];
@@ -554,7 +577,7 @@ export class GameState extends Emitter {
       stage,
       attackSpeed: s.attackSpeed,
       staminaCost: c.staminaCost || 0,
-      rollDamage: (defStats) => this.rollAttack(defStats, { mult: c.mult }),
+      rollDamage: (defStats) => this.rollBasicAttack(defStats, { mult: c.mult }),
     };
   }
 
@@ -565,7 +588,7 @@ export class GameState extends Emitter {
    * the world spawns them as ground loot (or call game.inventory.addItem(item)).
    */
   onMonsterKilled(monster = {}) {
-    const level = num(monster.level, Math.max(1, this.progress.currentFloor || 1));
+    const level = num(monster.level, floorMonsterLevel(Math.max(1, this.progress.currentFloor || 1)));
     const isBoss = !!monster.isBoss, isElite = !!monster.isElite;
     const floor = num(monster.floor, this.progress.currentFloor);
     let exp = num(monster.exp, monsterExp(level, { isElite, isBoss }));
@@ -573,7 +596,7 @@ export class GameState extends Emitter {
     const diff = level - this.hero.level;
     exp = Math.max(1, Math.round(exp * clamp(1 + diff * 0.1, 0.2, 1.5)));
     const s = this.getStats();
-    const loot = rollLoot(level, { isBoss, isElite, magicFind: s.magicFind, goldFind: s.goldFind });
+    const loot = rollLoot(level, { isBoss, isElite, magicFind: s.magicFind, goldFind: s.goldFind, classId: this.classId });
     const gold = monster.gold != null ? Math.round(num(monster.gold) * (1 + s.goldFind / 100)) : loot.gold;
     const drops = loot.items;
     if (Array.isArray(monster.drops)) {
@@ -664,8 +687,15 @@ export class GameState extends Emitter {
   getPlayerSnapshot() {
     const s = this.getStats();
     const h = this.hero;
+    const cls = this.heroClass;
     return {
       name: h.name,
+      classId: cls.id,
+      className: cls.name,
+      classIcon: cls.icon,
+      classColor: cls.css,
+      attackStyle: cls.attackStyle,
+      appearance: { ...(h.appearance || sanitizeAppearance(null, cls.id)) },
       level: h.level,
       hp: Math.ceil(h.hp), maxHp: s.maxHp,
       mp: Math.floor(h.mp), maxMp: s.maxMp,
@@ -701,9 +731,13 @@ export class GameState extends Emitter {
 
   fromJSON(d) {
     if (!d || typeof d !== 'object' || !d.hero) throw new Error('Invalid save data');
-    this._newHero(d.hero.name);
-    Object.assign(this.hero, d.hero);
-    this.hero.attrs = { ...PROGRESSION.startAttrs, ...(d.hero.attrs || {}) };
+    const savedClass = isValidClass(d.hero.classId) ? String(d.hero.classId).toLowerCase() : DEFAULT_CLASS;
+    this._newHero(d.hero.name, savedClass, d.hero.appearance);
+    const { classId: _c, appearance: _a, ...heroRest } = d.hero;
+    Object.assign(this.hero, heroRest);
+    this.hero.classId = savedClass;
+    this.hero.appearance = sanitizeAppearance(d.hero.appearance, savedClass);
+    this.hero.attrs = { ...getClass(savedClass).startAttrs, ...(d.hero.attrs || {}) };
     this.hero.buffs = Array.isArray(d.hero.buffs) ? d.hero.buffs : [];
     Object.assign(this.progress, d.progress || {});
     this.inventory.fromJSON(d.inventory || {});
@@ -717,11 +751,12 @@ export class GameState extends Emitter {
     return this;
   }
 
-  save(slot = 0) {
+  save(slot = this.activeSlot) {
     try {
       const json = JSON.stringify(this.toJSON());
       if (!this.storage) return { ok: false, msg: 'Saving unavailable (no localStorage)' };
       this.storage.setItem(SAVE_PREFIX + slot, json);
+      this.activeSlot = slot;
       this.emit('saved', slot);
       this.emit('toast', 'Game saved', 'info');
       return { ok: true, msg: 'Game saved' };
@@ -736,6 +771,7 @@ export class GameState extends Emitter {
       const raw = this.storage.getItem(SAVE_PREFIX + slot);
       if (!raw) return { ok: false, msg: 'No save found' };
       this.fromJSON(JSON.parse(raw));
+      this.activeSlot = slot;
       this.emit('toast', 'Game loaded', 'info');
       return { ok: true, msg: 'Game loaded' };
     } catch (e) {
@@ -751,7 +787,9 @@ export class GameState extends Emitter {
   getSaveInfo(slot = 0) {
     try {
       const d = JSON.parse(this.storage.getItem(SAVE_PREFIX + slot));
-      return d ? { level: d.hero.level, name: d.hero.name, gold: d.hero.gold, savedAt: d.savedAt, maxFloor: d.progress?.maxFloor || 0 } : null;
+      if (!d) return null;
+      const cls = getClass(d.hero.classId);
+      return { level: d.hero.level, name: d.hero.name, gold: d.hero.gold, savedAt: d.savedAt, maxFloor: d.progress?.maxFloor || 0, classId: cls.id, className: cls.name, classIcon: cls.icon };
     } catch { return null; }
   }
 
@@ -760,14 +798,33 @@ export class GameState extends Emitter {
   /** Start a brand new character (does not delete saves unless wipeSave). */
   reset({ wipeSave = false, heroName } = {}) {
     if (wipeSave) this.deleteSave(0);
-    this._newHero(heroName || this.hero.name);
+    this._newHero(heroName || this.hero.name, this.hero.classId, this.hero.appearance);
     this.inventory = new Inventory(this);
     this.skills = new SkillSystem(this);
     this.quests = new QuestSystem(this);
-    this.inventory.grantStarterKit();
-    this.skills.grantStarterSkills();
+    this.inventory.grantStarterKit(this.hero.classId);
+    this.skills.grantStarterSkills(this.hero.classId);
     this.fullRestore();
     this.emit('reset');
+    this.emit('change');
+    return this;
+  }
+
+  /** Create a brand new character of a permanent class (character-creation screen). */
+  newCharacter({ name, classId, appearance, slot = 0 } = {}) {
+    const cid = isValidClass(classId) ? String(classId).toLowerCase() : DEFAULT_CLASS;
+    const heroName = String(name == null ? '' : name).trim().slice(0, 16) || 'Hero';
+    this.activeSlot = slot;
+    this._newHero(heroName, cid, appearance);
+    this.inventory = new Inventory(this);
+    this.skills = new SkillSystem(this);
+    this.quests = new QuestSystem(this);
+    this.markDirty();
+    this.inventory.grantStarterKit(cid);
+    this.skills.grantStarterSkills(cid);
+    this.fullRestore();
+    this.emit('reset');
+    this.emit('equip');
     this.emit('change');
     return this;
   }
@@ -857,7 +914,7 @@ export function createUIHost(game, extras = {}) {
     getFloors: () => {
       const max = game.unlockedMaxFloor;
       const out = [];
-      for (let f = 1; f <= Math.max(max, 1); f++) out.push({ floor: f, name: `Floor ${f}`, unlocked: f <= max, recommendedLevel: Math.max(1, f * 2 - 1) });
+      for (let f = 1; f <= Math.max(max, 1); f++) out.push({ floor: f, name: `Floor ${f}`, unlocked: f <= max, recommendedLevel: floorMonsterLevel(f) });
       return out;
     },
     getMinimap: () => null,
@@ -885,8 +942,8 @@ export function createUIHost(game, extras = {}) {
     abandonQuest: (id) => game.quests.abandon(id),
     dialogueAction: (action) => game.quests.handleDialogueAction(action),
     teleportToFloor: () => ({ ok: false, msg: 'Teleport unavailable' }),
-    save: () => game.save(0),
-    load: () => game.load(0),
+    save: () => game.save(game.activeSlot),
+    load: () => game.load(game.activeSlot),
     reset: () => { game.reset(); return { ok: true, msg: 'New game started' }; },
     on: (evt, fn) => game.on(evt, fn),
   };
