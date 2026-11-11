@@ -6,19 +6,18 @@ Read `SESSION.md` first. Open only the files relevant to your current task.
 
 | Area / Shard | Files | Key Exports & Responsibilities |
 | :--- | :--- | :--- |
-| **Bootstrap & Coordinator** | `src/main.js`, `index.html` | Initializes all subsystems, builds shared `gameContext`, wires `enterFloor(n)` / `returnToVillage()`, runs 60fps `animate()` loop, exposes `window.__ASJ_GAME__`. |
-| **3D Renderer & VFX** | `src/engine/renderer.js` | `createRenderer(container)` — Three.js scene, renderer, follow camera, environment themes (`village`, `cave`, `crypt`, `forest`, `lava`, `abyss`), slash arcs, hit sparks, level-up pillar, auras. |
-| **Procedural 3D Models** | `src/engine/models3d.js` | `models3d`, `createHeroMesh` — Procedural Three.js geometry/materials for the hero (with equipment sync), village NPCs, monsters, bosses, chests, portals, shrines, and props. |
-| **Player & Audio** | `src/engine/playerController.js` | `PlayerController`, `SoundFX` — WASD movement, dash/dodge-roll (`Space`/`Shift`), 4-stage melee combo (`J`/LMB), block/parry (`K`/RMB), skill hotbar (`1`–`5`), potions (`6`–`9`), interact (`E`/`F`), WebAudio procedural SFX. |
-| **Core RPG State** | `src/systems/gameState.js` | `createGame({ data })`, `calcDamage`, `SAVE_PREFIX` (`asj-save-`) — Hero progression, attributes (`str`, `dex`, `int`, `lck`), derived stats, buffs, stamina, death/revive, `localStorage` save/load. |
-| **Inventory & Composing** | `src/systems/inventory.js` | `Inventory`, `ITEM_BASES`, `generateItem`, `rollLoot` — 8 equipment tiers (`Crude`..`Arkenveil`), rarities, bag/stash/shop, elemental crystal & stone Composing/synthesis system. |
-| **Skills System** | `src/systems/skills.js` | `SkillSystem`, `SKILL_DEFS`, `BASIC_COMBO` — Active Battle skills & Passive skills, SP costs, cooldowns, hotbar assignment. |
+| **Bootstrap & Coordinator** | `src/main.js`, `index.html`, `src/systems/classes.js`, `src/systems/mechanics.js` | Initializes subsystems, runs title screen (`runTitleScreen`), builds shared `gameContext`, owns class & mechanics contracts. |
+| **3D Renderer & VFX** | `src/engine/renderer.js`, `src/engine/heroPreview.js` | `createRenderer(container)`, `createHeroPreview(canvas)` — Three.js scene, follow camera, themes, `applyAtmosphere`, `setWeather`, `spawnBossTelegraph`, slash arcs, particles. |
+| **Procedural 3D Models** | `src/engine/models3d.js` | `models3d`, `createHeroMesh` — Procedural Three.js geometry/materials for classed heroes (`setLook`), set-tier armor & weapon glow, NPCs, monsters, bosses, and props. |
+| **Player & Audio** | `src/engine/playerController.js` | `PlayerController`, `SoundFX` — WASD movement, dodge-roll, melee/bow/staff attacks, `prep->release->recover` skill phases, 3-segment chains, imbue visuals, WebAudio SFX. |
+| **Core RPG State** | `src/systems/gameState.js` | `createGame({ data })`, `calcDamage`, `SAVE_PREFIX` (`asj-save-`) — Classed hero progression, attributes (`str`, `dex`, `int`, `lck`), derived stats, buffs, `localStorage` save/load. |
+| **Inventory & Alchemy** | `src/systems/inventory.js` | `Inventory`, `ITEM_BASES`, `SETS`, `floorMonsterLevel` — 8 equipment tiers, 32 class sets, Star/Moon/Sun seals, crystal composing & +1..+10 Alchemy system. |
+| **Skills System** | `src/systems/skills.js` | `SkillSystem`, `SKILL_DEFS`, `BASIC_COMBO` — 48 class skills (12 per class: Knight, Axeman, Wizard, Archer), imbues, chains, and passives. |
 | **Quests & Dialogue** | `src/systems/quests.js` | `QuestSystem`, `QUEST_DEFS`, `NPC_DEFS` — Main & side quests, kill/collect/floor/talk objectives, NPC dialogue state machine & rewards. |
-| **World & Dungeons** | `src/world/dungeonGenerator.js` | `createDungeonGenerator(ctx, models3d, data)` — Oakhaven Village hub (`loadVillageHub`), procedural multi-floor dungeons (`generateFloor`), room sectors, minimap data, interactables (`interact`). |
-| **Enemy & Boss AI** | `src/world/enemyAI.js` | `createEnemyManager(ctx, models3d, data)` — Monster catalog, level scaling, patrol/chase/attack/telegraph AI, elite modifiers, boss phases, loot & EXP drops on death. |
-| **HUD & Host Adapter** | `src/ui/hud.js` | `HUD`, `createHUD`, `createHost` — Normalizes `gameContext` for UI, renders HP/SP/Stamina/EXP bars, 2D canvas minimap, boss bar, zone banners, floating combat text, and toasts. |
-| **Interactive Menus** | `src/ui/menus.js`, `src/ui/styles.css` | `MenuManager`, `createMenus` — Modal windows for Hero (`C`), Inventory (`B`/`I`), Skills (`K`), Compose (`O`), Quests (`Q`), Dungeon Floors (`M`), Shop, Storage, and NPC Dialogue. |
-| **Static Reference Data** | `src/data/extracted_data.json`, `docs/REA_ANALYSIS.md` | Static RPG reference tables & localization strings. **Do not load in full into LLM context; query specific lines/keys on demand.** |
+| **World & Dungeons** | `src/world/dungeonGenerator.js`, `src/world/villageBuilder.js`, `src/world/dungeonDecor.js` | Silk-Road Village hub & outer forest grove (`buildVillage`), 15-floor procedural tomb dungeons (`generateFloor`), instanced decor, bell/statue puzzles, `bossArena`. |
+| **Enemy & Boss AI** | `src/world/enemyAI.js` | `createEnemyManager`, `AI_STATE` — Monster catalog, sleeping monster packs (`packId`, `wakePack`), status effects (`applyStatus`), elite affixes, boss phases & `bossArena` telegraphs. |
+| **HUD & Menus** | `src/ui/hud.js`, `src/ui/menus.js`, `src/ui/characterCreation.js`, `src/ui/styles.css` | `HUD`, `MenuManager`, `openCharacterCreation` — Title/character creation screen, HUD, minimap, Alchemy/Compose (`O`), Skills (`K`), Inventory (`B`/`I`), Quests (`Q`), Map (`M`). |
+| **Automated Tests** | `tests/run_tests.mjs` | Headless Node test suite (`npm.cmd test`) — 138 checks covering classes, sets, alchemy, village, all 15 dungeon floors, sleeping packs, boss telegraphs, and statuses. |
 
 ---
 

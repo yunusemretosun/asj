@@ -255,13 +255,13 @@ export function buildVillage(ctx = {}) {
     group.add(m);
   };
   const worldW = gridWidth * tileSize, worldH = gridHeight * tileSize;
-  const grass = new THREE.Mesh(new THREE.PlaneGeometry(worldW, worldH), grassMat);
+  const grass = new THREE.Mesh(new THREE.PlaneGeometry(worldW + 36, worldH + 36), grassMat);
   grass.rotation.x = -Math.PI / 2;
   grass.receiveShadow = true;
   group.add(grass);
   addGround(new THREE.CylinderGeometry(8.2, 8.4, 0.08, 40), plazaMat, 0, 0.04, 0);
   addGround(new THREE.BoxGeometry(4.4, 0.07, 12), roadMat, 0, 0.035, -13.5);          // portal road
-  addGround(new THREE.BoxGeometry(4.0, 0.07, 14), dirtMat, 0, 0.035, 14.5);            // gate road
+  addGround(new THREE.BoxGeometry(4.0, 0.07, 26), dirtMat, 0, 0.035, 20.5);            // gate & southern caravan road
   addGround(new THREE.BoxGeometry(36, 0.07, 3.6), dirtMat, 0, 0.036, 13);            // market street
   addGround(new THREE.BoxGeometry(2.4, 0.07, 6), roadMat, 8.6, 0.035, -4.6);           // pagoda path
   addGround(new THREE.BoxGeometry(6, 0.07, 3), roadMat, -9.5, 0.035, -4.2);            // forge yard
@@ -678,8 +678,40 @@ export function buildVillage(ctx = {}) {
     }
     obs(x, z, 0.5);
   };
+  const pine = (x, z, scale = 1.0) => {
+    S.cyl('wood', 0.16 * scale, 0.28 * scale, 2.2 * scale, x, 1.1 * scale, z, 6);
+    const pineCols = [0x3d6b35, 0x4d7c42, 0x2f5929];
+    for (let tier = 0; tier < 3; tier++) {
+      const r = (1.35 - tier * 0.28) * scale;
+      const y = (2.1 + tier * 0.95) * scale;
+      foliage.push([x, y, z, r, 1.15, pineCols[tier % 3]]);
+    }
+  };
   [[-7.5, -4.5], [7.5, -6.8], [-15, 11.5], [-17.8, 8.4], [11.4, -2.6], [18, -8]].forEach(([x, z]) => cherry(x, z));
   [[13.5, 4.6], [17.4, 10.6], [-9.4, 16.8], [-19, -9.6]].forEach(([x, z]) => willow(x, z));
+  // Surrounding forest & field belt outside the Silk-Road town walls (|x|>22 or |z|>22, avoiding the southern road x in -3.5..3.5)
+  const outerGrove = [
+    [-24, -18, 'pine'], [-26, -8, 'willow'], [-25, 4, 'pine'], [-24, 16, 'cherry'],
+    [24, -18, 'pine'], [26, -6, 'cherry'], [25, 6, 'willow'], [24, 17, 'pine'],
+    [-16, -24, 'pine'], [-6, -25, 'cherry'], [7, -25, 'pine'], [17, -24, 'willow'],
+    [-18, 24, 'willow'], [-9, 25, 'cherry'], [-5.2, 26.5, 'pine'],
+    [5.2, 26.5, 'cherry'], [10, 25, 'pine'], [18, 24, 'willow'],
+    [-22, 22, 'pine'], [22, 22, 'pine'], [-22, -22, 'willow'], [22, -22, 'cherry']
+  ];
+  for (const [ox, oz, kind] of outerGrove) {
+    if (kind === 'cherry') cherry(ox, oz);
+    else if (kind === 'willow') willow(ox, oz);
+    else pine(ox, oz, 0.95 + rand() * 0.3);
+  }
+  // Wild boulders & shrub clusters in the outer field
+  for (let i = 0; i < 18; i++) {
+    const a = (i / 18) * Math.PI * 2 + 0.18;
+    const r = 23.5 + (i % 3) * 2.2;
+    const bx = Math.cos(a) * r, bz = Math.sin(a) * r;
+    if (bz > 18 && Math.abs(bx) < 4.2) continue; // keep southern caravan road clear
+    S.sph('stone', 0.55 + (i % 3) * 0.22, bx, 0.22, bz, 1.2, 0.65, 1.0, 6);
+    foliage.push([bx + 0.6, 0.35, bz + 0.4, 0.55, 0.65, greens[i % 3]]);
+  }
   const foliageMat = std(0xffffff, 0.9, 0.0, { flatShading: true });
   const foliageMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), foliageMat, foliage.length);
   const fd = new THREE.Object3D();
@@ -911,6 +943,8 @@ export function buildVillage(ctx = {}) {
     spawnPoint,
     portalPos,
     fountain,
+    villagers,
+    pigeons,
     lightCount: lights.length,
     update,
     dispose

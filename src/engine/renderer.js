@@ -223,6 +223,7 @@ export class Renderer {
 
     this._atmo = null;
     this._setDust?.(false);
+    this.setWeather?.(key.includes('village') || key.includes('town') || key.includes('hub') ? 'petals' : null);
     this.scene.background.setHex(cfg.bg);
     if (this.scene.fog) {
       this.scene.fog.color.setHex(cfg.fog);
@@ -264,6 +265,9 @@ export class Renderer {
     target.fogFar = Math.max(target.fogFar, target.fogNear + 14);
     this._atmo = { target, t: 0 };
     this._setDust(!!atm.dust, atm.fogColor);
+    if (atm.weather !== undefined) {
+      this.setWeather(atm.weather, { color: atm.weatherColor });
+    }
   }
 
   _updateAtmosphere(dt) {
@@ -319,21 +323,112 @@ export class Renderer {
   }
 
   /**
-   * Brighten dark floor/wall meshes in a world group so dungeons are always vivid and readable
+   * Ambient weather particle system around the hero ('rain' | 'snow' | 'embers' | 'petals' | 'spores' | null).
+   * Uses a single pooled THREE.Points buffer with per-particle drift/fall/rise wrap-around.
+   */
+  setWeather(kind = null, options = {}) {
+    const w = kind ? String(kind).toLowerCase() : '';
+    if (!w || w === 'none' || w === 'clear') {
+      this._weatherKind = null;
+      if (this._weatherPoints) this._weatherPoints.visible = false;
+      return;
+    }
+
+    const presets = {
+      rain:   { color: 0x93c5fd, size: 0.11, opacity: 0.62, vy: -13.5, vx: -1.6, vz: 0.8, sway: 0.15, spanY: 9.0 },
+      snow:   { color: 0xe2e8f0, size: 0.12, opacity: 0.78, vy: -2.1,  vx: 0.45, vz: 0.3, sway: 1.1,  spanY: 8.0 },
+      embers: { color: 0xf97316, size: 0.11, opacity: 0.85, vy: 2.3,   vx: 0.35, vz: -0.25, sway: 0.9, spanY: 7.5 },
+      petals: { color: 0xfbcfe8, size: 0.10, opacity: 0.68, vy: -1.25, vx: 0.55, vz: 0.35, sway: 1.25, spanY: 7.5 },
+      spores: { color: 0x6ee7b7, size: 0.09, opacity: 0.65, vy: 0.65,  vx: 0.2,  vz: 0.2,  sway: 0.85, spanY: 6.5 }
+    };
+    const cfg = presets[w] || presets.snow;
+    this._weatherKind = w;
+    this._weatherCfg = {
+      ...cfg,
+      color: Number.isFinite(Number(options.color)) ? Number(options.color) : cfg.color
+    };
+
+    if (!this._weatherPoints) {
+      const count = 200;
+      const pos = new Float32Array(count * 3);
+      const phases = new Float32Array(count);
+      for (let i = 0; i < count; i++) {
+        pos[i * 3] = (Math.random() - 0.5) * 28;
+        pos[i * 3 + 1] = Math.random() * 8.5;
+        pos[i * 3 + 2] = (Math.random() - 0.5) * 28;
+        phases[i] = Math.random() * Math.PI * 2;
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      const mat = new THREE.PointsMaterial({
+        size: this._weatherCfg.size,
+        color: this._weatherCfg.color,
+        transparent: true,
+        opacity: this._weatherCfg.opacity,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending
+      });
+      this._weatherPoints = new THREE.Points(geo, mat);
+      this._weatherPoints.userData.noFlash = true;
+      this._weatherPoints.userData.phases = phases;
+      this._weatherPoints.frustumCulled = false;
+      this.scene.add(this._weatherPoints);
+    }
+
+    const mat = this._weatherPoints.material;
+    mat.color.setHex(this._weatherCfg.color);
+    mat.size = this._weatherCfg.size;
+    mat.opacity = this._weatherCfg.opacity;
+    this._weatherPoints.visible = true;
+  }
+
+  _updateWeather(dt, elapsed, heroPos) {
+    const pts = this._weatherPoints;
+    const cfg = this._weatherCfg;
+    if (!pts || !pts.visible || !cfg) return;
+    if (heroPos) {
+      pts.position.x = heroPos.x || 0;
+      pts.position.z = heroPos.z || 0;
+    }
+    const attr = pts.geometry.getAttribute('position');
+    const arr = attr.array;
+    const phases = pts.userData.phases;
+    const n = phases.length;
+    const spanY = cfg.spanY || 8.0;
+    for (let i = 0; i < n; i++) {
+      const idx = i * 3;
+      const ph = phases[i];
+      arr[idx] += (cfg.vx + Math.sin(elapsed * 1.7 + ph) * cfg.sway) * dt;
+      arr[idx + 1] += cfg.vy * dt;
+      arr[idx + 2] += (cfg.vz + Math.cos(elapsed * 1.4 + ph) * cfg.sway) * dt;
+      if (arr[idx + 1] < 0.08) arr[idx + 1] += spanY;
+      else if (arr[idx + 1] > spanY) arr[idx + 1] -= spanY;
+      if (arr[idx] < -14) arr[idx] += 28;
+      else if (arr[idx] > 14) arr[idx] -= 28;
+      if (arr[idx + 2] < -14) arr[idx + 2] += 28;
+      else if (arr[idx + 2] > 14) arr[idx + 2] -= 28;
+    }
+    attr.needsUpdate = true;
+  }
+
+  /**
+   * Brighten dark floor/wall meshes in a world group so dungeons are always vivid and readable.
+   * Skips InstancedMesh (tuned per-instance vertex colors) and avoids double-brightening shared materials.
    */
   brightenWorldMaterials(rootObject = this.scene) {
     if (!rootObject || typeof rootObject.traverse !== 'function') return;
     const hsl = { h: 0, s: 0, l: 0 };
     rootObject.traverse((obj) => {
-      if (!obj.isMesh || !obj.material) return;
+      if (!obj.isMesh || obj.isInstancedMesh || obj.userData?.skipBrighten || !obj.material) return;
       const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
       for (const mat of mats) {
-        if (!mat || !mat.color) continue;
+        if (!mat || !mat.color || mat.userData?.__brightened || mat.userData?.skipBrighten) continue;
+        mat.userData = { ...(mat.userData || {}), __brightened: true };
         mat.color.getHSL(hsl);
         // Lift overly dark dungeon floor/wall surfaces so details pop clearly
         if (hsl.l > 0.01 && hsl.l < 0.34) {
-          const boostedL = Math.min(0.48, hsl.l * 1.45 + 0.08);
-          mat.color.setHSL(hsl.h, Math.min(1, hsl.s * 1.1), boostedL);
+          const boostedL = Math.min(0.46, hsl.l * 1.38 + 0.06);
+          mat.color.setHSL(hsl.h, Math.min(1, hsl.s * 1.08), boostedL);
         }
         // High metalness without an envMap makes standard materials look dark; keep roughness balanced
         if (typeof mat.metalness === 'number' && mat.metalness > 0.35 && !mat.envMap) {
@@ -764,6 +859,189 @@ export class Renderer {
   }
 
   /**
+   * Spawn a boss ground telegraph decal inside the bossArena before a boss skill executes.
+   * kind: 'shockwave' | 'nova' | 'charge' | 'summon'
+   * options: { radius, length, width, duration, color, arena }
+   */
+  spawnBossTelegraph(kind = 'shockwave', origin = { x: 0, z: 0 }, dir = { x: 0, z: 1 }, options = {}) {
+    const duration = Math.max(0.25, Number(options.duration) || 0.72);
+    const color = Number.isFinite(Number(options.color)) ? Number(options.color) : 0xef4444;
+    const arena = options.arena || null;
+    const ox = Number(origin?.x || 0);
+    const oz = Number(origin?.z || 0);
+
+    const clampToArena = (px, pz, margin = 0.6) => {
+      if (!arena?.center || !Number.isFinite(arena.radius)) return { x: px, z: pz };
+      const dx = px - arena.center.x;
+      const dz = pz - arena.center.z;
+      const d = Math.hypot(dx, dz);
+      const maxR = Math.max(1.5, arena.radius - margin);
+      if (d <= maxR || d < 0.001) return { x: px, z: pz };
+      return {
+        x: arena.center.x + (dx / d) * maxR,
+        z: arena.center.z + (dz / d) * maxR
+      };
+    };
+
+    const group = new THREE.Group();
+    group.position.y = 0.045;
+    this.vfxGroup.add(group);
+    const geos = [];
+    const mats = [];
+
+    if (kind === 'charge') {
+      const len = Number(options.length) || 6.5;
+      const width = Number(options.width) || 1.9;
+      const dLen = Math.hypot(dir?.x || 0, dir?.z || 1) || 1;
+      const nx = (dir?.x || 0) / dLen;
+      const nz = (dir?.z || 1) / dLen;
+      const endPt = clampToArena(ox + nx * len, oz + nz * len, 0.9);
+      const actualLen = Math.max(1.8, Math.hypot(endPt.x - ox, endPt.z - oz));
+      const yaw = Math.atan2(endPt.x - ox, endPt.z - oz);
+
+      const borderGeo = new THREE.PlaneGeometry(width, actualLen);
+      const fillGeo = new THREE.PlaneGeometry(width * 0.92, actualLen);
+      const borderMat = new THREE.MeshBasicMaterial({
+        color,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.55,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      });
+      const fillMat = new THREE.MeshBasicMaterial({
+        color,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.25,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      });
+      geos.push(borderGeo, fillGeo);
+      mats.push(borderMat, fillMat);
+
+      const border = new THREE.Mesh(borderGeo, borderMat);
+      border.rotation.x = -Math.PI / 2;
+      border.rotation.z = -yaw;
+      border.position.set(ox + Math.sin(yaw) * (actualLen * 0.5), 0, oz + Math.cos(yaw) * (actualLen * 0.5));
+
+      const fill = new THREE.Mesh(fillGeo, fillMat);
+      fill.rotation.x = -Math.PI / 2;
+      fill.rotation.z = -yaw;
+      fill.position.copy(border.position);
+      fill.position.y = 0.005;
+
+      group.add(border, fill);
+      this.vfxList.push({
+        mesh: group,
+        age: 0,
+        life: duration,
+        update: (p) => {
+          fill.scale.set(1, Math.max(0.05, p), 1);
+          fillMat.opacity = (0.2 + p * 0.45) * (1 - Math.max(0, p - 0.9) * 10);
+          borderMat.opacity = (0.45 + Math.sin(p * Math.PI * 6) * 0.2) * (1 - Math.max(0, p - 0.92) * 12);
+          if (p >= 0.99) {
+            geos.forEach((g) => g.dispose());
+            mats.forEach((m) => m.dispose());
+          }
+        }
+      });
+      return group;
+    }
+
+    if (kind === 'summon') {
+      const spots = [
+        clampToArena(ox - 2.2, oz + 1.5, 1.0),
+        clampToArena(ox + 2.2, oz + 1.5, 1.0)
+      ];
+      for (const sp of spots) {
+        const rGeo = new THREE.RingGeometry(0.65, 0.95, 24);
+        const rMat = new THREE.MeshBasicMaterial({
+          color: 0xc084fc,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 0.75,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false
+        });
+        geos.push(rGeo);
+        mats.push(rMat);
+        const rMesh = new THREE.Mesh(rGeo, rMat);
+        rMesh.rotation.x = -Math.PI / 2;
+        rMesh.position.set(sp.x, 0, sp.z);
+        group.add(rMesh);
+      }
+      this.vfxList.push({
+        mesh: group,
+        age: 0,
+        life: duration,
+        update: (p) => {
+          group.children.forEach((c, idx) => {
+            c.rotation.z = p * Math.PI * (idx % 2 === 0 ? 3 : -3);
+            c.scale.setScalar(0.6 + p * 0.55);
+          });
+          mats.forEach((m) => { m.opacity = Math.sin(p * Math.PI) * 0.85; });
+          if (p >= 0.99) {
+            geos.forEach((g) => g.dispose());
+            mats.forEach((m) => m.dispose());
+          }
+        }
+      });
+      return group;
+    }
+
+    // Default: 'shockwave' / 'nova' circular arena telegraph
+    const maxR = arena?.radius ? Math.min(Number(options.radius) || 4.0, arena.radius - 0.4) : (Number(options.radius) || 4.0);
+    const center = clampToArena(ox, oz, 0.5);
+    const outerGeo = new THREE.RingGeometry(maxR * 0.92, maxR, 40);
+    const fillGeo = new THREE.CircleGeometry(maxR, 36);
+    const outerMat = new THREE.MeshBasicMaterial({
+      color,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.8,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+    const fillMat = new THREE.MeshBasicMaterial({
+      color,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.22,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+    geos.push(outerGeo, fillGeo);
+    mats.push(outerMat, fillMat);
+
+    const outerRing = new THREE.Mesh(outerGeo, outerMat);
+    outerRing.rotation.x = -Math.PI / 2;
+    outerRing.position.set(center.x, 0, center.z);
+
+    const innerDisc = new THREE.Mesh(fillGeo, fillMat);
+    innerDisc.rotation.x = -Math.PI / 2;
+    innerDisc.position.set(center.x, 0.004, center.z);
+    innerDisc.scale.setScalar(0.05);
+
+    group.add(outerRing, innerDisc);
+    this.vfxList.push({
+      mesh: group,
+      age: 0,
+      life: duration,
+      update: (p) => {
+        innerDisc.scale.setScalar(Math.max(0.05, p));
+        fillMat.opacity = (0.15 + p * 0.38) * (1 - Math.max(0, p - 0.92) * 12);
+        outerMat.opacity = (0.55 + Math.sin(p * Math.PI * 8) * 0.25) * (1 - Math.max(0, p - 0.92) * 12);
+        if (p >= 0.99) {
+          geos.forEach((g) => g.dispose());
+          mats.forEach((m) => m.dispose());
+        }
+      }
+    });
+    return group;
+  }
+
+  /**
    * Spawn floating 3D -> 2D combat text (damage numbers, CRITS, EXP, status)
    */
   spawnFloatingText(worldPos, text, options = {}) {
@@ -850,6 +1128,7 @@ export class Renderer {
     this.updateCamera(heroPos, dt);
     this._updateAtmosphere(dt);
     this._updateDust(dt, elapsed, heroPos);
+    this._updateWeather(dt, elapsed, heroPos);
 
     // Flicker dynamic torch/portal lights
     for (const entry of this.dynamicLights) {

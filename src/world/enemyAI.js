@@ -31,6 +31,7 @@ function colorToCss(c) {
 }
 
 export const AI_STATE = {
+  SLEEP: 'SLEEP',
   IDLE: 'IDLE',
   PATROL: 'PATROL',
   CHASE: 'CHASE',
@@ -618,7 +619,9 @@ export class EnemyAI {
     this.position = new THREE.Vector3(this.x, 0, this.z);
     this.rotation = Math.random() * Math.PI * 2;
 
-    this.state = AI_STATE.IDLE;
+    this.packId = config.packId || null;
+    this.sleeping = Boolean(config.sleeping && !this.isBoss);
+    this.state = this.sleeping ? AI_STATE.SLEEP : AI_STATE.IDLE;
     this.stateTimer = 0.5 + Math.random() * 1.2;
     this.attackCooldown = Math.random() * 0.6;
     this.skillCooldown = 4.5 + Math.random() * 2.5;
@@ -799,10 +802,14 @@ export class EnemyManager {
         ? 3
         : 2;
 
+      const packId = `pack_f${fNum}_r${idx}`;
+      // Half of room packs slumber in a tight cluster and wake together when disturbed
+      const packSleeping = idx % 2 === 1 && room.type !== 'exit';
+
       for (let i = 0; i < count; i++) {
         const mType = pool[(idx + i) % pool.length];
         const angle = (i / count) * Math.PI * 2 + idx * 0.5;
-        const dist = 1.6 + (i % 2) * 1.4;
+        const dist = packSleeping ? 1.15 + (i % 2) * 0.85 : 1.6 + (i % 2) * 1.4;
         const mx = room.centerX + Math.cos(angle) * dist;
         const mz = room.centerZ + Math.sin(angle) * dist;
 
@@ -812,12 +819,44 @@ export class EnemyManager {
           floor: fNum,
           x: mx,
           z: mz,
-          isElite
+          isElite,
+          packId,
+          sleeping: packSleeping
         });
       }
     });
 
     return this.enemies;
+  }
+
+  /**
+   * Wake a sleeping monster and all packmates sharing its packId (or nearby sleeping monsters).
+   * Returns the array of monsters that woke up on this call.
+   */
+  wakePack(enemyOrPackId) {
+    const trigger = typeof enemyOrPackId === 'object' ? enemyOrPackId : null;
+    const packId = typeof enemyOrPackId === 'string' ? enemyOrPackId : (trigger?.packId || null);
+    const woken = [];
+    for (const m of this.enemies) {
+      if (m.dead) continue;
+      const inSamePack = packId && m.packId === packId;
+      const nearbyTrigger = trigger && Math.hypot(m.x - trigger.x, m.z - trigger.z) <= 6.5;
+      if (m === trigger || inSamePack || nearbyTrigger) {
+        if (m.sleeping || m.state === AI_STATE.SLEEP || m.state === AI_STATE.IDLE || m.state === AI_STATE.PATROL) {
+          const wasSleeping = m.sleeping || m.state === AI_STATE.SLEEP;
+          m.sleeping = false;
+          if (m.state !== AI_STATE.STUN && m.state !== AI_STATE.TELEGRAPH && m.state !== AI_STATE.ATTACK && m.state !== AI_STATE.SKILL) {
+            m.state = AI_STATE.CHASE;
+          }
+          if (wasSleeping) woken.push(m);
+        }
+      }
+    }
+    if (woken.length > 0 && this.renderer?.spawnFloatingText) {
+      const lead = trigger || woken[0];
+      this.renderer.spawnFloatingText({ x: lead.x, y: 1.1, z: lead.z }, '!', { color: '#facc15', isCrit: true });
+    }
+    return woken;
   }
 
   _getMonsterPoolForFloor(floorNum) {
@@ -828,7 +867,7 @@ export class EnemyManager {
     return ['orc', 'golem', 'mage', 'skeleton'];
   }
 
-  spawnMonster({ type = 'goblin', floor = 1, x = 0, z = 0, isElite = false, isBoss = false, customConfig = null }) {
+  spawnMonster({ type = 'goblin', floor = 1, x = 0, z = 0, isElite = false, isBoss = false, packId = null, sleeping = false, customConfig = null }) {
     const base = MONSTER_CATALOG[type] || MONSTER_CATALOG.goblin;
     // rpg-systems: monster level is no longer the raw floor number; it comes from floorMonsterLevel(floor)
     // (floor 15 -> level 52) so every gear tier is reachable. customConfig.level overrides it.
@@ -895,6 +934,8 @@ export class EnemyManager {
       isRanged: base.isRanged,
       skills: customConfig?.skills || [],
       summonType: customConfig?.summonType || 'goblin',
+      packId: packId || customConfig?.packId || null,
+      sleeping: Boolean(sleeping || customConfig?.sleeping),
       x,
       z,
       mesh
@@ -1029,6 +1070,9 @@ export class EnemyManager {
     const dmg = Math.max(1, Math.round((Number(amount) || 1) * takenMult));
     enemy.hp = Math.max(0, enemy.hp - dmg);
     if (!options.isDot) enemy.mesh?.userData?.triggerHitFlash?.(0.15);
+    if (enemy.sleeping || enemy.state === AI_STATE.SLEEP || enemy.packId) {
+      this.wakePack(enemy);
+    }
 
     // Apply knockback
     const kbResist = enemy.isBoss ? 0.85 : (enemy.modifier?.knockbackRes || 0);
@@ -1282,14 +1326,30 @@ export class EnemyManager {
         if (chosenSkill === 'charge' && distToPlayer > 0.1) {
           e.chargeDir = { x: dx / distToPlayer, z: dz / distToPlayer };
         }
+        const bossArena = world?.bossArena || this.gameContext?.dungeon?.bossArena || null;
+        this.renderer?.spawnBossTelegraph?.(chosenSkill, e.position, e.chargeDir, {
+          radius: chosenSkill === 'nova' ? 4.6 : 3.8,
+          duration: e.stateTimer,
+          arena: bossArena,
+          color: e.element === 'fire' ? 0xff4400 : e.element === 'lightning' ? 0xfacc15 : e.element === 'ice' ? 0x38bdf8 : 0xef4444
+        });
       }
 
       switch (e.state) {
+        case AI_STATE.SLEEP: {
+          e.mesh?.userData?.animate?.('idle', time * 0.35, dt);
+          if (distToPlayer <= e.aggroRange * 0.68) {
+            this.wakePack(e);
+          }
+          break;
+        }
+
         case AI_STATE.IDLE: {
           e.stateTimer -= dt;
           e.mesh?.userData?.animate?.('idle', time, dt);
           if (distToPlayer <= e.aggroRange) {
-            e.state = AI_STATE.CHASE;
+            if (e.packId) this.wakePack(e);
+            else e.state = AI_STATE.CHASE;
           } else if (e.stateTimer <= 0) {
             const angle = Math.random() * Math.PI * 2;
             const r = 1.5 + Math.random() * 2.5;
@@ -1306,7 +1366,8 @@ export class EnemyManager {
         case AI_STATE.PATROL: {
           e.stateTimer -= dt;
           if (distToPlayer <= e.aggroRange) {
-            e.state = AI_STATE.CHASE;
+            if (e.packId) this.wakePack(e);
+            else e.state = AI_STATE.CHASE;
             break;
           }
           const pdx = e.patrolTarget.x - e.x;
@@ -1384,6 +1445,17 @@ export class EnemyManager {
           e.stateTimer -= dt;
           if (e.pendingSkill === 'charge') {
             this._moveEnemy(e, e.chargeDir.x, e.chargeDir.z, e.moveSpeed * 2.8, dt, world);
+            const arena = world?.bossArena || this.gameContext?.dungeon?.bossArena;
+            if (arena?.center && Number.isFinite(arena.radius)) {
+              const adx = e.x - arena.center.x;
+              const adz = e.z - arena.center.z;
+              const ad = Math.hypot(adx, adz);
+              const maxR = Math.max(1.5, arena.radius - 0.9);
+              if (ad > maxR && ad > 0.001) {
+                e.x = arena.center.x + (adx / ad) * maxR;
+                e.z = arena.center.z + (adz / ad) * maxR;
+              }
+            }
             if (Math.hypot(px - e.x, pz - e.z) <= e.radius + 0.85) {
               this._dealDamageToPlayer(e, Math.round(e.atk * 1.35), e.element, callbacks);
               e.pendingSkill = null;
@@ -1716,9 +1788,20 @@ export class EnemyManager {
     } else if (skill === 'summon') {
       if (this.getAliveEnemies().length < 12 && boss.summonCount < 6) {
         boss.summonCount += 2;
+        const arena = world?.bossArena || this.gameContext?.dungeon?.bossArena;
         for (const offset of [-2.2, 2.2]) {
-          const sx = boss.x + offset;
-          const sz = boss.z + 1.5;
+          let sx = boss.x + offset;
+          let sz = boss.z + 1.5;
+          if (arena?.center && Number.isFinite(arena.radius)) {
+            const adx = sx - arena.center.x;
+            const adz = sz - arena.center.z;
+            const ad = Math.hypot(adx, adz);
+            const maxR = Math.max(1.5, arena.radius - 1.0);
+            if (ad > maxR && ad > 0.001) {
+              sx = arena.center.x + (adx / ad) * maxR;
+              sz = arena.center.z + (adz / ad) * maxR;
+            }
+          }
           this.spawnMonster({
             type: boss.summonType || 'goblin',
             floor: boss.floor,
