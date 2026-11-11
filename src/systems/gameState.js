@@ -11,6 +11,7 @@
 // =============================================================================
 
 import { Inventory, applyItemData, rollLoot, generateItem, RARITY, SLOTS, getItemBase, floorMonsterLevel } from './inventory.js';
+import { STATUS } from './mechanics.js';
 import { SkillSystem, applySkillData, BASIC_COMBO } from './skills.js';
 import { QuestSystem, applyQuestData } from './quests.js';
 import { CLASSES, DEFAULT_CLASS, getClass, isValidClass, sanitizeAppearance } from './classes.js';
@@ -505,6 +506,7 @@ export class GameState extends Emitter {
       existing.duration = Math.max(existing.duration, num(buff.duration, existing.duration));
       if (buff.maxStacks) existing.stacks = Math.min(buff.maxStacks, (existing.stacks || 1) + 1);
       if (buff.mods) existing.mods = { ...buff.mods };
+      if (buff.imbue) existing.imbue = { ...buff.imbue };
     } else {
       this.hero.buffs.push({
         id: buff.id,
@@ -515,6 +517,7 @@ export class GameState extends Emitter {
         remaining: num(buff.duration, 10),
         mods: buff.mods ? { ...buff.mods } : null,
         debuff: !!buff.debuff,
+        imbue: buff.imbue ? { ...buff.imbue } : null,
         dot: buff.dot || null,
         hot: buff.hot || null,
         stacks: 1,
@@ -555,10 +558,35 @@ export class GameState extends Emitter {
       : { atkMin: s.atkMin, atkMax: s.atkMax, critRate: s.critRate, critDmg: s.critDmg, hit: s.hit, level: s.level, elemDmg: s.elemDmg };
     const r = calcDamage(att, defStats, { ...opts, bonusPct: num(opts.bonusPct) + this.comboBonusPct });
     if (!r.miss) {
+      const im = this.getActiveImbue();
+      const base = r.damage;
+      let triggered = null;
+      if (im && num(im.bonusPct) > 0) {
+        const resv = clamp(num((defStats.res || {})[im.element]), -100, 80);
+        const extra = Math.max(1, Math.round(base * num(im.bonusPct) / 100 * (1 - resv / 100)));
+        r.damage += extra;
+        r.imbueDamage = extra;
+        r.imbue = { element: im.element, extra };
+        if (im.status && STATUS[im.status] && Math.random() * 100 < num(im.statusChance)) triggered = im.status;
+      }
+      if (!triggered && opts.status && STATUS[opts.status] && Math.random() * 100 < num(opts.statusChance)) triggered = opts.status;
+      r.status = triggered ? this._makeStatus(triggered, r.damage) : null;
       if (s.lifeSteal > 0) this.heal(r.damage * s.lifeSteal / 100, 0);
       if (s.manaSteal > 0) this.heal(0, r.damage * s.manaSteal / 100);
     }
     return r;
+  }
+
+  /** Active imbue ({element, bonusPct, status, statusChance}) from the 'imbue' buff, or null. */
+  getActiveImbue() {
+    const b = this.hero.buffs.find((x) => x.id === 'imbue' && x.imbue && x.remaining > 0);
+    return b ? b.imbue : null;
+  }
+  _makeStatus(id, damage) {
+    const def = STATUS[id];
+    const st = { id, duration: def.duration };
+    if (def.dotPctOfHit) st.dotPerTick = Math.max(1, Math.round(damage * def.dotPctOfHit));
+    return st;
   }
 
   /** Basic-attack roll honouring the class attack style (wizard bolts use MATK). */
@@ -709,7 +737,7 @@ export class GameState extends Emitter {
       stats: { str: s.str, dex: s.dex, int: s.int, lck: s.lck },
       baseStats: { ...h.attrs },
       derived: s,
-      buffs: h.buffs.map((b) => ({ id: b.id, name: b.name, icon: b.icon, remaining: Math.max(0, b.remaining), duration: b.duration, debuff: b.debuff, stacks: b.stacks, desc: b.desc })),
+      buffs: h.buffs.map((b) => ({ id: b.id, name: b.name, icon: b.icon, remaining: Math.max(0, b.remaining), duration: b.duration, debuff: b.debuff, imbue: b.imbue || null, stacks: b.stacks, desc: b.desc })),
       dead: h.dead,
       floor: this.progress.currentFloor,
       maxFloor: this.progress.maxFloor,

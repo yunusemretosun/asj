@@ -1,6 +1,13 @@
 import * as THREE from 'three';
-import { createHeroMesh, createProjectileMesh } from './models3d.js';
+import { createHeroMesh, createProjectileMesh, imbueColorOf } from './models3d.js';
 import { getClass } from '../systems/classes.js';
+import { skillTiming, STATUS } from '../systems/mechanics.js';
+
+const ELEMENT_FX_COLORS = { fire: 0xff6a2a, ice: 0x6fd4ff, cold: 0x6fd4ff, lightning: 0xffee44, poison: 0x7dff5a, dark: 0x9333ea, holy: 0xfef08a };
+
+function hexToCss(c) {
+  return typeof c === 'number' ? `#${c.toString(16).padStart(6, '0')}` : String(c || '#ffffff');
+}
 
 /**
  * Procedural WebAudio API Sound Synthesizer for ARKENVEIL: SIGILS & JOURNEYS
@@ -178,6 +185,61 @@ export class SoundFX {
         sGain.connect(ctx.destination);
         sparkle.start(now + 0.03);
         sparkle.stop(now + 0.23);
+      } else if (type === 'alchemy_success') {
+        // Rising major arpeggio with a bright shimmer tail (bigger for +7 and up)
+        const big = Boolean(options.big);
+        const notes = big ? [392.0, 523.25, 659.25, 783.99, 1046.5] : [523.25, 659.25, 783.99];
+        notes.forEach((freq, i) => {
+          const t = now + i * 0.07;
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, t);
+          gain.gain.setValueAtTime(this.masterVolume * 0.5, t);
+          gain.gain.exponentialRampToValueAtTime(0.001, t + 0.32);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(t);
+          osc.stop(t + 0.33);
+        });
+        const end = now + notes.length * 0.07;
+        const shimmer = ctx.createOscillator();
+        const sGain = ctx.createGain();
+        shimmer.type = 'sine';
+        shimmer.frequency.setValueAtTime(1800, end);
+        shimmer.frequency.exponentialRampToValueAtTime(2600, end + 0.35);
+        sGain.gain.setValueAtTime(this.masterVolume * 0.15, end);
+        sGain.gain.exponentialRampToValueAtTime(0.001, end + 0.4);
+        shimmer.connect(sGain);
+        sGain.connect(ctx.destination);
+        shimmer.start(end);
+        shimmer.stop(end + 0.41);
+      } else if (type === 'alchemy_fail') {
+        // Crack: short noise burst + falling low square "thud"
+        const len = Math.floor(ctx.sampleRate * 0.12);
+        const buffer = ctx.createBuffer(1, len, ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3);
+        const noise = ctx.createBufferSource();
+        noise.buffer = buffer;
+        const nGain = ctx.createGain();
+        nGain.gain.setValueAtTime(this.masterVolume * 0.8, now);
+        nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+        noise.connect(nGain);
+        nGain.connect(ctx.destination);
+        noise.start(now);
+        noise.stop(now + 0.13);
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(180, now + 0.02);
+        osc.frequency.exponentialRampToValueAtTime(45, now + 0.35);
+        gain.gain.setValueAtTime(this.masterVolume * 0.45, now + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.36);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + 0.02);
+        osc.stop(now + 0.37);
       } else if (type === 'hurt') {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
@@ -308,6 +370,12 @@ export class PlayerController {
     this.projectiles = [];
     this.delayedHits = [];
 
+    // Skill phase state (prep -> release -> recover, chains). null when no skill is running.
+    this.skillPhase = null;
+    this.skillAnimCombo = 3;
+    this.skillAnimProgress = 0;
+    this._imbueSynced = undefined;
+
     // Input state
     this.keys = new Set();
     this.mousePos = { x: window.innerWidth * 0.5, y: window.innerHeight * 0.5 };
@@ -322,6 +390,39 @@ export class PlayerController {
     this.applyHeroLook();
 
     this._bindEvents();
+    this._bindGameEvents();
+  }
+
+  /** Subscribe to gameState events (alchemy results). Safe without an event emitter. */
+  _bindGameEvents() {
+    const gs = this.gameState;
+    if (!gs || typeof gs.on !== 'function') return;
+    this._offAlchemy = gs.on('alchemy', (ev) => this.onAlchemyResult(ev));
+  }
+
+  /** Alchemy result VFX/SFX: { success, item, plus, prevPlus, chance }. */
+  onAlchemyResult(ev = {}) {
+    const pos = this.position;
+    const plus = Number(ev.plus ?? ev.item?.plus) || 0;
+    if (ev.success) {
+      const big = plus >= 7;
+      const sealHex = ev.item?.seal ? ({ sun: 0xfbbf24, moon: 0xc4b5fd, star: 0x7dd3fc })[ev.item.seal] : null;
+      const color = sealHex ?? (big ? 0xfacc15 : 0x7dd3fc);
+      this.sound.play('alchemy_success', { big });
+      if (big) {
+        if (typeof this.renderer.spawnAlchemyPillar === 'function') this.renderer.spawnAlchemyPillar(pos, color);
+        else this.renderer.spawnLevelUpPillar?.(pos);
+      }
+      this.renderer.spawnShockwave?.(pos, big ? 3.2 : 2.0, color, 0.5);
+      this.renderer.spawnHitSparks?.({ x: pos.x, y: 0.4, z: pos.z }, color, big ? 26 : 14);
+      this.renderer.spawnFloatingText?.(pos, `+${plus}`, { color: hexToCss(color), isCrit: big });
+    } else {
+      this.sound.play('alchemy_fail');
+      if (typeof this.renderer.spawnSmokePuff === 'function') this.renderer.spawnSmokePuff(pos, 0x9ca3af);
+      else this.renderer.spawnHitSparks?.({ x: pos.x, y: 0.4, z: pos.z }, 0x9ca3af, 12);
+      this.renderer.spawnFloatingText?.(pos, plus > 0 ? `Failed (+${plus})` : 'Failed', { color: '#9ca3af' });
+    }
+    if (ev.item && Object.values(this._getEquipment() || {}).includes(ev.item)) this.syncEquipment();
   }
 
   _getHeroClass() {
@@ -388,6 +489,13 @@ export class PlayerController {
     this.attackTimer = 0;
     this.skillTimer = 0;
     this.clearProjectiles();
+  }
+
+  /** Stop any running skill / chain without feedback (zone change, reset, death). */
+  cancelSkill() {
+    this.skillPhase = null;
+    this.skillAnim = null;
+    if (this.state === 'skill') this.state = 'idle';
   }
 
   _bindEvents() {
@@ -501,9 +609,14 @@ export class PlayerController {
     return used;
   }
 
-  performDash() {
-    if (this.dashTimer > 0 || this.dashCooldown > 0) return false;
-    if (this.gameState && typeof this.gameState.useStamina === 'function') {
+  performDash(opts = {}) {
+    const fromSkill = Boolean(opts && opts.fromSkill);
+    if (!fromSkill && this.skillPhase) {
+      // Dodging out of a wind-up cancels it; recover / chain gaps lock the dodge
+      if (this.skillPhase.stage !== 'prep' || !this.interruptSkill('Interrupted')) return false;
+    }
+    if (this.dashTimer > 0 || (!fromSkill && this.dashCooldown > 0)) return false;
+    if (!fromSkill && this.gameState && typeof this.gameState.useStamina === 'function') {
       if (!this.gameState.useStamina(18)) return false;
     }
 
@@ -529,9 +642,10 @@ export class PlayerController {
    * Basic attack entry point (LMB / J). Dispatches on the hero class attackStyle.
    */
   performMeleeAttack(faceCursor = false) {
-    if (this.state === 'attack' || this.state === 'dash' || this.state === 'skill') return false;
+    if (this.state === 'attack' || this.state === 'dash' || this.state === 'skill' || this.skillPhase) return false;
 
     const style = this._getAttackStyle();
+    const imbueColor = this._imbueColor();
     const cls = this._getHeroClass();
     const ranged = style === 'magic_bolt' || style === 'arrow';
     this.aimPoint = null;
@@ -580,7 +694,7 @@ export class PlayerController {
       this.attackDuration = (this.comboStage === 3 ? 0.34 : 0.24) / atkSpeed;
       this.attackHitAt = 0.35;
       this.sound.play('slash', { combo: this.comboStage });
-      const slashColor = this.comboStage === 3 ? 0xfacc15 : this.comboStage === 2 ? 0x60a5fa : 0x38bdf8;
+      const slashColor = imbueColor ?? (this.comboStage === 3 ? 0xfacc15 : this.comboStage === 2 ? 0x60a5fa : 0x38bdf8);
       const radius = this.comboStage === 3 ? 2.65 : 2.15;
       const arc = this.comboStage === 3 ? Math.PI * 1.15 : Math.PI * 0.9;
       this.renderer.spawnSlashArc(this.position, this.rotation, radius, slashColor, arc, this.comboStage);
@@ -621,7 +735,7 @@ export class PlayerController {
       knockback = this.comboStage === 3 ? 2.4 : 1.1;
 
       // Heavy swings show their arc on impact (after the wind-up)
-      const color = this.comboStage === 3 ? 0xf97316 : 0xef4444;
+      const color = this._imbueColor() ?? (this.comboStage === 3 ? 0xf97316 : 0xef4444);
       this.renderer.spawnSlashArc(this.position, this.rotation, range, color, arc, this.comboStage);
       if (this.comboStage === 3) {
         const fx = this.position.x + Math.sin(this.rotation) * 1.4;
@@ -729,7 +843,7 @@ export class PlayerController {
     if (this.attackKind === 'magic_bolt') {
       const weapon = this._getEquipment()?.weapon;
       const element = weapon?.element || 'physical';
-      const color = { fire: 0xff7a3d, ice: 0x7dd3fc, lightning: 0xfde047, poison: 0x86efac }[element] || 0xc084fc;
+      const color = this._imbueColor() ?? ({ fire: 0xff7a3d, ice: 0x7dd3fc, lightning: 0xfde047, poison: 0x86efac }[element] || 0xc084fc);
       const mult = stage === 3 ? 0.9 : stage === 2 ? 1.15 : 1.0;
       const offsets = stage === 3 ? [-0.25, 0, 0.25] : [0];
       for (const off of offsets) {
@@ -755,7 +869,7 @@ export class PlayerController {
     } else {
       const pierce = stage === 3;
       const mult = stage === 3 ? 1.4 : stage === 2 ? 1.1 : 1.0;
-      const color = pierce ? 0xfacc15 : 0xe5e7eb;
+      const color = this._imbueColor() ?? (pierce ? 0xfacc15 : 0xe5e7eb);
       this.spawnProjectile({
         kind: 'arrow',
         pos: origin,
@@ -846,6 +960,7 @@ export class PlayerController {
     }
     this.projectiles = [];
     this.delayedHits = [];
+    this.cancelSkill();
   }
 
   _projectileImpact(p, enemyTarget = null) {
@@ -991,7 +1106,7 @@ export class PlayerController {
     }
   }
 
-  _applyPlayerAttackToEnemy(enemy, { mult = 1.0, element = 'physical', knockback = 0.6, rollDamageFn = null }) {
+  _applyPlayerAttackToEnemy(enemy, { mult = 1.0, element = 'physical', knockback = 0.6, rollDamageFn = null, stun = 0 }) {
     if (!enemy || enemy.dead) return;
     const defStats = { def: enemy.def || enemy.defense || 2, level: enemy.level || 1, dodge: 0 };
 
@@ -1017,9 +1132,10 @@ export class PlayerController {
     enemy._lastHitCrit = Boolean(roll.crit);
     this.sound.play(roll.crit ? 'crit' : 'hit', { crit: roll.crit });
 
-    const sparkColor = roll.crit ? 0xfacc15 : 0xf8fafc;
+    const imbue = roll.imbue && Number(roll.imbue.extra) > 0 ? roll.imbue : null;
+    const imbueColor = imbue ? imbueColorOf(imbue) ?? ELEMENT_FX_COLORS[imbue.element] ?? 0xffffff : null;
+    const sparkColor = roll.crit ? 0xfacc15 : imbueColor ?? 0xf8fafc;
     this.renderer.spawnHitSparks(ePos, sparkColor, roll.crit ? 18 : 10);
-    this.renderer.spawnFloatingText(ePos, roll.damage, { isCrit: roll.crit });
 
     if (enemy.mesh?.userData?.triggerHitFlash) {
       enemy.mesh.userData.triggerHitFlash(0.15);
@@ -1030,16 +1146,42 @@ export class PlayerController {
       z: (ePos.z || 0) - this.position.z
     };
 
-    if (this.enemyManager) {
-      if (typeof this.enemyManager.applyDamageToEnemy === 'function') {
-        this.enemyManager.applyDamageToEnemy(enemy, roll.damage, {
+    const em = this.enemyManager;
+    // Shock bonus is applied inside applyDamageToEnemy; preview it for the numbers when unavailable
+    let dealt = roll.damage;
+    let res = null;
+    if (em) {
+      if (typeof em.applyDamageToEnemy === 'function') {
+        res = em.applyDamageToEnemy(enemy, roll.damage, {
           isCrit: roll.crit,
           element,
           knockback,
           knockbackDir: kbDir
         });
-      } else if (typeof this.enemyManager.damageEnemy === 'function') {
-        this.enemyManager.damageEnemy(enemy, roll.damage, roll.crit, kbDir, element);
+      } else if (typeof em.damageEnemy === 'function') {
+        res = em.damageEnemy(enemy, roll.damage, roll.crit, kbDir, element);
+      }
+    }
+    if (res && Number(res.damage) > 0) dealt = res.damage;
+
+    // Damage numbers: main hit + a smaller element-colored number for the imbue extra
+    if (imbue) {
+      const total = Math.max(1, Number(roll.damage) || 1);
+      const extraShown = Math.max(1, Math.round(dealt * (imbue.extra / total)));
+      this.renderer.spawnFloatingText(ePos, Math.max(1, dealt - extraShown), { isCrit: roll.crit });
+      this.renderer.spawnFloatingText({ x: ePos.x, y: (ePos.y || 0) + 0.35, z: ePos.z }, `+${extraShown}`, { color: hexToCss(imbueColor), small: true });
+    } else {
+      this.renderer.spawnFloatingText(ePos, dealt, { isCrit: roll.crit });
+    }
+
+    // Status effects (imbue proc / elemental skill) and skill stun, only on survivors
+    if (em && !enemy.dead && !res?.killed) {
+      if (roll.status && roll.status.id && typeof em.applyStatus === 'function') {
+        em.applyStatus(enemy, roll.status);
+      }
+      const stunDur = Number(stun) || 0;
+      if (stunDur > 0 && typeof em.applyStatus === 'function' && !(roll.status && roll.status.id === 'stun')) {
+        em.applyStatus(enemy, { id: 'stun', duration: stunDur });
       }
     }
   }
@@ -1052,6 +1194,9 @@ export class PlayerController {
 
     const skillsSys = this.gameState?.skills;
     let descriptor = null;
+
+    // While a skill / chain is running only instant skills (imbue, buffs) may fire
+    if (this.skillPhase && !this._slotIsInstant(slotIndex)) return false;
 
     if (skillsSys && typeof skillsSys.castSlot === 'function') {
       descriptor = skillsSys.castSlot(slotIndex);
@@ -1082,9 +1227,269 @@ export class PlayerController {
     return this.executeSkillDescriptor(descriptor);
   }
 
+  _slotIsInstant(slotIndex) {
+    const sk = this.gameState?.skills;
+    const id = sk?.hotbar?.[slotIndex];
+    if (!id) return false;
+    const view = sk.getSkillView?.(id) || sk.get?.(id);
+    if (view && typeof view.instant === 'boolean') return view.instant;
+    return view?.kind === 'imbue' || view?.kind === 'buff';
+  }
+
+  // ------------------------------------------------------------------ skill timing (prep -> release -> recover)
+  /** True while a skill wind-up, chain or follow-through owns the hero. */
+  isSkillBusy() {
+    return Boolean(this.skillPhase);
+  }
+
+  /** Animation plan for a skill (or chain segment): wind-up pose, release point and follow-through pose. */
+  _skillAnimPlan(desc, index = 0, isChain = false) {
+    const kind = String(desc?.kind || desc?.vfx || 'nova').toLowerCase();
+    const style = this._getAttackStyle();
+    const range = Number(desc?.range) || 3.2;
+    const ranged = kind === 'projectile' || (kind === 'aoe' && range > 5);
+    const combo = isChain ? (index % 3) + 1 : kind === 'aoe' ? 3 : 1;
+    if (style === 'magic_bolt') {
+      return { prep: 'cast', recover: 'cast', combo: isChain ? 1 : 3, rel: 0.4 };
+    }
+    if (style === 'arrow') {
+      if (ranged) return { prep: 'shoot', recover: 'shoot', combo: 1, rel: 0.72 };
+      return { prep: 'cast', recover: 'cast', combo: 3, rel: 0.4 };
+    }
+    // Melee classes
+    if (kind === 'melee_arc' || (kind === 'aoe' && !ranged)) {
+      return { prep: 'attack', recover: 'attack', combo, rel: combo === 3 ? 0.45 : 0.35 };
+    }
+    if (kind === 'heal' || kind === 'buff' || kind === 'imbue') {
+      return { prep: 'windup', recover: 'idle', combo: 1, rel: 1 };
+    }
+    if (kind === 'dash') return { prep: 'windup', recover: 'dash', combo: 1, rel: 1 };
+    if (ranged) return { prep: 'windup', recover: 'attack', combo: 3, rel: 1 };
+    // nova / whirlwind / generic: raise the weapon, then the legacy spin
+    return { prep: 'windup', recover: 'skill', combo: 3, rel: 1 };
+  }
+
+  _setSkillAnim(plan, stage, g) {
+    const k = Math.max(0, Math.min(1, g));
+    if (stage === 'recover') {
+      this.skillAnim = plan.recover;
+      this.skillAnimCombo = plan.combo;
+      // windup plans swap to a different pose on release: play that pose from its start
+      this.skillAnimProgress = plan.prep === 'windup' ? k : plan.rel + (1 - plan.rel) * k;
+    } else {
+      this.skillAnim = plan.prep;
+      this.skillAnimCombo = plan.combo;
+      this.skillAnimProgress = plan.prep === 'windup' ? k : plan.rel * k;
+    }
+  }
+
+  /** Face the cursor for ranged skills. Returns the ground point or null. */
+  _aimSkillAtCursor(desc) {
+    const kind = String(desc?.kind || '').toLowerCase();
+    const range = Number(desc?.range) || 3.2;
+    if (!(kind === 'projectile' || (kind === 'aoe' && range > 5))) return null;
+    const pt = this.renderer.screenToGround?.(this.mousePos.x, this.mousePos.y, this.position.y);
+    if (!pt) return null;
+    const dx = pt.x - this.position.x;
+    const dz = pt.z - this.position.z;
+    if (dx * dx + dz * dz <= 0.04) return null;
+    this.rotation = Math.atan2(dx, dz);
+    return pt;
+  }
+
+  _imbueColor() {
+    const im = this.gameState?.getActiveImbue?.();
+    return im ? imbueColorOf(im) : null;
+  }
+
+  /**
+   * Start a skill from a descriptor (systems castSlot() or fallback).
+   * Honors desc.prep / desc.recover / desc.instant (see mechanics.js skillTiming) and kind:'chain'.
+   */
   executeSkillDescriptor(desc) {
     if (!desc) return false;
+    const kind = String(desc.kind || desc.vfx || 'nova').toLowerCase();
+    const timing = skillTiming({ ...desc, kind });
+    const prep = Math.max(0, Number(timing.prep) || 0);
+    const recover = Math.max(0, Number(timing.recover) || 0);
 
+    // Instant skills (imbue / buffs): effect now, never interrupt the current action
+    if (timing.instant || kind === 'imbue') {
+      this._releaseInstantSkill(desc, kind);
+      return true;
+    }
+
+    const isChain = kind === 'chain' && Array.isArray(desc.chain) && desc.chain.length > 0;
+    const first = isChain ? this._chainSegmentDesc(desc, 0) : desc;
+
+    // A real skill cancels a basic attack in progress
+    this.attackTimer = 0;
+    this.attackHitTriggered = true;
+    this.skillTimer = 0;
+    this.state = 'skill';
+
+    const plan = this._skillAnimPlan(first, 0, isChain);
+    this.skillPhase = {
+      desc,
+      stage: 'prep',
+      timer: prep,
+      total: Math.max(0.0001, prep),
+      recover,
+      plan,
+      chain: isChain ? { segs: desc.chain, index: 0 } : null
+    };
+    this._aimSkillAtCursor(first);
+    this._setSkillAnim(plan, 'prep', 0);
+    if (prep > 0.12) this.renderer.spawnHitSparks?.(this.position, desc.color || 0xa855f7, 4);
+
+    if (prep <= 0) this._advanceSkillPhase();
+    return true;
+  }
+
+  /** Merge a chain segment with its head descriptor into a normal skill descriptor. */
+  _chainSegmentDesc(head, index) {
+    const seg = head?.chain?.[index] || {};
+    return {
+      ...seg,
+      skillId: head.skillId || head.id,
+      id: head.id,
+      name: head.name,
+      ok: head.ok,
+      kind: String(seg.kind || 'melee_arc').toLowerCase(),
+      element: seg.element || head.element || 'physical',
+      color: seg.color ?? head.color,
+      magic: seg.magic ?? head.magic,
+      mult: seg.mult ?? head.mult,
+      range: seg.range ?? head.range,
+      radius: seg.radius ?? seg.range ?? head.radius,
+      angle: seg.angle ?? head.angle,
+      vfx: seg.vfx || head.vfx,
+      stun: seg.stun ?? 0,
+      rollDamage: typeof seg.rollDamage === 'function' ? seg.rollDamage : head.rollDamage,
+      _chainIndex: index
+    };
+  }
+
+  /** Called when the current prep / chain gap ends: release, then queue the next segment or recover. */
+  _advanceSkillPhase() {
+    const ph = this.skillPhase;
+    if (!ph) return;
+    const chain = ph.chain;
+    const relDesc = chain ? this._chainSegmentDesc(ph.desc, chain.index) : ph.desc;
+    this._aimSkillAtCursor(relDesc);
+    this._releaseSkill(relDesc, { chainIndex: chain ? chain.index : -1 });
+    if (this.skillPhase !== ph) return; // cleared during release (zone change, death...)
+
+    if (chain && chain.index + 1 < chain.segs.length) {
+      const next = chain.index + 1;
+      const delay = Math.max(0.05, Number(chain.segs[next]?.delay) || 0.2);
+      chain.index = next;
+      ph.stage = 'gap';
+      ph.timer = delay;
+      ph.total = delay;
+      ph.plan = this._skillAnimPlan(this._chainSegmentDesc(ph.desc, next), next, true);
+      this._setSkillAnim(ph.plan, 'prep', 0);
+      return;
+    }
+    this._startSkillRecover();
+  }
+
+  _startSkillRecover() {
+    const ph = this.skillPhase;
+    if (!ph) return;
+    ph.stage = 'recover';
+    ph.timer = ph.recover;
+    ph.total = Math.max(0.0001, ph.recover);
+    this._setSkillAnim(ph.plan, 'recover', 0);
+    if (ph.recover <= 0) this._endSkillPhase();
+  }
+
+  _endSkillPhase() {
+    this.skillPhase = null;
+    this.skillAnim = null;
+    if (this.state === 'skill') this.state = 'idle';
+  }
+
+  /** Cancel a skill wind-up (resources stay spent). */
+  interruptSkill(reason = 'Interrupted') {
+    const ph = this.skillPhase;
+    if (!ph || (ph.stage !== 'prep' && ph.stage !== 'gap')) return false;
+    this._endSkillPhase();
+    if (reason) this.renderer.spawnFloatingText?.(this.position, reason, { color: '#94a3b8', small: true });
+    return true;
+  }
+
+  /** Per-frame skill phase tick. Returns true while the skill owns the hero. */
+  _updateSkillPhase(dt, moveInput) {
+    const ph = this.skillPhase;
+    if (!ph) return false;
+    // Moving during the head wind-up cancels it
+    if (ph.stage === 'prep' && moveInput && moveInput.lengthSq() > 0.001) {
+      this.interruptSkill('Interrupted');
+      return false;
+    }
+    ph.timer -= dt;
+    const g = 1 - Math.max(0, ph.timer) / ph.total;
+    if (ph.stage === 'prep' || ph.stage === 'gap') {
+      this._setSkillAnim(ph.plan, 'prep', g);
+      if (ph.timer <= 0) {
+        if (ph.stage === 'gap' && !this._chainHasTarget(ph)) {
+          this._startSkillRecover();
+        } else {
+          this._advanceSkillPhase();
+        }
+      }
+    } else {
+      this._setSkillAnim(ph.plan, 'recover', g);
+      if (ph.timer <= 0) this._endSkillPhase();
+    }
+    return Boolean(this.skillPhase);
+  }
+
+  /** Chain continues only if an enemy is within the next segment's range. */
+  _chainHasTarget(ph) {
+    const seg = ph?.chain?.segs?.[ph.chain.index];
+    if (!seg) return false;
+    const em = this.enemyManager;
+    if (!em || typeof em.getEnemiesInRange !== 'function') return true;
+    const range = Number(seg.range) || Number(ph.desc.range) || 3;
+    return (em.getEnemiesInRange(this.position.x, this.position.z, range) || []).some((e) => e && !e.dead);
+  }
+
+  /** Instant skills: buffs / imbue. Systems side already applied the effect; we only show VFX. */
+  _releaseInstantSkill(desc, kind) {
+    const imbue = desc.imbue || (kind === 'imbue' ? { element: desc.element, status: desc.status } : null);
+    if (kind === 'imbue' && imbue) {
+      const color = imbueColorOf(imbue) ?? desc.color ?? 0xffffff;
+      this.heroMesh?.userData?.setImbue?.(this.gameState?.getActiveImbue?.() || imbue);
+      this.renderer.spawnAura?.(this.position, color, 'imbue');
+      this.renderer.spawnShockwave?.(this.position, 1.6, color, 0.35);
+      this.renderer.spawnFloatingText?.(this.position, desc.name || 'Imbued', { color, small: true });
+      this.sound.play('magic', { big: false });
+      return;
+    }
+    this.sound.play('skill');
+    this.renderer.spawnSkillEffect(desc.vfx && String(desc.vfx).includes('heal') ? desc.vfx : kind === 'heal' ? 'heal' : 'buff', this.position, this.rotation, {
+      color: desc.color || 0xfacc15,
+      radius: desc.radius || 3.4
+    });
+    if (kind === 'heal') this._showHeal(desc);
+  }
+
+  _showHeal(desc) {
+    if (desc.ok && desc.skillId && typeof desc.healed === 'number') {
+      if (desc.healed > 0) this.renderer.spawnFloatingText(this.position, `+${desc.healed} HP`, { type: 'heal' });
+      return;
+    }
+    const stats = this.gameState?.getStats ? this.gameState.getStats() : { maxHp: 100 };
+    const healAmt = Math.round((stats.maxHp || 100) * (desc.healPct || 0.3));
+    if (this.gameState && typeof this.gameState.heal === 'function') this.gameState.heal(healAmt, 0);
+    this.renderer.spawnFloatingText(this.position, `+${healAmt} HP`, { type: 'heal' });
+  }
+
+  /** The release moment: projectiles / arcs / novas / AoE / heal / dash. */
+  _releaseSkill(desc, { chainIndex = -1 } = {}) {
+    if (!desc) return;
     const kind = String(desc.kind || desc.vfx || 'nova').toLowerCase();
     const element = desc.element || 'physical';
     const color = desc.color || (element === 'fire' ? 0xff5522 : element === 'ice' ? 0x38bdf8 : element === 'lightning' ? 0xfacc15 : 0xa855f7);
@@ -1092,66 +1497,37 @@ export class PlayerController {
     const isProjectile = kind === 'projectile';
     const range = Number(desc.range) || 3.2;
     const isTargetedAoe = kind === 'aoe' && range > 5;
+    const inChain = chainIndex >= 0;
 
-    this.state = 'skill';
-    this.skillDuration = Math.max(0.2, Math.min(0.8, Number(desc.duration) || 0.36));
-    this.skillTimer = this.skillDuration;
-    this.skillAnim = null;
-    if (isProjectile || isTargetedAoe) {
-      this.skillAnim = style === 'arrow' ? 'shoot' : 'cast';
-    } else if (kind === 'heal' || kind === 'buff') {
-      this.skillAnim = style === 'melee' || style === 'melee_heavy' ? null : 'cast';
-    }
-    this.sound.play('skill');
-    this.renderer.shake(Math.min(0.5, Number(desc.shake) || 0.28) * (isProjectile ? 0.6 : 1), 0.22);
+    if (!inChain) this.sound.play('skill');
+    else if (!isProjectile && !isTargetedAoe) this.sound.play('slash', { combo: (chainIndex % 3) + 1 });
+    this.renderer.shake(Math.min(0.5, Number(desc.shake) || 0.28) * (isProjectile ? 0.6 : inChain ? 0.75 : 1), 0.22);
 
-    // Ranged skills aim at the cursor
     let cursorPt = null;
-    if (isProjectile || isTargetedAoe) {
-      cursorPt = this.renderer.screenToGround(this.mousePos.x, this.mousePos.y, this.position.y);
-      const dx = cursorPt.x - this.position.x;
-      const dz = cursorPt.z - this.position.z;
-      if (dx * dx + dz * dz > 0.04) {
-        this.rotation = Math.atan2(dx, dz);
-      } else {
-        cursorPt = null;
-      }
-    }
+    if (isProjectile || isTargetedAoe) cursorPt = this._aimSkillAtCursor(desc);
 
     if (isProjectile) {
       this._fireSkillProjectiles(desc, { element, color, style });
-      return true;
+      return;
     }
-
     if (isTargetedAoe) {
       this._castTargetedAoe(desc, { element, color, range, cursorPt });
-      return true;
+      return;
     }
 
     this.renderer.spawnSkillEffect(desc.vfx || kind, this.position, this.rotation, {
       color,
       radius: desc.radius || 3.4,
-      range: desc.range || 3.2
+      range: desc.range || 3.2,
+      angle: desc.angle
     });
 
     if (kind === 'heal' || kind === 'buff') {
-      // Systems-side skills (castSlot) already applied their heal/buff and report `healed`
-      if (desc.ok && desc.skillId && typeof desc.healed === 'number') {
-        if (desc.healed > 0) this.renderer.spawnFloatingText(this.position, `+${desc.healed} HP`, { type: 'heal' });
-        return true;
-      }
-      const stats = this.gameState?.getStats ? this.gameState.getStats() : { maxHp: 100 };
-      const healAmt = Math.round((stats.maxHp || 100) * (desc.healPct || 0.3));
-      if (kind === 'heal' && this.gameState && typeof this.gameState.heal === 'function') {
-        this.gameState.heal(healAmt, 0);
-      }
-      if (kind === 'heal') this.renderer.spawnFloatingText(this.position, `+${healAmt} HP`, { type: 'heal' });
-      return true;
+      if (kind === 'heal') this._showHeal(desc);
+      return;
     }
 
-    if (kind === 'dash') {
-      this.performDash();
-    }
+    if (kind === 'dash') this.performDash({ fromSkill: true });
 
     const radius = desc.radius || desc.range || 3.4;
     let targets = [];
@@ -1174,7 +1550,8 @@ export class PlayerController {
         mult: desc.mult || 1.85,
         element,
         knockback: desc.knockback || 1.1,
-        rollDamageFn: desc.rollDamage
+        rollDamageFn: desc.rollDamage,
+        stun: desc.stun
       });
     }
 
@@ -1182,8 +1559,6 @@ export class PlayerController {
       this.comboCount += targets.length;
       this.comboDecayTimer = 4.5;
     }
-
-    return true;
   }
 
   /** kind: 'projectile' skills - fan of `count` projectiles across `angle` radians. */
@@ -1317,6 +1692,15 @@ export class PlayerController {
     return result;
   }
 
+  /** Push the active imbue (gameState.getActiveImbue) into the hero mesh when it changes. */
+  _syncImbueVisual() {
+    const im = this.gameState?.getActiveImbue?.() || null;
+    const key = im ? `${im.element || ''}|${im.status || ''}` : null;
+    if (key === this._imbueSynced) return;
+    this._imbueSynced = key;
+    this.heroMesh?.userData?.setImbue?.(im);
+  }
+
   _getMoveInputVector() {
     let ix = 0;
     let iz = 0;
@@ -1357,14 +1741,26 @@ export class PlayerController {
     this.isBlocking = this.inputEnabled && this._canBlock() && (this.keys.has('ShiftLeft') || this.keys.has('ShiftRight'));
 
     this._updateDelayedHits(dt);
+    this._syncImbueVisual();
 
     const stats = this.gameState?.getStats ? this.gameState.getStats() : {};
     const moveSpeed = 6.4 * (Number(stats.moveSpeed) || 1.0);
 
     let desiredMove = new THREE.Vector3(0, 0, 0);
     let attackProgress = 0;
+    let skillPhaseActive = false;
+    if (this.skillPhase && this.dashTimer <= 0) {
+      const mv = this.inputEnabled ? this._getMoveInputVector() : null;
+      skillPhaseActive = this._updateSkillPhase(dt, mv);
+      if (skillPhaseActive) {
+        this.state = 'skill';
+        attackProgress = this.skillAnimProgress;
+      }
+    }
 
-    if (this.dashTimer > 0) {
+    if (skillPhaseActive) {
+      // Rooted while the skill wind-up / chain / follow-through runs
+    } else if (this.dashTimer > 0) {
       this.dashTimer = Math.max(0, this.dashTimer - dt);
       this.state = 'dash';
       desiredMove.copy(this.dashDir).multiplyScalar(moveSpeed * 2.55);
@@ -1472,6 +1868,9 @@ export class PlayerController {
       if (this.state === 'attack') {
         if (this.attackKind === 'arrow') animState = 'shoot';
         else if (this.attackKind === 'magic_bolt') animState = 'cast';
+      } else if (this.state === 'skill' && this.skillPhase && this.skillAnim) {
+        animState = this.skillAnim;
+        animCombo = this.skillAnimCombo || 3;
       } else if (this.state === 'skill' && this.skillAnim) {
         animState = this.skillAnim;
         animCombo = 3;

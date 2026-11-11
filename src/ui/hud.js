@@ -23,6 +23,9 @@ export const MENU_BUTTONS = [
   { menu: '__save', key: 'F5', icon: '\u{1F4BE}', label: 'Save' },
 ];
 
+export const ELEMENT_COLOR = { fire: '#ff6a2a', ice: '#6fd4ff', lightning: '#ffee44', poison: '#7dff5a', physical: '#e8e0d0', holy: '#fff0a0', dark: '#b48cff' };
+export const ELEMENT_ICON = { fire: '\u{1F525}', ice: '\u2744\uFE0F', lightning: '\u26A1', poison: '\u2620\uFE0F', physical: '\u2694\uFE0F', holy: '\u2728', dark: '\u{1F311}' };
+
 const DEFAULT_SKILL_KEYS = ['1', '2', '3', '4', '5'];
 const DEFAULT_POTION_KEYS = ['6', '7', '8', '9'];
 
@@ -220,6 +223,12 @@ export class HUD {
         this.showToast(`LEVEL UP!  Lv ${lv && lv.level ? lv.level : (typeof lv === 'number' ? lv : '')}`.trim(), 'levelup');
         this.levelUpFlash();
       }));
+      this._unsub.push(host.on('alchemy', (d) => {
+        if (d && d.success && (d.plus | 0) >= 7) {
+          const nm = d.item && d.item.name ? String(d.item.name).replace(/\s*\+\d+\s*$/, '') : 'ITEM';
+          this.showAlchemyBanner(`\u26A1 +${d.plus | 0} ${nm.toUpperCase()} \u26A1`);
+        }
+      }));
       this._unsub.push(host.on('townPortal', () => {
         if (this.ctx && typeof this.ctx.returnToVillage === 'function') this.ctx.returnToVillage();
       }));
@@ -275,13 +284,26 @@ export class HUD {
   }
 
   _updateBuffs(buffs) {
-    const key = buffs.map((b) => b.id || b.name).join('|');
+    const key = buffs.map((b) => (b.id || b.name) + (b.imbue && b.imbue.element ? ':' + b.imbue.element : '')).join('|');
+    const imb = buffs.find((b) => b && b.imbue && b.imbue.element);
+    const imbEl = imb ? String(imb.imbue.element) : '';
+    if (imbEl !== this._last.imbue && this.skillSlots && this.skillSlots[0]) {
+      this._last.imbue = imbEl;
+      const bar = this.skillSlots[0].el.parentNode && this.skillSlots[0].el.parentNode.parentNode;
+      if (bar) {
+        bar.classList.toggle('imbued', !!imbEl);
+        if (imbEl) bar.style.setProperty('--ec', ELEMENT_COLOR[imbEl] || '#fff'); else bar.style.removeProperty('--ec');
+      }
+    }
     if (key !== this._last.buffKey) {
       this._last.buffKey = key;
       this.elBuffs.textContent = '';
       this._buffEls = buffs.map((b) => {
-        const el = h('div', 'buff-icon' + (b.debuff ? ' debuff' : ''), `<span>${esc(b.icon || (b.debuff ? '\u2620\uFE0F' : '\u2B06\uFE0F'))}</span><div class="sweep"></div><span class="t"></span>`);
+        const ie = b.imbue && b.imbue.element ? String(b.imbue.element) : '';
+        const ico = b.icon || (ie ? (ELEMENT_ICON[ie] || '\u2728') : (b.debuff ? '\u2620\uFE0F' : '\u2B06\uFE0F'));
+        const el = h('div', 'buff-icon' + (b.debuff ? ' debuff' : '') + (ie ? ' imbue' : ''), `<span>${esc(ico)}</span><div class="sweep"></div><span class="t"></span>`);
         el.title = b.name || b.id || '';
+        if (ie) el.style.setProperty('--ec', ELEMENT_COLOR[ie] || '#fff');
         this.elBuffs.appendChild(el);
         return el;
       });
@@ -465,6 +487,15 @@ export class HUD {
     setTimeout(() => el.remove(), type === 'levelup' ? 5000 : 3700);
   }
   toast(msg, type) { this.showToast(msg, type); }
+
+  /** Big centred banner (alchemy +7 or higher), 2.5 s. */
+  showAlchemyBanner(text) {
+    if (!text) return;
+    if (!this.elAlch) { this.elAlch = h('div', 'hud-alch-banner'); this.el.appendChild(this.elAlch); }
+    this.elAlch.textContent = text;
+    this.elAlch.classList.remove('show'); void this.elAlch.offsetWidth; this.elAlch.classList.add('show');
+    clearTimeout(this._alchT); this._alchT = setTimeout(() => this.elAlch && this.elAlch.classList.remove('show'), 2500);
+  }
 
   showInteractionPrompt(text, key = 'E') {
     this._promptManual = true;
@@ -952,6 +983,19 @@ export function createHost(ctx = {}) {
       if (typeof ctx.upgradeItem === 'function') return wrapRes(ctx.upgradeItem(uid, mats), 'Upgraded!');
       const inv = getInv();
       return inv && inv.upgrade ? wrapRes(inv.upgrade(uid, mats), 'Upgraded!') : { ok: false, msg: 'Unavailable' };
+    },
+    previewAlchemy(uid, opts = {}) {
+      if (typeof ctx.previewAlchemy === 'function') return ctx.previewAlchemy(uid, opts);
+      const inv = getInv();
+      if (inv && typeof inv.previewAlchemy === 'function') return inv.previewAlchemy(uid, opts);
+      const pv = this.previewUpgrade(uid, []);
+      return { ...pv, legacy: true, ok: pv && pv.ok !== false && !!(pv && (pv.chance != null || pv.text)) };
+    },
+    alchemy(uid, opts = {}) {
+      if (typeof ctx.alchemy === 'function') return wrapRes(ctx.alchemy(uid, opts), 'Enhanced!');
+      const inv = getInv();
+      if (inv && typeof inv.alchemy === 'function') return wrapRes(inv.alchemy(uid, opts), 'Enhanced!');
+      return this.upgradeItem(uid, []);
     },
     levelSkill(id) {
       if (typeof ctx.levelSkill === 'function') return wrapRes(ctx.levelSkill(id), 'Skill learned');

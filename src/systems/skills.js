@@ -4,6 +4,7 @@
 // =============================================================================
 
 import { DEFAULT_CLASS, getClass } from './classes.js';
+import { skillTiming, IMBUE_DEFAULTS, STATUS } from './mechanics.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const num = (v, d = 0) => (typeof v === 'number' && isFinite(v) ? v : Number.isFinite(Number(v)) && v !== '' && v != null ? Number(v) : d);
@@ -548,6 +549,73 @@ Object.assign(SKILL_DEFS, {
   },
 });
 
+// =============================================================================
+// Milestone 2: imbue skills (row 4), elemental statuses, timing overrides, chain skills
+// =============================================================================
+const imbueSkill = (id, name, icon, cls, tree, requires, element, status, color, desc) => ({
+  id, name, icon, tree, classes: [cls], type: 'buff', kind: 'imbue', instant: true,
+  tier: 5, row: 4, col: 1, maxLevel: 10, reqLevel: 24, requires: [requires],
+  spCostBase: 14, spCostPerLv: 1.5, cooldown: 16, cooldownPerLv: -0.3,
+  multBase: 0, multPerLv: 0, element, imbueStatus: status,
+  // IMBUE_DEFAULTS scaled by level: bonus +3%/lv, duration +0.3s/lv
+  imbue: (lv) => ({ element, bonusPct: IMBUE_DEFAULTS.bonusPct + 3 * (lv - 1), status, statusChance: IMBUE_DEFAULTS.statusChance, duration: Math.round((IMBUE_DEFAULTS.duration + 0.3 * (lv - 1)) * 10) / 10 }),
+  color, vfx: 'aura_gold', shake: 0.1, desc,
+});
+Object.assign(SKILL_DEFS, {
+  radiant_edge: imbueSkill('radiant_edge', 'Radiant Edge', '⚡', 'knight', 'Knight', 'blade_storm', 'lightning', 'shock', 0xffee44,
+    'Imbue your blade with lightning: attacks and skills deal bonus Lightning damage and may Shock enemies.'),
+  ax_blood_rend: imbueSkill('ax_blood_rend', 'Blood Rend', '🩸', 'axeman', 'Axeman', 'ax_executioner', 'physical', 'bleed', 0xdc2626,
+    'Wreathe your axe in rending force: attacks and skills deal bonus damage and may cause Bleeding.'),
+  wz_frostfire_weave: imbueSkill('wz_frostfire_weave', 'Frostfire Weave', '❄️', 'wizard', 'Wizard', 'wz_prism_beam', 'ice', 'chill', 0x6fd4ff,
+    'Weave frost into your spells: attacks and skills deal bonus Ice damage and may Chill enemies.'),
+  ar_venom_tips: imbueSkill('ar_venom_tips', 'Venom Tips', '☠️', 'archer', 'Archer', 'ar_piercing_gale', 'poison', 'poison', 0x7dff5a,
+    'Coat your arrows in venom: attacks and skills deal bonus Poison damage and may Poison enemies.'),
+});
+for (const id of ['radiant_edge', 'ax_blood_rend', 'wz_frostfire_weave', 'ar_venom_tips']) { SKILL_DEFS[id].imbueElementLabel = SKILL_DEFS[id].element; }
+
+// elemental / heavy-hit statuses: id -> [status, chance%]
+const SKILL_STATUS = {
+  power_strike: ['stun', 30], flame_slash: ['burn', 30], frost_nova: ['freeze', 60], thunder_wave: ['shock', 35], meteor_drop: ['burn', 30], blade_storm: ['shock', 35],
+  ax_ground_slam: ['stun', 30], ax_earthsplitter: ['burn', 30], ax_executioner: ['stun', 30],
+  wz_fireball: ['burn', 30], wz_glacial_nova: ['freeze', 60], wz_chain_lightning: ['shock', 35], wz_inferno_ring: ['burn', 30], wz_meteor: ['burn', 30], wz_prism_beam: ['shock', 35],
+  ar_frost_arrow: ['chill', 50], ar_explosive_arrow: ['burn', 30], ar_piercing_gale: ['shock', 35],
+};
+for (const id in SKILL_STATUS) { SKILL_DEFS[id].status = SKILL_STATUS[id][0]; SKILL_DEFS[id].statusChance = SKILL_STATUS[id][1]; }
+
+// per-skill timing overrides (seconds)
+const SKILL_PREP = { ar_power_shot: 0.45, ar_frost_arrow: 0.45, ar_explosive_arrow: 0.45, ar_piercing_gale: 0.45, meteor_drop: 0.7, wz_meteor: 0.7, wz_fireball: 0.4 };
+for (const id in SKILL_PREP) SKILL_DEFS[id].prep = SKILL_PREP[id];
+
+// chain skills: `chain` holds fractions of the skill's total multiplier (frac sums to 1.0 so total damage == the old single hit)
+Object.assign(SKILL_DEFS.flame_slash, {
+  name: 'Flame Slash Chain', kind: 'chain', range: 3.4, radius: 3.6,
+  chain: [
+    { frac: 0.3, kind: 'melee_arc', range: 3.3, radius: 3.3, angle: 2.2, delay: 0.2, vfx: 'flame_slash', knockback: 1.0, stun: 0 },
+    { frac: 0.3, kind: 'melee_arc', range: 3.3, radius: 3.3, angle: 2.4, delay: 0.22, vfx: 'flame_slash', knockback: 1.4, stun: 0 },
+    { frac: 0.4, kind: 'aoe', range: 3.0, radius: 3.6, angle: PI2, delay: 0.28, vfx: 'slam', knockback: 2.6, stun: 0.35 },
+  ],
+  desc: 'A three-part fire combo: two blazing arcs, then a fiery ground slam. Each part needs an enemy in reach.',
+});
+Object.assign(SKILL_DEFS.ax_rending_chop, {
+  name: 'Rending Chop Chain', kind: 'chain', range: 3.2, radius: 3.4,
+  chain: [
+    { frac: 0.3, kind: 'melee_arc', range: 3.0, radius: 3.0, angle: 1.4, delay: 0.2, vfx: 'slash', knockback: 1.0, stun: 0 },
+    { frac: 0.3, kind: 'melee_arc', range: 3.0, radius: 3.0, angle: 1.6, delay: 0.22, vfx: 'slash', knockback: 1.2, stun: 0 },
+    { frac: 0.4, kind: 'melee_arc', range: 3.2, radius: 3.2, angle: 1.9, delay: 0.3, vfx: 'slam', knockback: 2.4, stun: 0.3 },
+  ],
+  desc: 'Two savage chops and a crushing overhead finisher, all tearing through 25% of armor.',
+});
+Object.assign(SKILL_DEFS.ar_power_shot, {
+  name: 'Triple Draw', kind: 'chain', count: 1,
+  chain: [0, 1, 2].map(() => ({ frac: 1 / 3, kind: 'projectile', range: 14, radius: 1.0, angle: 0, count: 1, speed: 32, pierce: true, delay: 0.22, vfx: 'dash_strike', knockback: 1.0, stun: 0 })),
+  desc: 'Draw and loose three piercing arrows in quick succession.',
+});
+Object.assign(SKILL_DEFS.wz_arcane_missiles, {
+  name: 'Arcane Barrage', kind: 'chain', count: 1, multBase: 1.4, multPerLv: 0.15, // total of the 3 bolts (was 3 x 0.55 + 0.06/lv)
+  chain: [0, 1, 2].map(() => ({ frac: 1 / 3, kind: 'projectile', range: 11, radius: 1.2, angle: 0, count: 1, speed: 18, delay: 0.18, vfx: 'lightning', knockback: 0.5, stun: 0 })),
+  desc: 'Unleash three arcane bolts one after another.',
+});
+
 export const SKILLS = SKILL_DEFS;
 
 /** Is a skill usable by this class? (no `classes` = shared) */
@@ -817,6 +885,31 @@ export class SkillSystem {
 
     const mult = this.getDamageMult(id, level);
     const stun = def.stun ? Math.round((def.stun + num(def.stunPerLv, 0) * (level - 1)) * 100) / 100 : 0;
+    const rollOpts = { element: def.element || null, magic: !!def.magic, armorPierce: def.armorPierce || 0 };
+    const statusOf = (src) => ({ status: src.status ?? def.status ?? null, statusChance: src.statusChance ?? def.statusChance ?? 0 });
+    const roller = (m, src) => (targetDefStats = {}) => (g
+      ? g.rollAttack(targetDefStats, { ...rollOpts, mult: m, ...statusOf(src) })
+      : { damage: Math.round(20 * m), crit: false, miss: false, element: def.element || null, status: null });
+    const chain = def.kind === 'chain' && Array.isArray(def.chain)
+      ? def.chain.map((seg) => {
+        const m = Math.round(mult * num(seg.frac, 1 / def.chain.length) * 100) / 100;
+        return {
+          mult: m, kind: seg.kind || 'melee_arc', range: seg.range ?? def.range ?? 3, angle: seg.angle ?? def.angle ?? 2, radius: seg.radius ?? seg.range ?? def.radius ?? 3,
+          hits: seg.hits || 1, delay: seg.delay ?? 0.2, vfx: seg.vfx || def.vfx || def.id, count: seg.count || 1, speed: seg.speed || def.speed || 14, pierce: !!(seg.pierce ?? def.pierce),
+          knockback: seg.knockback ?? def.knockback ?? 1, stun: seg.stun ?? 0, shake: seg.shake ?? def.shake ?? 0.2, color: seg.color ?? def.color ?? 0xffaa33,
+          magic: !!def.magic, element: def.element || 'physical', armorPierce: def.armorPierce || 0,
+          ...statusOf(seg), rollDamage: roller(m, seg),
+        };
+      })
+      : null;
+    let imbueApplied = null;
+    if (g && def.kind === 'imbue' && typeof def.imbue === 'function') {
+      const im = def.imbue(level);
+      imbueApplied = { element: im.element, bonusPct: im.bonusPct, status: im.status, statusChance: im.statusChance };
+      const b = { id: 'imbue', name: def.name, icon: def.icon, duration: im.duration, imbue: imbueApplied };
+      g.addBuff(b);
+      buffApplied = b;
+    }
     const descriptor = {
       ok: true,
       id: def.id,
@@ -852,14 +945,12 @@ export class SkillSystem {
       cooldown: totalCd,
       healed,
       buff: buffApplied,
-      rollDamage: (targetDefStats = {}) => (g
-        ? g.rollAttack(targetDefStats, {
-          mult,
-          element: def.element || null,
-          magic: !!def.magic,
-          armorPierce: def.armorPierce || 0,
-        })
-        : { damage: Math.round(20 * mult), crit: false, miss: false, element: def.element || null }),
+      imbue: imbueApplied,
+      ...skillTiming(def),
+      chain,
+      status: def.status || null,
+      statusChance: def.statusChance || 0,
+      rollDamage: roller(mult, def),
     };
     this._emit('skill:cast', descriptor);
     return descriptor;
@@ -890,6 +981,10 @@ export class SkillSystem {
       type: def.type,
       kind: def.kind,
       element: def.element || null,
+      status: def.status || null,
+      statusChance: def.statusChance || 0,
+      chain: Array.isArray(def.chain) ? def.chain.length : 0,
+      instant: skillTiming(def).instant,
       tier: def.tier || 1,
       row: def.row ?? 0,
       col: def.col ?? 0,

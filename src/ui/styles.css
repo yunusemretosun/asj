@@ -1044,3 +1044,73 @@ html.asj-creating .arc-overlay, html.asj-creating .arc-tooltip { display: none !
   .cc-class-desc { display: none; }
   .cc-preview { min-height: 300px; }
 }
+
+/* --------------------------------------------------------------------------
+   Milestone 2: seals, plus glow, alchemy, imbue, banner
+   -------------------------------------------------------------------------- */
+.item-slot .seal { position: absolute; bottom: 0; left: 3px; font-size: 12px; font-weight: 900; text-shadow: 0 0 3px #000, 0 0 3px #000, 0 0 6px currentColor; pointer-events: none; }
+.item-slot.sealed.seal-star { border-color: #7dd3fc; }
+.item-slot.sealed.seal-moon { border-color: #c4b5fd; }
+.item-slot.sealed.seal-sun { border-color: #fbbf24; }
+.item-slot.plus-hi { animation: arc-plus-border 1.4s ease-in-out infinite alternate; }
+.item-slot.plus-max { animation: arc-plus-border-max 0.9s ease-in-out infinite alternate; }
+@keyframes arc-plus-border { from { box-shadow: inset 0 0 8px rgba(255,210,90,.35), 0 0 4px rgba(255,210,90,.4); } to { box-shadow: inset 0 0 14px rgba(255,210,90,.7), 0 0 12px rgba(255,210,90,.9); } }
+@keyframes arc-plus-border-max { from { box-shadow: inset 0 0 10px rgba(255,120,255,.5), 0 0 8px rgba(255,210,90,.8); } to { box-shadow: inset 0 0 18px rgba(255,255,255,.8), 0 0 18px rgba(255,120,255,1); } }
+.tip-seal { font-size: 12px; font-weight: 700; letter-spacing: .5px; }
+.tip-set { font-size: 11px; color: #7dffa0; }
+
+.alchemy-layout { grid-template-columns: 330px 360px; }
+.alc-forge { gap: 8px; }
+.alc-main .item-slot { width: 72px; height: 72px; font-size: 38px; }
+.alc-chance { font-size: 44px; font-weight: 900; line-height: 1; color: var(--arc-text-mute); text-shadow: 0 0 12px currentColor; }
+.alc-chance.hi { color: var(--arc-good); }
+.alc-chance.mid { color: var(--arc-gold); }
+.alc-chance.lo { color: var(--arc-bad); }
+.alc-sub { font-size: 12px; color: var(--arc-text-dim); }
+.alc-mats { display: flex; flex-direction: column; gap: 4px; width: 100%; font-size: 12px; }
+.alc-mat, .alc-opt { display: flex; align-items: center; gap: 6px; padding: 3px 8px; background: #0d0a14; border: 1px solid #2c2640; border-radius: 4px; color: var(--arc-text); }
+.alc-mat b, .alc-opt b { margin-left: auto; color: var(--arc-gold); }
+.alc-mat.none b, .alc-opt.dis { color: var(--arc-bad); opacity: .6; }
+.alc-opt { cursor: pointer; }
+.alc-opt.dis { cursor: not-allowed; }
+.alc-stats { width: 100%; font-size: 12px; }
+.alc-arrow { color: var(--arc-text-mute); }
+.alc-up { color: var(--arc-good); }
+.alc-warn { font-size: 11px; color: #ffb27a; text-align: center; }
+.alc-reason { font-size: 12px; color: var(--arc-text-dim); text-align: center; }
+.alc-fuse { display: flex; align-items: center; gap: 8px; width: 100%; font-size: 12px; color: var(--arc-gold); }
+.alc-fuse-bar { flex: 1; height: 14px; background: #0b0910; border: 1px solid var(--arc-metal); border-radius: 7px; overflow: hidden; }
+.alc-fuse-fill { height: 100%; background: linear-gradient(90deg, #ff8a00, #ffe27a, #fff); box-shadow: 0 0 12px #ffb400; animation: arc-fuse-glow .35s ease-in-out infinite alternate; }
+@keyframes arc-fuse-glow { from { filter: brightness(.9); } to { filter: brightness(1.5); } }
+.alc-forge.fusing .alc-main .item-slot { animation: arc-fuse-pulse .5s ease-in-out infinite alternate; }
+@keyframes arc-fuse-pulse { from { box-shadow: 0 0 6px #ff9a00; } to { box-shadow: 0 0 26px 6px #ffd25a; } }
+.alc-forge.fusing .compose-arrow { animation: arc-spin .6s linear infinite; }
+.alc-result { text-align: center; font-size: 12px; }
+.alc-result .alc-big { font-size: 26px; font-weight: 900; }
+.alc-result.ok { color: var(--arc-good); text-shadow: 0 0 10px #5fe08a; }
+.alc-result.bad { color: var(--arc-bad); }
+.item-slot.alc-flash { animation: arc-alc-flash .9s ease-out; }
+@keyframes arc-alc-flash { 0% { filter: brightness(4); box-shadow: 0 0 0 0 #fff; } 30% { filter: brightness(2.5); box-shadow: 0 0 50px 20px #fff7b0; } 100% { filter: none; box-shadow: 0 0 0 0 transparent; } }
+.item-slot.alc-crack { animation: arc-alc-shake .5s ease-out; border-color: var(--arc-bad); }
+.item-slot.alc-crack::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(115deg, transparent 44%, rgba(255,70,70,.9) 46%, transparent 48%, transparent 60%, rgba(255,70,70,.8) 62%, transparent 64%); }
+@keyframes arc-alc-shake { 0%, 100% { transform: translateX(0); } 15% { transform: translateX(-7px) rotate(-3deg); } 45% { transform: translateX(7px) rotate(3deg); } 75% { transform: translateX(-4px); } }
+.alc-hist { list-style: none; margin: 4px 0 0; padding: 0; font-size: 12px; }
+.alc-hist li { padding: 2px 6px; border-left: 3px solid #3a3350; margin-bottom: 2px; color: var(--arc-text-dim); }
+.alc-hist li.ok { border-left-color: var(--arc-good); color: var(--arc-good); }
+.alc-hist li.bad { border-left-color: var(--arc-bad); color: #ffb0b0; }
+.alc-hist li.none { color: var(--arc-text-mute); }
+
+.buff-icon.imbue { border-color: var(--ec, #fff); box-shadow: 0 0 8px var(--ec, #fff); }
+.hud-actionbar.imbued { box-shadow: 0 0 14px var(--ec, #fff), inset 0 0 10px color-mix(in srgb, var(--ec, #fff) 40%, transparent); animation: arc-imbue-pulse 1s ease-in-out infinite alternate; }
+@keyframes arc-imbue-pulse { from { filter: brightness(1); } to { filter: brightness(1.25); } }
+
+.hud-alch-banner {
+  position: absolute; left: 50%; top: 28%; transform: translate(-50%, -50%) scale(.6); opacity: 0; pointer-events: none;
+  font-family: var(--arc-font-title, inherit); font-size: 40px; font-weight: 900; letter-spacing: 3px; white-space: nowrap;
+  color: #fff3b0; text-shadow: 0 0 18px #ffb400, 0 0 40px #ff8a00, 0 2px 3px #000;
+}
+.hud-alch-banner.show { animation: arc-alch-banner 2.5s ease-out forwards; }
+@keyframes arc-alch-banner { 0% { opacity: 0; transform: translate(-50%, -50%) scale(.6); } 12% { opacity: 1; transform: translate(-50%, -50%) scale(1.12); } 22% { transform: translate(-50%, -50%) scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -60%) scale(1); } }
+
+.skill-tree-wrap { overflow: auto; }
+@media (max-width: 900px) { .alchemy-layout { grid-template-columns: 1fr; } .hud-alch-banner { font-size: 24px; } }

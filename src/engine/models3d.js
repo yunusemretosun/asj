@@ -1,5 +1,67 @@
 import * as THREE from 'three';
 import { getClass, defaultAppearance, sanitizeAppearance } from '../systems/classes.js';
+import { glowLevel, SEALS, STATUS } from '../systems/mechanics.js';
+// Namespace import: optional exports (CLASS_SET_STYLE, tierForLevel) may be missing without breaking module linking
+import * as inventoryModule from '../systems/inventory.js';
+
+const FALLBACK_SET_STYLE = {
+  knight: { primary: 0x38bdf8, accent: 0xfacc15 },
+  axeman: { primary: 0xb91c1c, accent: 0x78350f },
+  wizard: { primary: 0x7c3aed, accent: 0xe0e7ff },
+  archer: { primary: 0x15803d, accent: 0xd6a85c }
+};
+
+function classSetStyle(classId) {
+  const table = inventoryModule?.CLASS_SET_STYLE || FALLBACK_SET_STYLE;
+  return table[classId] || FALLBACK_SET_STYLE[classId] || FALLBACK_SET_STYLE.knight;
+}
+
+function cssToHex(c, fallback = 0xffffff) {
+  if (typeof c === 'number') return c;
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(c || '').trim());
+  return m ? parseInt(m[1], 16) : fallback;
+}
+
+/** Seal color (hex int) for an item, or null. */
+export function sealColorOf(item) {
+  const seal = item?.seal ? SEALS?.[item.seal] : null;
+  return seal ? cssToHex(seal.color, null) : null;
+}
+
+/** Gear visual tier 0..7 from item.tier (falls back to required level). */
+export function itemVisualTier(item) {
+  if (!item) return null;
+  const t = Number(item.tier);
+  if (Number.isFinite(t)) return Math.max(0, Math.min(7, Math.round(t)));
+  const lvl = Number(item.reqLevel || item.level);
+  if (Number.isFinite(lvl) && typeof inventoryModule?.tierForLevel === 'function') {
+    return Math.max(0, Math.min(7, inventoryModule.tierForLevel(lvl) | 0));
+  }
+  return 0;
+}
+
+/** Element / imbue color (hex int). Physical imbues use their status color (e.g. bleed red). */
+export function imbueColorOf(imbue) {
+  if (!imbue) return null;
+  const el = String(imbue.element || 'physical').toLowerCase();
+  if (el === 'physical' || !ELEMENT_COLORS_EXT[el]) {
+    const st = imbue.status ? STATUS?.[imbue.status] : null;
+    if (st?.color != null) return st.color;
+  }
+  return ELEMENT_COLORS_EXT[el] ?? 0xe2e8f0;
+}
+
+const ELEMENT_COLORS_EXT = {
+  fire: 0xff6a2a,
+  ice: 0x6fd4ff,
+  cold: 0x6fd4ff,
+  lightning: 0xffee44,
+  thunder: 0xffee44,
+  poison: 0x7dff5a,
+  dark: 0x9333ea,
+  shadow: 0x9333ea,
+  holy: 0xfef08a
+};
 
 const RARITY_COLORS = {
   normal: 0xd0d6e0,
@@ -169,6 +231,9 @@ export function createWeaponMesh(weaponItem = null) {
 
   group.userData.weaponType = wType;
   group.userData.spinParts = [];
+  // Materials recolored by alchemy glow / imbue (flagged noFlash so hit-flash never overwrites them)
+  group.userData.glowMats = [];
+  group.userData.tipLocal = new THREE.Vector3(0, 0.7, 0);
 
   const hiltMat = new THREE.MeshStandardMaterial({
     color: 0x4a3219,
@@ -209,6 +274,8 @@ export function createWeaponMesh(weaponItem = null) {
     axeHead.position.set(0.12, 0.65, 0);
     group.add(axeHead);
 
+    group.userData.glowMats.push(bladeMat);
+    group.userData.tipLocal.set(0.2, 0.65, 0);
     const backSpike = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.2, 6), bladeMat);
     backSpike.rotation.z = Math.PI / 2;
     backSpike.position.set(-0.12, 0.65, 0);
@@ -229,6 +296,8 @@ export function createWeaponMesh(weaponItem = null) {
     const head = new THREE.Mesh(new THREE.DodecahedronGeometry(0.18, 0), bladeMat);
     head.position.y = 0.72;
     group.add(head);
+    group.userData.glowMats.push(bladeMat);
+    group.userData.tipLocal.set(0, 0.72, 0);
   } else if (wType === 'staff') {
     const tierLvl = level >= 8 ? 2 : level >= 4 ? 1 : 0;
     const shaftLen = 1.15 + tierLvl * 0.12;
@@ -252,6 +321,8 @@ export function createWeaponMesh(weaponItem = null) {
     orb.position.y = topY;
     group.add(orb);
     group.userData.spinParts.push(orb);
+    group.userData.glowMats.push(guardMat, orbMat);
+    group.userData.tipLocal.set(0, topY, 0);
 
     if (tierLvl >= 1) {
       // Prongs cradling the orb + a spinning ring
@@ -301,6 +372,8 @@ export function createWeaponMesh(weaponItem = null) {
       emissive: new THREE.Color(hasGlow ? glowColor : 0x000000),
       emissiveIntensity: hasGlow ? 0.25 : 0
     });
+    group.userData.glowMats.push(limbMat);
+    group.userData.tipLocal.set(0, 0, 0);
     const limb = new THREE.Mesh(new THREE.TorusGeometry(R, isGreat ? 0.03 : 0.025, 6, 24, arc), limbMat);
     limb.rotation.z = -arc / 2;
     limb.position.x = -R;
@@ -393,8 +466,14 @@ export function createWeaponMesh(weaponItem = null) {
     tip.rotation.y = Math.PI / 4;
     tip.position.y = 0.18 + bladeLen + 0.09;
     group.add(tip);
+    group.userData.glowMats.push(bladeMat);
+    group.userData.tipLocal.set(0, 0.18 + bladeLen * 0.85, 0);
   }
 
+  for (const m of group.userData.glowMats) {
+    m.userData.noFlash = true;
+    m.userData.glowBase = { emissive: m.emissive.clone(), intensity: m.emissiveIntensity ?? 0 };
+  }
   enableShadows(group, true, false);
   return group;
 }
@@ -1030,6 +1109,568 @@ export function createHeroMesh(equipment = {}, look = {}) {
     });
   };
 
+  // ---------------------------------------------------------------- tiered armor visuals (milestone 2)
+  // Reusable attachment groups, cleared + rebuilt on every equipment change.
+  const gear = {
+    body: new THREE.Group(),
+    head: new THREE.Group(),
+    helm: new THREE.Group(),
+    rArm: new THREE.Group(),
+    lArm: new THREE.Group(),
+    lLeg: new THREE.Group(),
+    rLeg: new THREE.Group(),
+    cape: new THREE.Group(),
+    ground: new THREE.Group()
+  };
+  for (const k of Object.keys(gear)) gear[k].name = `Gear_${k}`;
+  const gearParents = {
+    body: bodyPivot,
+    head: headGroup,
+    helm: headGroup,
+    rArm: rightArmPivot,
+    lArm: leftArmPivot,
+    lLeg: leftLegPivot,
+    rLeg: rightLegPivot,
+    cape: capePivot,
+    ground: root
+  };
+  const gearState = {
+    band: -1,
+    tier: -1,
+    bootBand: -1,
+    setInfo: null,
+    orbs: [],
+    halo: null,
+    glowStrips: [],
+    shimmer: null,
+    setAura: null,
+    hatGem: null,
+    baseOrbVisible: true
+  };
+  root.userData.gear = gear;
+  root.userData.gearState = gearState;
+
+  const FRONT_Z = { knight: 0.155, axeman: 0.18, wizard: 0.137, archer: 0.152 };
+  const SHOULDER_X = { knight: 0.34, axeman: 0.42, wizard: 0.33, archer: 0.33 };
+
+  /** Count equipped set pieces; returns { id, count, classId, color } for the best set with >= 3 pieces. */
+  const detectSet = (equipped) => {
+    const counts = {};
+    for (const it of Object.values(equipped || {})) {
+      if (it && typeof it === 'object' && it.setId) counts[it.setId] = (counts[it.setId] || 0) + 1;
+    }
+    let best = null;
+    for (const [id, count] of Object.entries(counts)) {
+      if (count >= 3 && (!best || count > best.count)) best = { id, count };
+    }
+    if (!best) return null;
+    const classId = String(best.id).split('_')[0];
+    const style = classSetStyle(classId);
+    return { ...best, classId, color: style.primary, accent: style.accent };
+  };
+
+  const computeVisualTier = (equipped) => {
+    const armor = equipped?.armor || null;
+    const helmet = equipped?.helmet || null;
+    const boots = equipped?.boots || null;
+    let sum = 0;
+    let w = 0;
+    const at = itemVisualTier(armor);
+    const ht = itemVisualTier(helmet);
+    const bt = itemVisualTier(boots);
+    if (at != null) { sum += at * 2; w += 2; }
+    if (ht != null) { sum += ht; w += 1; }
+    if (bt != null) { sum += bt; w += 1; }
+    if (!w) return -1;
+    return Math.max(0, Math.min(7, Math.round(sum / w)));
+  };
+
+  const clearGear = () => {
+    for (const k of Object.keys(gear)) {
+      clearGroup(gear[k], sharedMaterials);
+      if (gear[k].parent !== gearParents[k]) gearParents[k].add(gear[k]); // capePivot is cleared by setLook
+    }
+    gearState.orbs = [];
+    gearState.halo = null;
+    gearState.glowStrips = [];
+    gearState.shimmer = null;
+    gearState.setAura = null;
+    gearState.hatGem = null;
+  };
+
+  const buildGear = (equipped) => {
+    clearGear();
+    const classId = lookState.classId;
+    const tier = computeVisualTier(equipped);
+    const band = tier < 0 ? -1 : Math.min(3, Math.floor(tier / 2));
+    const armor = equipped?.armor || null;
+    const helmet = equipped?.helmet || null;
+    const boots = equipped?.boots || null;
+    const setInfo = detectSet(equipped);
+    gearState.tier = tier;
+    gearState.band = band;
+    gearState.setInfo = setInfo;
+
+    // Palette: set pieces use the class set style, generic gear the band defaults
+    const armorSetCls = armor?.setId ? String(armor.setId).split('_')[0] : null;
+    const style = armorSetCls ? classSetStyle(armorSetCls) : null;
+    const gemColor = style ? style.primary : 0x2563eb;
+    const goldColor = 0xd4a017;
+    const armorSeal = sealColorOf(armor);
+    const fz = FRONT_Z[classId] ?? 0.155;
+    const sx = SHOULDER_X[classId] ?? 0.34;
+
+    const M = (params, glow = false) => {
+      const m = new THREE.MeshStandardMaterial(params);
+      if (glow) {
+        m.userData.noFlash = true;
+        m.userData.glowBaseIntensity = m.emissiveIntensity ?? 0;
+      }
+      return m;
+    };
+    const box = (parent, w, h, d, mat, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0) =>
+      addTo(parent, new THREE.BoxGeometry(w, h, d), mat, x, y, z, rx, ry, rz);
+    const gem = (parent, r, color, x, y, z, glow = false) => {
+      const mat = M({ color, emissive: new THREE.Color(color), emissiveIntensity: glow ? 1.1 : 0.7, roughness: 0.15, metalness: 0.3 }, glow);
+      if (glow) gearState.glowStrips.push(mat);
+      return addTo(parent, new THREE.OctahedronGeometry(r, 0), mat, x, y, z);
+    };
+    const glowMat = (color, intensity = 0.9) => {
+      const m = M({ color, emissive: new THREE.Color(color), emissiveIntensity: intensity, roughness: 0.3, metalness: 0.7 }, true);
+      gearState.glowStrips.push(m);
+      return m;
+    };
+    /** Rows of small staggered plates (lamellar / scale). */
+    const plateRows = (parent, rows, cols, mat, { y0 = 0.3, step = 0.065, w = 0.085, h = 0.06, width = 0.38, z = fz + 0.012, tilt = -0.18 } = {}) => {
+      for (let r = 0; r < rows; r++) {
+        const n = r % 2 ? cols - 1 : cols;
+        const span = width * (n / cols);
+        for (let c = 0; c < n; c++) {
+          const x = n > 1 ? -span / 2 + (c / (n - 1)) * span : 0;
+          box(parent, w, h, 0.02, mat, x, y0 - r * step, z, tilt);
+        }
+      }
+    };
+
+    if (band >= 0) {
+      if (classId === 'knight') buildKnightGear(band, { M, box, gem, glowMat, plateRows, gemColor, goldColor, fz, sx });
+      else if (classId === 'axeman') buildAxemanGear(band, { M, box, gem, glowMat, plateRows, gemColor, goldColor, fz, sx });
+      else if (classId === 'wizard') buildWizardGear(band, { M, box, gem, glowMat, plateRows, gemColor, goldColor, fz, sx, style });
+      else buildArcherGear(band, { M, box, gem, glowMat, plateRows, gemColor, goldColor, fz, sx, style });
+    }
+
+    // Helmet band (helmet's own tier when worn)
+    const helmTier = itemVisualTier(helmet);
+    if (helmet && helmTier != null) {
+      buildHelmGear(Math.min(3, Math.floor(helmTier / 2)), { M, box, gem, glowMat, gemColor, goldColor });
+    }
+
+    // Boots band
+    const bootTier = itemVisualTier(boots);
+    gearState.bootBand = boots && bootTier != null ? Math.min(3, Math.floor(bootTier / 2)) : -1;
+    if (gearState.bootBand >= 1) {
+      const bb = gearState.bootBand;
+      const plateMat = M({ color: bb >= 2 ? 0x9ca3af : 0x6b7280, metalness: 0.75, roughness: 0.35 });
+      const cuffMat = bb >= 3 ? glowMat(goldColor, 0.5) : M({ color: goldColor, metalness: 0.85, roughness: 0.25 });
+      for (const leg of [gear.lLeg, gear.rLeg]) {
+        box(leg, 0.13, 0.17, 0.03, plateMat, 0, -0.3, 0.095);
+        if (bb >= 2) box(leg, 0.18, 0.035, 0.2, cuffMat, 0, -0.2, 0);
+        if (bb >= 3) gem(leg, 0.025, gemColor, 0, -0.16, 0.1, true);
+      }
+    }
+
+    // Armor +7 or higher: subtle shimmer strip along the chest trim
+    if (armor && (Number(armor.plus) || 0) >= 7) {
+      const col = armorSeal ?? 0xfff1c1;
+      const mat = M({ color: col, emissive: new THREE.Color(col), emissiveIntensity: 0.6, roughness: 0.2, metalness: 0.9, transparent: true, opacity: 0.95 }, true);
+      const y = classId === 'wizard' ? 0.33 : classId === 'axeman' ? 0.38 : 0.35;
+      box(gear.body, classId === 'axeman' ? 0.54 : 0.46, 0.022, 0.02, mat, 0, y, fz + 0.03);
+      gearState.shimmer = mat;
+    }
+
+    // Set aura ring (>= 3 pieces of one set)
+    if (setInfo) {
+      const mat = new THREE.MeshBasicMaterial({ color: setInfo.color, side: THREE.DoubleSide, transparent: true, opacity: 0.3, depthWrite: false, blending: THREE.AdditiveBlending });
+      mat.userData.noFlash = true;
+      const ring = new THREE.Mesh(new THREE.RingGeometry(0.56, 0.7, 28), mat);
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = 0.025;
+      ring.userData.noFlash = true;
+      gear.ground.add(ring);
+      gearState.setAura = { ring, mat, pieces: setInfo.count };
+    }
+
+    // Wizard base rune orb: hidden at band 0 and at band 3 (replaced by the 3-orb orbit)
+    gearState.baseOrbVisible = !(classId === 'wizard' && (band === 0 || band === 3));
+    if (lookState.runeOrb) lookState.runeOrb.visible = gearState.baseOrbVisible;
+  };
+
+  const buildKnightGear = (band, k) => {
+    const { M, box, gem, glowMat, plateRows, gemColor, goldColor, fz, sx } = k;
+    if (band === 0) {
+      // Plain cloth tabard
+      const cloth = M({ color: lookState.appearance.cape ?? 0xb91c1c, roughness: 0.85 });
+      box(gear.body, 0.18, 0.44, 0.012, cloth, 0, 0.07, fz + 0.008);
+      return;
+    }
+    const plateMat = M({ color: band >= 3 ? 0xdbe4ee : band >= 2 ? 0x8fa6c1 : 0x9ca3af, metalness: band >= 3 ? 0.92 : 0.78, roughness: band >= 3 ? 0.18 : 0.35 });
+    plateRows(gear.body, band + 2, 5, plateMat, { y0: 0.31, step: 0.062 });
+    // Layered pauldrons (bigger per band)
+    const ps = 1 + band * 0.18;
+    for (const s of [-1, 1]) {
+      box(gear.body, 0.2 * ps, 0.05, 0.24 * ps, plateMat, s * sx, 0.4, 0, 0, 0, s * -0.35);
+      box(gear.body, 0.18 * ps, 0.045, 0.22 * ps, plateMat, s * (sx + 0.03), 0.34, 0, 0, 0, s * -0.55);
+    }
+    if (band >= 2) {
+      const trim = band >= 3 ? glowMat(goldColor, 0.45) : M({ color: goldColor, metalness: 0.9, roughness: 0.2 });
+      box(gear.body, 0.44, 0.03, 0.02, trim, 0, 0.345, fz + 0.03);
+      box(gear.body, 0.44, 0.03, 0.02, trim, 0, 0.31 - (band + 1.6) * 0.062, fz + 0.03);
+      for (const s of [-1, 1]) box(gear.body, 0.03, 0.03, 0.26 * ps, trim, s * (sx + 0.1 * ps), 0.38, 0, 0, 0, s * -0.35);
+      gem(gear.body, band >= 3 ? 0.05 : 0.04, gemColor, 0, 0.22, fz + 0.045, band >= 3);
+      // Tassets below the belt
+      for (const x of [-0.15, 0, 0.15]) box(gear.body, 0.13, 0.14, 0.03, plateMat, x, -0.2, fz - 0.005, 0.12);
+    }
+    if (band >= 3) {
+      // Gorget + upturned pauldron crest
+      addTo(gear.body, new THREE.TorusGeometry(0.17, 0.035, 6, 14), plateMat, 0, 0.42, 0, Math.PI / 2);
+      for (const s of [-1, 1]) box(gear.body, 0.04, 0.1, 0.2, glowMat(gemColor, 0.6), s * (sx + 0.12), 0.46, 0, 0, 0, s * -0.2);
+    }
+  };
+
+  const buildAxemanGear = (band, k) => {
+    const { M, box, gem, glowMat, plateRows, goldColor, fz, sx } = k;
+    const fur = M({ color: 0x6b4f3a, roughness: 0.95 });
+    const bone = M({ color: 0xf5f0e1, roughness: 0.5 });
+    if (band === 0) {
+      // Studded leather
+      const stud = M({ color: 0x9ca3af, metalness: 0.8, roughness: 0.3 });
+      for (const y of [0.24, 0.12]) for (const x of [-0.16, -0.055, 0.055, 0.16]) box(gear.body, 0.035, 0.035, 0.02, stud, x, y, fz + 0.01);
+      return;
+    }
+    // Fur mantle grows with tier
+    const mantle = addTo(gear.body, new THREE.TorusGeometry(0.28, 0.07 + band * 0.02, 7, 16), fur, 0, 0.41, -0.03, Math.PI / 2);
+    mantle.scale.set(1.35 + band * 0.08, 1, 1);
+    if (band === 1) {
+      // Iron scale shirt
+      const iron = M({ color: 0x8b949e, metalness: 0.7, roughness: 0.4 });
+      plateRows(gear.body, 3, 6, iron, { y0: 0.27, step: 0.06, w: 0.075, width: 0.44, tilt: -0.25 });
+      return;
+    }
+    // Spiked dark plates
+    const dark = M({ color: band >= 3 ? 0x1c1917 : 0x27272a, metalness: 0.85, roughness: 0.3 });
+    box(gear.body, 0.52, 0.3, 0.04, dark, 0, 0.21, fz + 0.012);
+    plateRows(gear.body, 2, 6, dark, { y0: 0.02, step: 0.06, w: 0.08, width: 0.46, z: fz + 0.005, tilt: -0.2 });
+    for (const s of [-1, 1]) {
+      box(gear.body, 0.24, 0.07, 0.28, dark, s * sx, 0.44, 0, 0, 0, s * -0.3);
+      addTo(gear.body, new THREE.ConeGeometry(0.035, 0.16, 5), dark, s * (sx + 0.02), 0.54, 0.06, 0, 0, s * -0.4);
+      addTo(gear.body, new THREE.ConeGeometry(0.035, 0.16, 5), dark, s * (sx + 0.02), 0.54, -0.08, 0, 0, s * -0.4);
+      // Bone tusks on the pauldron front
+      addTo(gear.body, new THREE.ConeGeometry(0.025, 0.14, 5), bone, s * (sx - 0.04), 0.4, 0.17, 1.2, 0, s * 0.3);
+    }
+    // Belt skull plate
+    box(gear.body, 0.12, 0.1, 0.03, bone, 0, -0.11, fz + 0.03);
+    if (band >= 3) {
+      // Ember glow: molten cracks + core
+      const ember = glowMat(0xff6a1a, 1.0);
+      box(gear.body, 0.3, 0.018, 0.02, ember, -0.04, 0.27, fz + 0.04, 0, 0, 0.35);
+      box(gear.body, 0.24, 0.018, 0.02, ember, 0.06, 0.16, fz + 0.04, 0, 0, -0.5);
+      box(gear.body, 0.018, 0.14, 0.02, ember, -0.1, 0.12, fz + 0.04);
+      gem(gear.body, 0.05, 0xff6a1a, 0, 0.22, fz + 0.05, true);
+      for (const s of [-1, 1]) box(gear.body, 0.2, 0.02, 0.02, ember, s * sx, 0.475, 0.13, 0, 0, s * -0.3);
+    } else {
+      box(gear.body, 0.5, 0.025, 0.02, M({ color: goldColor, metalness: 0.85, roughness: 0.3 }), 0, 0.35, fz + 0.04);
+    }
+  };
+
+  const buildWizardGear = (band, k) => {
+    const { M, box, gem, glowMat, gemColor, goldColor, fz, style } = k;
+    const embroideryColor = style ? style.accent : goldColor;
+    if (band === 0) {
+      // Plain rope belt knot
+      box(gear.body, 0.06, 0.12, 0.02, M({ color: 0xa16207, roughness: 0.8 }), -0.12, -0.2, fz + 0.01, 0, 0, 0.2);
+      return;
+    }
+    const emb = band >= 3 ? glowMat(embroideryColor, 0.55) : M({ color: embroideryColor, metalness: 0.6, roughness: 0.35 });
+    // Embroidered bands around the robe skirt
+    addTo(gear.body, new THREE.TorusGeometry(0.305, 0.013, 5, 22), emb, 0, -0.3, 0, Math.PI / 2);
+    if (band >= 2) addTo(gear.body, new THREE.TorusGeometry(0.345, 0.013, 5, 22), emb, 0, -0.52, 0, Math.PI / 2);
+    // High collar
+    const collarMat = M({ color: lookState.appearance.cape ?? 0x6d28d9, roughness: 0.6, side: THREE.DoubleSide });
+    addTo(gear.body, new THREE.CylinderGeometry(0.17 + band * 0.015, 0.15, 0.1 + band * 0.03, 12, 1, true, Math.PI * 0.6, Math.PI * 1.8), collarMat, 0, 0.45, -0.01);
+    if (band >= 2) {
+      // Chest embroidery strips + gem clasp
+      for (const s of [-1, 1]) box(gear.body, 0.025, 0.4, 0.012, emb, s * 0.07, 0.13, fz + 0.012);
+      box(gear.body, 0.18, 0.025, 0.012, emb, 0, 0.3, fz + 0.012);
+      gem(gear.body, 0.035, gemColor, 0, 0.3, fz + 0.03, band >= 3);
+      // Widened sleeves
+      const sleeve = M({ color: lookState.appearance.outfit ?? 0x4c1d95, roughness: 0.55 });
+      for (const arm of [gear.rArm, gear.lArm]) {
+        addTo(arm, new THREE.CylinderGeometry(0.1, 0.16 + (band - 2) * 0.03, 0.16, 10, 1, true), sleeve, 0, -0.3, 0);
+        addTo(arm, new THREE.TorusGeometry(0.16 + (band - 2) * 0.03, 0.012, 5, 14), emb, 0, -0.38, 0, Math.PI / 2);
+      }
+    }
+    // Orbiting rune orbs (base orb counts as the first at bands 1-2)
+    const orbColor = style ? style.primary : (lookState.cls?.color ?? 0xa855f7);
+    const extra = band === 2 ? 1 : band >= 3 ? 3 : 0;
+    for (let i = 0; i < extra; i++) {
+      const g = new THREE.Group();
+      const mat = M({ color: orbColor, emissive: new THREE.Color(orbColor), emissiveIntensity: 1.1, roughness: 0.1, transparent: true, opacity: 0.92 }, true);
+      addTo(g, new THREE.IcosahedronGeometry(0.06, 0), mat);
+      g.userData.phase = (i / Math.max(1, extra)) * Math.PI * 2 + (band === 2 ? Math.PI : 0);
+      gear.body.add(g);
+      gearState.orbs.push(g);
+    }
+    if (band >= 3) {
+      // Halo behind the head
+      const haloMat = glowMat(embroideryColor === 0xe0e7ff ? 0xfef3c7 : embroideryColor, 0.9);
+      const halo = addTo(gear.head, new THREE.TorusGeometry(0.27, 0.014, 6, 28), haloMat, 0, 0.3, -0.24);
+      gearState.halo = halo;
+    }
+    // Hat brim gem (shown only while the hat is visible)
+    if (band >= 2) {
+      gearState.hatGem = gem(gear.head, 0.04, gemColor, 0, 0.37, 0.205, band >= 3);
+    }
+  };
+
+  const buildArcherGear = (band, k) => {
+    const { M, box, gem, glowMat, plateRows, goldColor, fz, style } = k;
+    const leather = M({ color: 0x5b3a1a, roughness: 0.7, metalness: 0.1 });
+    if (band === 0) {
+      box(gear.body, 0.1, 0.09, 0.06, leather, 0.17, -0.15, fz - 0.02);
+      return;
+    }
+    const scaleMat = M({ color: band >= 2 ? 0xb08d57 : 0x3f5f2a, metalness: band >= 2 ? 0.6 : 0.15, roughness: 0.45 });
+    plateRows(gear.body, band + 2, 5, scaleMat, { y0: 0.27, step: 0.058, w: 0.08, h: 0.055, width: 0.36, tilt: -0.22 });
+    // Shoulder guard on the bow arm (left)
+    const sg = 1 + (band - 1) * 0.2;
+    box(gear.lArm, 0.19 * sg, 0.05, 0.2 * sg, leather, 0.02, 0.05, 0, 0, 0, -0.3);
+    box(gear.lArm, 0.17 * sg, 0.045, 0.18 * sg, scaleMat, 0.04, -0.01, 0, 0, 0, -0.45);
+    if (band >= 2) {
+      const gold = M({ color: goldColor, metalness: 0.85, roughness: 0.25 });
+      box(gear.lArm, 0.03, 0.03, 0.21 * sg, gold, 0.11 * sg, 0.02, 0, 0, 0, -0.3);
+      box(gear.lArm, 0.17, 0.13, 0.17, scaleMat, 0, -0.27, 0);
+      // Feathered quiver plume
+      const plumeColor = style ? style.primary : 0x0ea5e9;
+      const feather = M({ color: plumeColor, roughness: 0.5, side: THREE.DoubleSide });
+      for (let i = 0; i < 3; i++) {
+        box(gear.body, 0.005, 0.12, 0.05, feather, -0.05 + i * 0.03, 0.57, -0.24 + (i - 1) * 0.02, -0.3, i * 0.6, 0.4);
+      }
+      addTo(gear.body, new THREE.TorusGeometry(0.075, 0.012, 5, 12), gold, 0.08, 0.24, -0.24, Math.PI / 2, 0, 0.4);
+    }
+    if (band >= 3) {
+      // Short cloak with a glowing edge
+      const cloak = M({ color: lookState.appearance.cape ?? 0x15803d, roughness: 0.65, side: THREE.DoubleSide });
+      box(gear.cape, 0.42, 0.58, 0.025, cloak, 0, -0.3, -0.03, 0.12);
+      box(gear.cape, 0.43, 0.035, 0.03, glowMat(style ? style.accent : 0x86efac, 0.9), 0, -0.59, -0.065, 0.12);
+      gem(gear.body, 0.035, style ? style.primary : 0x22c55e, 0, 0.32, fz + 0.035, true);
+    }
+  };
+
+  const buildHelmGear = (hb, k) => {
+    const { M, box, gem, glowMat, gemColor, goldColor } = k;
+    if (hb <= 0) return;
+    const classId = lookState.classId;
+    const gold = hb >= 3 ? glowMat(goldColor, 0.45) : M({ color: goldColor, metalness: 0.9, roughness: 0.2 });
+    if (classId === 'knight') {
+      if (hb >= 2) box(gear.helm, 0.41, 0.04, 0.41, gold, 0, 0.16, 0);
+      if (hb >= 3) {
+        const wing = M({ color: 0xf1f5f9, metalness: 0.6, roughness: 0.3 });
+        for (const s of [-1, 1]) {
+          box(gear.helm, 0.025, 0.2, 0.12, wing, s * 0.22, 0.36, -0.02, 0, 0, s * -0.55);
+          box(gear.helm, 0.025, 0.15, 0.1, wing, s * 0.27, 0.42, -0.06, 0, 0, s * -0.85);
+        }
+        box(gear.helm, 0.05, 0.08, 0.3, glowMat(gemColor, 0.8), 0, 0.48, -0.02);
+      }
+      if (hb === 1) box(gear.helm, 0.3, 0.04, 0.03, M({ color: 0x475569, metalness: 0.8, roughness: 0.3 }), 0, 0.2, 0.2);
+    } else if (classId === 'axeman') {
+      const bone = M({ color: 0xf5f0e1, roughness: 0.5 });
+      if (hb >= 2) for (const s of [-1, 1]) addTo(gear.helm, new THREE.ConeGeometry(0.03, 0.14, 5), bone, s * 0.1, 0.43, 0.12, 0.4, 0, s * -0.3);
+      if (hb >= 3) box(gear.helm, 0.26, 0.025, 0.02, glowMat(0xff6a1a, 1.0), 0, 0.2, 0.2);
+      else box(gear.helm, 0.41, 0.03, 0.41, gold, 0, 0.16, 0);
+    } else if (classId === 'wizard') {
+      for (const s of [-1, 1]) gem(gear.helm, 0.03, gemColor, s * 0.13, 0.27, 0.19, hb >= 3);
+      if (hb >= 2) box(gear.helm, 0.4, 0.03, 0.4, gold, 0, 0.17, 0);
+    } else {
+      const feather = M({ color: hb >= 3 ? 0xfacc15 : 0x0ea5e9, roughness: 0.5, side: THREE.DoubleSide });
+      box(gear.helm, 0.02, 0.22, 0.06, feather, 0.22, 0.4, -0.02, -0.3, 0, -0.45);
+      if (hb >= 2) box(gear.helm, 0.4, 0.03, 0.4, gold, 0, 0.21, 0);
+    }
+  };
+
+  // ---------------------------------------------------------------- weapon glow (alchemy +N, seal, imbue)
+  const weaponFx = { level: 0, color: 0xffffff, intensity: 0, light: null, aura: null, auraMat: null, mats: [], tip: null };
+  let activeImbue = null;
+  let activeImbueColor = null;
+  let imbueRing = null;
+
+  const applyWeaponGlow = (weapon, wMesh) => {
+    const plus = Number(weapon?.plus) || 0;
+    const level = glowLevel(plus);
+    const seal = sealColorOf(weapon);
+    const elem = String(weapon?.element || 'physical').toLowerCase();
+    const rarity = String(weapon?.rarity || 'normal').toLowerCase();
+    const color = seal ?? (elem !== 'physical' ? getElementColor(elem)
+      : rarity !== 'normal' && rarity !== 'common' ? getRarityColor(rarity) : 0xfff4d6);
+    weaponFx.level = level;
+    weaponFx.color = color;
+    weaponFx.intensity = [0, 0.55, 1.1, 1.3, 1.55][level] || 0;
+    weaponFx.mats = wMesh?.userData?.glowMats || [];
+    weaponFx.tip = wMesh?.userData?.tipLocal || new THREE.Vector3(0, 0.7, 0);
+    weaponFx.light = null;
+    weaponFx.aura = null;
+    weaponFx.auraMat = null;
+    weaponFx.sealOnly = level === 0 && seal != null;
+
+    if (level >= 2 && wMesh) {
+      const light = new THREE.PointLight(color, level >= 4 ? 1.6 : level >= 3 ? 1.2 : 0.85, 2.8, 2);
+      light.position.copy(weaponFx.tip);
+      wMesh.add(light);
+      weaponFx.light = light;
+    }
+    if (level >= 4 && wMesh) {
+      const auraMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.2, blending: THREE.AdditiveBlending, depthWrite: false });
+      auraMat.userData.noFlash = true;
+      const aura = new THREE.Mesh(new THREE.SphereGeometry(0.5, 10, 8), auraMat);
+      aura.userData.noFlash = true;
+      const isBow = wMesh.userData.weaponType === 'bow';
+      aura.position.set(0, isBow ? 0 : 0.45, 0);
+      aura.scale.set(isBow ? 0.3 : 0.26, isBow ? 1.25 : 0.85, isBow ? 0.3 : 0.26);
+      wMesh.add(aura);
+      weaponFx.aura = aura;
+      weaponFx.auraMat = auraMat;
+    }
+    refreshWeaponEmissive(0);
+  };
+
+  /** Recompute weapon emissive: imbue element color overrides the alchemy / seal glow. */
+  const refreshWeaponEmissive = (time = 0) => {
+    const mats = weaponFx.mats;
+    if (!mats || !mats.length) return;
+    let color = null;
+    let intensity = 0;
+    if (activeImbueColor != null) {
+      color = activeImbueColor;
+      intensity = 0.95 + Math.sin(time * 9) * 0.25;
+    } else if (weaponFx.level > 0) {
+      color = weaponFx.color;
+      intensity = weaponFx.intensity * (weaponFx.level >= 4 ? 1 + Math.sin(time * 4) * 0.15 : 1);
+    } else if (weaponFx.sealOnly) {
+      color = weaponFx.color;
+      intensity = 0.3;
+    }
+    for (const m of mats) {
+      if (!m.emissive) continue;
+      const base = m.userData.glowBase;
+      if (color == null) {
+        if (base) {
+          m.emissive.copy(base.emissive);
+          m.emissiveIntensity = base.intensity;
+        }
+      } else {
+        m.emissive.setHex(color);
+        m.emissiveIntensity = Math.max(intensity, base ? base.intensity : 0);
+      }
+    }
+    if (weaponFx.light) {
+      weaponFx.light.color.setHex(color ?? weaponFx.color);
+    }
+  };
+
+  /** Set the active imbue ({element, status} | null). Weapon tint, ground ring and particles while active. */
+  root.userData.setImbue = (imbue = null) => {
+    const color = imbue ? imbueColorOf(imbue) : null;
+    if (color === activeImbueColor && Boolean(imbue) === Boolean(activeImbue)) {
+      activeImbue = imbue;
+      return;
+    }
+    activeImbue = imbue || null;
+    activeImbueColor = color;
+    if (activeImbue && !imbueRing) {
+      const mat = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, transparent: true, opacity: 0.45, depthWrite: false, blending: THREE.AdditiveBlending });
+      mat.userData.noFlash = true;
+      imbueRing = new THREE.Mesh(new THREE.RingGeometry(0.72, 0.84, 28), mat);
+      imbueRing.rotation.x = -Math.PI / 2;
+      imbueRing.position.y = 0.035;
+      imbueRing.userData.noFlash = true;
+      root.add(imbueRing);
+    } else if (!activeImbue && imbueRing) {
+      root.remove(imbueRing);
+      disposeObject3D(imbueRing);
+      imbueRing = null;
+    }
+    if (imbueRing) imbueRing.material.color.setHex(color);
+    refreshWeaponEmissive(0);
+  };
+  root.userData.getImbueColor = () => activeImbueColor;
+  root.userData.getWeaponGlow = () => ({ level: weaponFx.level, color: weaponFx.color, hasLight: Boolean(weaponFx.light), hasAura: Boolean(weaponFx.aura) });
+
+  // ---------------------------------------------------------------- world-space particle pool (glint trail, imbue sparks)
+  const fx = { group: null, geo: null, parts: [], trailAcc: 0, imbueAcc: 0 };
+  const tmpTip = new THREE.Vector3();
+  const fxEnsure = () => {
+    const parent = root.parent;
+    if (!parent) return null;
+    if (!fx.group) {
+      fx.group = new THREE.Group();
+      fx.group.name = 'HeroFX';
+      fx.geo = new THREE.BoxGeometry(1, 1, 1);
+    }
+    if (fx.group.parent !== parent) parent.add(fx.group);
+    return fx.group;
+  };
+  const fxEmit = (pos, color, size, life, vx = 0, vy = 0, vz = 0) => {
+    const group = fxEnsure();
+    if (!group) return;
+    let p = fx.parts.find((q) => q.age >= q.life);
+    if (!p) {
+      if (fx.parts.length >= 48) return;
+      const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 1, blending: THREE.AdditiveBlending, depthWrite: false });
+      const mesh = new THREE.Mesh(fx.geo, mat);
+      mesh.userData.noFlash = true;
+      group.add(mesh);
+      p = { mesh, mat, vel: new THREE.Vector3(), age: 1, life: 0, size: 0.05 };
+      fx.parts.push(p);
+    }
+    p.mat.color.setHex(color);
+    p.mesh.position.set(pos.x, pos.y, pos.z);
+    p.vel.set(vx, vy, vz);
+    p.age = 0;
+    p.life = life;
+    p.size = size;
+    p.mesh.scale.setScalar(size);
+    p.mesh.visible = true;
+  };
+  const fxUpdate = (dt) => {
+    for (const p of fx.parts) {
+      if (p.age >= p.life) continue;
+      p.age += dt;
+      if (p.age >= p.life) {
+        p.mesh.visible = false;
+        continue;
+      }
+      p.mesh.position.addScaledVector(p.vel, dt);
+      const k = 1 - p.age / p.life;
+      p.mat.opacity = k;
+      p.mesh.scale.setScalar(p.size * (0.4 + 0.6 * k));
+    }
+  };
+  const weaponTipWorld = () => {
+    const w = root.userData.weaponMesh;
+    if (!w || typeof w.localToWorld !== 'function') return null;
+    tmpTip.copy(weaponFx.tip || tmpTip.set(0, 0.7, 0));
+    return w.localToWorld(tmpTip);
+  };
+  root.userData.disposeFx = () => {
+    if (fx.group) {
+      fx.group.parent?.remove(fx.group);
+      for (const p of fx.parts) p.mat.dispose();
+      fx.geo?.dispose();
+    }
+    fx.group = null;
+    fx.geo = null;
+    fx.parts = [];
+  };
+
   root.userData.updateEquipment = (equipped = {}) => {
     if (root.userData.hitFlashTimer > 0) root.userData.setHitFlash(0);
     lookState.equipped = equipped || {};
@@ -1068,6 +1709,12 @@ export function createHeroMesh(equipment = {}, look = {}) {
     helmetGroup.visible = Boolean(helmet);
     updateHatVisibility();
 
+    // Tiered armor details, set aura, alchemy weapon glow
+    buildGear(equipped);
+    gear.helm.visible = helmetGroup.visible;
+    if (gearState.hatGem) gearState.hatGem.visible = !helmetGroup.visible && lookState.hatParts.length > 0;
+    applyWeaponGlow(weapon, wMesh);
+
     // Boots
     if (boots) {
       const rarityCol = getRarityColor(boots.rarity);
@@ -1078,6 +1725,7 @@ export function createHeroMesh(equipment = {}, look = {}) {
 
     enableShadows(weaponMount, true, false);
     enableShadows(bowMount, true, false);
+    enableShadows(gear.body, true, false);
     refreshFlashMaterials();
   };
 
@@ -1318,6 +1966,84 @@ export function createHeroMesh(equipment = {}, look = {}) {
       orb.rotation.y = time * (casting ? 6 : 1.6);
       orb.rotation.x = Math.sin(time * 1.3) * 0.3;
     }
+
+    animateGear(state, time, dt);
+  };
+
+  const ATTACKING_STATES = new Set(['attack', 'cast', 'shoot', 'skill', 'whirlwind']);
+  const animateGear = (state, time, dt) => {
+    // Orbiting rune orbs (wizard bands 2-3)
+    const orbs = gearState.orbs;
+    if (orbs.length) {
+      const speed = state === 'cast' ? 3.2 : 1.1;
+      const r = orbs.length >= 3 ? 0.55 : 0.5;
+      for (const g of orbs) {
+        const a = time * speed + g.userData.phase;
+        g.position.set(Math.cos(a) * r, 0.55 + Math.sin(a * 2 + g.userData.phase) * 0.06, Math.sin(a) * r);
+        g.rotation.y = time * 2;
+      }
+    }
+    if (gearState.halo) gearState.halo.rotation.z = time * 0.8;
+    // Pulsing glow strips / gems (legendary bands)
+    if (gearState.glowStrips.length) {
+      const k = 0.8 + Math.sin(time * 3.1) * 0.25;
+      for (const m of gearState.glowStrips) m.emissiveIntensity = (m.userData.glowBaseIntensity ?? 0.8) * k;
+    }
+    // Armor +7 shimmer: a slow sweeping sheen
+    if (gearState.shimmer) {
+      const sweep = Math.max(0, Math.sin(time * 1.7));
+      gearState.shimmer.emissiveIntensity = 0.25 + Math.pow(sweep, 6) * 1.1;
+    }
+    // Set aura ring
+    if (gearState.setAura) {
+      const a = gearState.setAura;
+      a.ring.rotation.z = time * 0.6;
+      a.mat.opacity = 0.22 + Math.sin(time * 2.2) * 0.08 + Math.min(0.12, (a.pieces - 3) * 0.03);
+    }
+    // Weapon glow (imbue pulse, +10 aura, light flicker)
+    if (activeImbueColor != null || weaponFx.level >= 4) refreshWeaponEmissive(time);
+    if (weaponFx.aura) {
+      const s = 1 + Math.sin(time * 4.2) * 0.12;
+      if (weaponFx.aura.userData.baseXZ == null) weaponFx.aura.userData.baseXZ = weaponFx.aura.scale.x;
+      weaponFx.aura.scale.x = weaponFx.aura.scale.z = weaponFx.aura.userData.baseXZ * s;
+      weaponFx.auraMat.opacity = 0.16 + Math.sin(time * 4.2) * 0.07;
+    }
+    if (weaponFx.light) {
+      if (weaponFx.light.userData.base == null) weaponFx.light.userData.base = weaponFx.light.intensity;
+      weaponFx.light.intensity = weaponFx.light.userData.base * (0.9 + Math.sin(time * 7.3) * 0.1);
+    }
+    if (imbueRing) {
+      imbueRing.rotation.z = -time * 1.4;
+      imbueRing.material.opacity = 0.35 + Math.sin(time * 5) * 0.12;
+    }
+
+    // Particles: glint trail (+7 and up) while attacking, element sparks while imbued
+    const attacking = ATTACKING_STATES.has(state);
+    if ((weaponFx.level >= 3 && attacking) || activeImbueColor != null) {
+      const tip = weaponTipWorld();
+      if (tip) {
+        if (weaponFx.level >= 3 && attacking) {
+          fx.trailAcc += dt;
+          while (fx.trailAcc >= 0.025) {
+            fx.trailAcc -= 0.025;
+            fxEmit(tip, activeImbueColor ?? weaponFx.color, 0.07, 0.28, 0, 0.2, 0);
+          }
+        }
+        if (activeImbueColor != null) {
+          fx.imbueAcc += dt;
+          const every = attacking ? 0.03 : 0.09;
+          while (fx.imbueAcc >= every) {
+            fx.imbueAcc -= every;
+            fxEmit(
+              { x: tip.x + (Math.random() - 0.5) * 0.15, y: tip.y + (Math.random() - 0.5) * 0.15, z: tip.z + (Math.random() - 0.5) * 0.15 },
+              activeImbueColor, 0.045 + Math.random() * 0.03, 0.45,
+              (Math.random() - 0.5) * 0.4, 0.7 + Math.random() * 0.5, (Math.random() - 0.5) * 0.4
+            );
+          }
+        }
+      }
+    }
+    fxUpdate(dt);
   };
 
   enableShadows(root, true, true);

@@ -11,6 +11,7 @@ import {
   createSwitchMesh,
   createStairsMesh
 } from '../engine/models3d.js';
+import { buildVillage } from './villageBuilder.js';
 
 // Tile constants for grid collision and minimap
 export const TILE = {
@@ -303,6 +304,7 @@ export class DungeonGenerator {
     this.bossRoom = null;
     this.unlockedMaxFloor = 1;
     this.elapsedTime = 0;
+    this.villageBuild = null;
   }
 
   _applyInitArgs(rendererOrOptions, models3dArg, dataArg) {
@@ -359,6 +361,11 @@ export class DungeonGenerator {
   clearWorld() {
     if (this.renderer?.clearDynamicLights) {
       this.renderer.clearDynamicLights();
+    }
+
+    if (this.villageBuild) {
+      this.villageBuild.dispose();
+      this.villageBuild = null;
     }
 
     while (this.rootGroup.children.length > 0) {
@@ -456,8 +463,8 @@ export class DungeonGenerator {
     }
 
     this.tileSize = 2.0;
-    this.gridWidth = 24;
-    this.gridHeight = 24;
+    this.gridWidth = 26;
+    this.gridHeight = 26;
     this.originX = -(this.gridWidth * this.tileSize) * 0.5;
     this.originZ = -(this.gridHeight * this.tileSize) * 0.5;
 
@@ -468,63 +475,9 @@ export class DungeonGenerator {
       })
     );
 
-    const worldW = this.gridWidth * this.tileSize;
-    const worldH = this.gridHeight * this.tileSize;
-
-    // Grass courtyard base
-    const grassGeo = new THREE.PlaneGeometry(worldW, worldH);
-    const grassMat = new THREE.MeshStandardMaterial({ color: 0x2f482a, roughness: 0.92, metalness: 0.05 });
-    const grassMesh = new THREE.Mesh(grassGeo, grassMat);
-    grassMesh.rotation.x = -Math.PI / 2;
-    grassMesh.receiveShadow = true;
-    this.rootGroup.add(grassMesh);
-
-    // Cobblestone town plaza
-    const plazaMat = new THREE.MeshStandardMaterial({ color: 0x525b66, roughness: 0.8, metalness: 0.12 });
-    const plaza = new THREE.Mesh(new THREE.CylinderGeometry(11.5, 11.8, 0.08, 32), plazaMat);
-    plaza.position.set(0, 0.04, 0);
-    plaza.receiveShadow = true;
-    this.rootGroup.add(plaza);
-
-    // North stone road to Dungeon Portal
-    const road = new THREE.Mesh(new THREE.BoxGeometry(4.4, 0.08, 12), plazaMat);
-    road.position.set(0, 0.04, -12.5);
-    road.receiveShadow = true;
-    this.rootGroup.add(road);
-
-    // Central Healing Fountain / Sanctuary Monument
-    const fountainGroup = new THREE.Group();
-    fountainGroup.position.set(0, 0, 0);
-    const stoneMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.65, metalness: 0.2 });
-    const waterMat = new THREE.MeshStandardMaterial({
-      color: 0x38bdf8,
-      emissive: new THREE.Color(0x0284c7),
-      emissiveIntensity: 0.55,
-      roughness: 0.15,
-      metalness: 0.4
-    });
-
-    const basin = new THREE.Mesh(new THREE.CylinderGeometry(2.1, 2.3, 0.55, 20), stoneMat);
-    basin.position.y = 0.28;
-    basin.castShadow = true;
-    basin.receiveShadow = true;
-    fountainGroup.add(basin);
-
-    const waterPool = new THREE.Mesh(new THREE.CylinderGeometry(1.85, 1.85, 0.48, 20), waterMat);
-    waterPool.position.y = 0.32;
-    fountainGroup.add(waterPool);
-
-    const spire = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.48, 1.65, 12), stoneMat);
-    spire.position.y = 0.85;
-    fountainGroup.add(spire);
-
-    const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.38, 0), waterMat);
-    crystal.position.y = 2.05;
-    fountainGroup.add(crystal);
-    fountainGroup.userData.crystal = crystal;
-
-    this.rootGroup.add(fountainGroup);
-    this.solidObstacles.push({ x: 0, z: 0, radius: 2.15 });
+    // Silk-Road caravan town (see villageBuilder.js)
+    const vb = this._buildVillageScenery();
+    const fountainGroup = vb.fountain;
 
     this.shrines.push({
       id: 'village_fountain',
@@ -540,12 +493,11 @@ export class DungeonGenerator {
       mesh: fountainGroup
     });
 
-    // Perimeter stone walls, wooden fences & trees
-    this._buildVillageScenery();
-
     // Spawn all 6 interactive Village NPCs
     const npcSource = this._resolveVillageNPCDefinitions();
-    for (const npcDef of npcSource) {
+    for (const baseDef of npcSource) {
+      const spot = vb.npcSpots[baseDef.id];
+      const npcDef = spot ? { ...baseDef, x: spot.x, z: spot.z, rotationY: spot.rotationY } : baseDef;
       const mesh = (this.models3d?.createNPCMesh || createNPCMesh)(npcDef);
       mesh.position.set(npcDef.x, 0, npcDef.z);
       mesh.rotation.y = npcDef.rotationY || 0;
@@ -602,30 +554,19 @@ export class DungeonGenerator {
       mesh: selectorMesh
     });
 
-    // Village torches / lanterns
-    const torchCoords = [
-      [-3.2, -11.5], [3.2, -11.5],
-      [-7.0, -6.5], [7.0, -6.5],
-      [-7.0, 2.5], [7.0, 2.5],
-      [-2.5, -16.0], [2.5, -16.0]
-    ];
-    for (const [tx, tz] of torchCoords) {
-      this._spawnTorch(tx, tz, 0xffaa44);
-    }
-
     // Practice breakable barrels & crates near Skill Master Kyle
     const practiceProps = [
-      { x: -12.5, z: 3.8, type: 'barrel' },
-      { x: -13.4, z: 4.9, type: 'crate' },
-      { x: -11.8, z: 6.2, type: 'barrel' },
-      { x: 12.2, z: 3.5, type: 'urn' }
+      { x: -13.0, z: 2.8, type: 'barrel' },
+      { x: -14.0, z: 3.9, type: 'crate' },
+      { x: -12.6, z: 5.4, type: 'barrel' },
+      { x: 12.0, z: 0.5, type: 'urn' }
     ];
     practiceProps.forEach((p, idx) => {
       this._spawnBreakable(p.x, p.z, p.type, `village_prop_${idx}`);
     });
 
     // Starter Supply Chest in Village
-    this._spawnChest(3.8, 8.5, 'normal', 'village_starter_chest');
+    this._spawnChest(3.8, 7.6, 'normal', 'village_starter_chest');
 
     // Single main room for minimap display
     this.rooms = [
@@ -672,81 +613,20 @@ export class DungeonGenerator {
   }
 
   _buildVillageScenery() {
-    const wallMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.85 });
-    const woodMat = new THREE.MeshStandardMaterial({ color: 0x5c3a21, roughness: 0.8 });
-    const roofMat = new THREE.MeshStandardMaterial({ color: 0x7c2d12, roughness: 0.65 });
-    const foliageMat = new THREE.MeshStandardMaterial({ color: 0x1e5631, roughness: 0.85 });
-
-    // Outer boundary stone walls
-    const span = (this.gridWidth - 2) * this.tileSize;
-    const half = span * 0.5;
-    const wallGeoH = new THREE.BoxGeometry(span, 2.2, 1.2);
-    const wallGeoV = new THREE.BoxGeometry(1.2, 2.2, span);
-
-    const northWall = new THREE.Mesh(wallGeoH, wallMat);
-    northWall.position.set(0, 1.1, -half);
-    const southWall = new THREE.Mesh(wallGeoH, wallMat);
-    southWall.position.set(0, 1.1, half);
-    const westWall = new THREE.Mesh(wallGeoV, wallMat);
-    westWall.position.set(-half, 1.1, 0);
-    const eastWall = new THREE.Mesh(wallGeoV, wallMat);
-    eastWall.position.set(half, 1.1, 0);
-    this.rootGroup.add(northWall, southWall, westWall, eastWall);
-
-    // Blacksmith pavilion (west) & Merchant stall (east)
-    const buildPavilion = (x, z, roofColor) => {
-      const g = new THREE.Group();
-      g.position.set(x, 0, z);
-      const platform = new THREE.Mesh(new THREE.BoxGeometry(4.4, 0.2, 3.6), woodMat);
-      platform.position.y = 0.1;
-      g.add(platform);
-
-      for (const px of [-1.9, 1.9]) {
-        for (const pz of [-1.5, 1.5]) {
-          const post = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 2.4, 8), woodMat);
-          post.position.set(px, 1.2, pz);
-          g.add(post);
-        }
-      }
-
-      const roof = new THREE.Mesh(
-        new THREE.ConeGeometry(3.2, 1.3, 4),
-        new THREE.MeshStandardMaterial({ color: roofColor, roughness: 0.65 })
-      );
-      roof.position.y = 2.95;
-      roof.rotation.y = Math.PI / 4;
-      g.add(roof);
-      this.rootGroup.add(g);
-    };
-
-    buildPavilion(-12.2, -3.2, 0x7c2d12);
-    buildPavilion(12.2, -3.2, 0x14532d);
-
-    // Decorative pine trees around village perimeter
-    const treePositions = [
-      [-15, -14], [15, -14], [-16, 0], [16, 0],
-      [-14, 13], [14, 13], [-7, 15], [7, 15],
-      [-10, -12], [10, -12]
-    ];
-    for (const [tx, tz] of treePositions) {
-      const tree = new THREE.Group();
-      tree.position.set(tx, 0, tz);
-      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.34, 1.6, 8), woodMat);
-      trunk.position.y = 0.8;
-      const crown1 = new THREE.Mesh(new THREE.ConeGeometry(1.35, 2.2, 8), foliageMat);
-      crown1.position.y = 2.3;
-      const crown2 = new THREE.Mesh(new THREE.ConeGeometry(1.0, 1.8, 8), foliageMat);
-      crown2.position.y = 3.4;
-      tree.add(trunk, crown1, crown2);
-      tree.traverse((c) => {
-        if (c.isMesh) {
-          c.castShadow = true;
-          c.receiveShadow = true;
-        }
-      });
-      this.rootGroup.add(tree);
-      this.solidObstacles.push({ x: tx, z: tz, radius: 0.7 });
-    }
+    const vb = buildVillage({
+      grid: this.grid,
+      tileSize: this.tileSize,
+      originX: this.originX,
+      originZ: this.originZ,
+      gridWidth: this.gridWidth,
+      gridHeight: this.gridHeight,
+      createNPCMesh: this.models3d?.createNPCMesh || createNPCMesh,
+      addLight: this.renderer?.addPointLight ? (p, c, i, d, f) => this.renderer.addPointLight(p, c, i, d, f) : null
+    });
+    this.villageBuild = vb;
+    this.rootGroup.add(vb.group);
+    for (const o of vb.obstacles) this.solidObstacles.push(o);
+    return vb;
   }
 
   /**
@@ -2053,6 +1933,8 @@ export class DungeonGenerator {
         npc.mesh.userData.setQuestMarker(questsSys.getNpcMarker(npc.id));
       }
     }
+
+    if (this.villageBuild) this.villageBuild.update(dt, time, playerPos);
 
     // Animate Portals, Torches, Chests, Shrines, and Ground Loot
     for (const portal of this.portals) {

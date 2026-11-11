@@ -9,6 +9,7 @@
 //     setId, setName, classOnly (class-locked set gear), value (sell), price (buy), count, stackable, maxStack, desc }
 // =============================================================================
 
+import { ALCHEMY, elixirKindForSlot, powderGradeForTier, alchemyChance, SEALS, rollSeal } from './mechanics.js';
 import { canClassUse, classWeaponSubtypes, getClass, DEFAULT_CLASS, CLASS_IDS } from './classes.js';
 
 export const SLOTS = ['weapon', 'shield', 'helmet', 'armor', 'boots', 'necklace', 'ring'];
@@ -178,8 +179,14 @@ function buildConsumables() {
   STONE_NAMES.forEach((name, i) => registerItemBase({
     id: `stone_${i + 1}`, name, icon: ICONS.stone, type: 'material', subtype: 'stone', tier: i + 1, stackable: true, maxStack: 1,
     price: [80, 300, 1000, 3500][i], reqLevel: 1,
-    desc: `Upgrades equipment up to +${[4, 7, 10, 10][i]}${i === 3 ? ' with +15% success' : ''}. Use at the Composing Master.`,
+    desc: 'Composing material (recipes, refining). Gear enhancement now uses Elixirs at the Alchemy tab.',
   }));
+  const ELX = { weapon: 'Weapon', shield: 'Shield', armor: 'Armor', accessory: 'Accessory' };
+  for (const k in ELX) registerItemBase({ id: `elixir_${k}`, name: `Elixir of Tempering (${ELX[k]})`, icon: '⚗️', type: 'material', subtype: 'elixir', elixirKind: k, stackable: true, maxStack: 99, price: 2500, reqLevel: 1, color: '#7dd3fc',
+    desc: `Alchemy material: required to enhance ${k === 'armor' ? 'helmets, armor and boots' : k === 'accessory' ? 'necklaces and rings' : k + 's'} (+N). Use at the Alchemy tab.` });
+  [400, 900, 1800, 3500].forEach((price, i) => registerItemBase({ id: `powder_${i + 1}`, name: `Luck Powder (Grade ${i + 1})`, icon: '✨', type: 'material', subtype: 'powder', powderGrade: i + 1, stackable: true, maxStack: 99, price, reqLevel: 1, color: '#fde68a',
+    desc: `Alchemy: raises the success chance of gear of grade ${i + 1} (tiers ${i * 2}-${i * 2 + 1}).` }));
+  registerItemBase({ id: 'guardian_talisman', name: 'Guardian Talisman', icon: '🧿', type: 'material', subtype: 'talisman', stackable: true, maxStack: 99, price: 6000, reqLevel: 1, color: '#a7f3d0', desc: 'Alchemy: on failure the item only loses 1 + instead of resetting to +0.' });
   registerItemBase({ id: 'lucky_charm', name: 'Lucky Charm', icon: ICONS.charm, type: 'material', subtype: 'charm', stackable: true, maxStack: 99, price: 500, reqLevel: 1, desc: 'Add when composing: +15% success and prevents upgrade level loss on failure.' });
 }
 
@@ -390,13 +397,18 @@ export function recalcItem(item) {
   const r = RARITY[item.rarity] || RARITY.normal;
   // legacy saves: class-set pieces saved before classOnly/setName existed
   if (item.setId && SETS[item.setId]?.classId && !item.classOnly) { item.classOnly = SETS[item.setId].classId; item.setName = CLASS_SET_NAMES[item.classOnly][SETS[item.setId].tier]; }
-  const plusMult = 1 + 0.1 * (item.plus || 0);
+  const seal = item.seal && SEALS[item.seal] ? SEALS[item.seal] : null;
+  item.sealName = seal ? seal.name : null;
+  item.sealColor = seal ? seal.color : null;
+  item.sealShort = seal ? seal.short : null;
+  const plusMult = (1 + (ALCHEMY.perPlusPct / 100) * (seal ? seal.perPlusMult : 1) * (item.plus || 0)) * (seal ? seal.statMult : 1);
   const stats = {};
   for (const k in item.baseStats || {}) {
     const v = item.baseStats[k];
     const scalable = ['atkMin', 'atkMax', 'def', 'matk', 'hp', 'mp', 'atk'].includes(k);
     stats[k] = scalable ? Math.round(v * plusMult) : v;
   }
+  if (seal && seal.critRate) stats.critRate = (stats.critRate || 0) + seal.critRate;
   const affixes = [];
   for (const m of item.mods || []) {
     stats[m.stat] = (stats[m.stat] || 0) + m.value;
@@ -421,7 +433,7 @@ export function recalcItem(item) {
   item.rarityName = r.name;
   item.color = r.color;
   item.name = (item.plus ? `+${item.plus} ` : '') + item.baseName;
-  item.price = Math.round(item.basePrice * r.priceMult * (1 + 0.06 * (item.mods || []).length) * (1 + 0.15 * (item.plus || 0)) + (item.gems || []).length * 40);
+  item.price = Math.round(item.basePrice * r.priceMult * (1 + 0.06 * (item.mods || []).length) * (1 + 0.15 * (item.plus || 0)) * (seal ? seal.priceMult : 1) + (item.gems || []).length * 40);
   item.value = Math.max(1, Math.floor(item.price * 0.25));
   item.atk = stats.atkMin != null ? `${stats.atkMin}-${stats.atkMax}` : undefined;
   return item;
@@ -587,7 +599,7 @@ export function generateItem(opts = {}) {
     tier: base.tier || 0, material: base.material, rarity, level, reqLevel: Math.max(base.reqLevel || 1, uniqueId ? (UNIQUES.find((u) => u.id === uniqueId)?.minLevel || 1) : 1),
     baseStats, mods, gems: [], sockets: r.sockets, plus: clamp(num(opts.plus) | 0, 0, 10), setId, uniqueId, lore,
     classOnly: base.classOnly || null, setName: base.setName || (setId && SETS[setId] ? SETS[setId].name : null),
-    basePrice: base.price || 20, count: 1, stackable: false, desc: base.desc || '',
+    seal: opts.seal && SEALS[opts.seal] ? opts.seal : (opts.noSeal || !opts.sealRoll ? null : rollSeal(level, { isBoss: opts.isBoss, isElite: opts.isElite, magicFind: opts.magicFind })), basePrice: base.price || 20, count: 1, stackable: false, desc: base.desc || '',
   };
   return recalcItem(item);
 }
@@ -607,7 +619,7 @@ export function rollLoot(level = 1, { isBoss = false, isElite = false, isChest =
   // set-piece share of equipment drops: mobs 25%, elites 45%, chests 35%, bosses 70% (first boss drop always a set piece)
   const setChance = isBoss ? 0.7 : isElite ? 0.45 : isChest ? 0.35 : 0.25;
   for (let i = 0; i < equipRolls; i++) {
-    items.push(generateItem({ level, magicFind, isBoss, isElite, classId, setChance, setPiece: isBoss && i === 0 ? true : undefined, minRarity: isBoss ? (i === 0 ? 'rare' : 'magic') : 'normal' }));
+    items.push(generateItem({ level, magicFind, isBoss, isElite, classId, setChance, sealRoll: true, setPiece: isBoss && i === 0 ? true : undefined, minRarity: isBoss ? (i === 0 ? 'rare' : 'magic') : 'normal' }));
   }
   const potionChance = isBoss ? 1 : isChest ? 0.6 : isElite ? 0.4 : 0.12;
   if (Math.random() < potionChance) {
@@ -628,6 +640,12 @@ export function rollLoot(level = 1, { isBoss = false, isElite = false, isChest =
     items.push(generateItem({ baseId: pick(['scroll_return', 'scroll_might', 'scroll_iron', 'antidote', 'stamina_tonic', level >= 10 ? 'scroll_fortune' : 'scroll_return']) }));
   }
   if (isBoss && Math.random() < 0.25) items.push(generateItem({ baseId: 'lucky_charm' }));
+  // alchemy materials
+  if (level >= 5 && Math.random() < (isBoss ? 0.6 : isElite ? 0.08 : isChest ? 0.03 : 0.012)) {
+    items.push(generateItem({ baseId: `elixir_${weighted([['weapon', 3], ['armor', 3], ['shield', 1], ['accessory', 1]])}`, count: isBoss ? randi(1, 2) : 1 }));
+  }
+  if (Math.random() < (isBoss ? 0.25 : 0.025)) items.push(generateItem({ baseId: `powder_${powderGradeForTier(tierForLevel(level))}` }));
+  if (isBoss && Math.random() < 0.1) items.push(generateItem({ baseId: 'guardian_talisman' }));
   return { gold, items: items.filter(Boolean) };
 }
 
@@ -637,7 +655,7 @@ export function rollLoot(level = 1, { isBoss = false, isElite = false, isChest =
 export const SHOP_DEFS = {
   blacksmith: { id: 'blacksmith', name: 'Blacksmith', kind: 'equipment', size: 12 },
   merchant: { id: 'merchant', name: 'Potion Merchant', kind: 'fixed', items: ['hp_potion_s', 'hp_potion_m', 'hp_potion_l', 'hp_potion_x', 'mp_potion_s', 'mp_potion_m', 'mp_potion_l', 'mp_potion_x', 'elixir', 'antidote', 'stamina_tonic', 'scroll_return', 'scroll_might', 'scroll_iron', 'scroll_haste', 'scroll_fortune'] },
-  composer: { id: 'composer', name: 'Composing Master', kind: 'fixed', items: ['stone_1', 'stone_2', 'stone_3', 'lucky_charm', 'crystal_fire_1', 'crystal_ice_1', 'crystal_lightning_1', 'crystal_poison_1', 'scroll_reset'] },
+  composer: { id: 'composer', name: 'Composing Master', kind: 'fixed', items: ['elixir_weapon', 'elixir_shield', 'elixir_armor', 'elixir_accessory', 'powder_1', 'powder_2', 'powder_3', 'powder_4', 'guardian_talisman', 'stone_1', 'stone_2', 'stone_3', 'lucky_charm', 'crystal_fire_1', 'crystal_ice_1', 'crystal_lightning_1', 'crystal_poison_1', 'scroll_reset'] },
 };
 const SHOP_ALIASES = [
   ['blacksmith', ['smith', 'weapon', 'armor', 'armour', 'forge', 'equipment', 'gorn', 'fallon', 'gran', 'npc2']],
@@ -707,6 +725,7 @@ export class Inventory {
   generateItem(opts) {
     if (typeof opts === 'string') return generateItem(opts);
     const o = { ...(opts || {}), classId: opts && opts.classId !== undefined ? opts.classId : this.game?.classId };
+    if (o.sealRoll === undefined && !o.baseId) o.sealRoll = true; // chest / world drops roll seals
     // Chest path: opts.floor (preferred) or the legacy chest call { level: <floor number>, rarityBoost } -> floor mapped to loot level.
     if (o.floor != null) { o.level = floorMonsterLevel(o.floor); delete o.floor; if (o.setChance == null) o.setChance = 0.35; }
     else if (o.rarityBoost != null && o.level != null) { o.level = floorMonsterLevel(o.level); if (o.setChance == null) o.setChance = 0.35; }
@@ -742,6 +761,8 @@ export class Inventory {
     this.addItem(generateItem({ baseId: 'mp_potion_s', count: 3 }), { silent: true });
     this.addItem(generateItem({ baseId: 'scroll_return', count: 1 }), { silent: true });
     this.addItem(generateItem({ baseId: 'stone_1', count: 2 }), { silent: true });
+    this.addItem(generateItem({ baseId: 'elixir_weapon', count: 1 }), { silent: true });
+    this.addItem(generateItem({ baseId: 'powder_1', count: 1 }), { silent: true });
     this.addItem(generateItem({ baseId: 'crystal_fire_1', count: 2 }), { silent: true });
     if (this.game) this.game.markDirty();
   }
@@ -1063,13 +1084,14 @@ export class Inventory {
           const sl = Math.max(1, lvl + randi(-1, 2));
           // generic stock, plus an occasional class set piece of the hero's current tier (hero's class only)
           const setTry = ['weapon', 'helmet', 'armor', 'boots', 'shield'].includes(slot) && Math.random() < 0.3;
-          const it = (setTry && generateItem({ slot, level: sl, tier: tierForLevel(lvl), rarity, classId: this.game?.classId, setPiece: true, classBias: 1 }))
-            || generateItem({ slot, level: sl, rarity, classId: this.game?.classId, setPiece: false });
+          const it = (setTry && generateItem({ slot, level: sl, tier: tierForLevel(lvl), rarity, noSeal: true, classId: this.game?.classId, setPiece: true, classBias: 1 }))
+            || generateItem({ slot, level: sl, rarity, noSeal: true, classId: this.game?.classId, setPiece: false });
           if (it) stock.push(it);
         }
         this.shops[id] = { level: lvl, stock };
       } else {
-        this.shops[id] = { level: lvl, stock: def.items.filter((b) => ITEM_BASES[b]).map((b) => generateItem({ baseId: b })) };
+        const maxGrade = powderGradeForTier(tierForLevel(lvl));
+        this.shops[id] = { level: lvl, stock: def.items.filter((b) => ITEM_BASES[b] && !(ITEM_BASES[b].powderGrade > maxGrade)).map((b) => generateItem({ baseId: b })) };
       }
     }
   }
@@ -1124,7 +1146,7 @@ export class Inventory {
       outputName: ITEM_BASES[r.output.baseId]?.name || r.output.baseId,
       canCraft: r.inputs.every((i) => this.countItem(i.baseId) >= i.count),
     })).concat([
-      { id: 'upgrade', name: 'Upgrade Equipment', desc: 'Equipment + Composing Stone (+ Lucky Charm): +1 upgrade level (+10% base stats per level, max +10).' },
+      { id: 'alchemy', name: 'Alchemy (+N)', desc: 'Equipment + Elixir (+ Luck Powder, + Guardian Talisman): +1 enhancement level, +8% base stats per level, max +10. Failure resets to +0 unless protected.' },
       { id: 'infuse', name: 'Crystal Infusion', desc: 'Equipment + Crystal: socket the crystal. Weapons gain elemental damage, armor gains resistance.' },
       { id: 'synthesis', name: 'Crystal Synthesis', desc: '3 crystals of the same element and tier: 1 crystal of the next tier.' },
       { id: 'fusion', name: 'Prism Fusion', desc: 'Fire + Ice + Lightning + Poison crystals of the same tier: 1 Prism Crystal.' },
@@ -1189,20 +1211,7 @@ export class Inventory {
       const stones = others.filter(isStone);
       const crystals = others.filter(isCrystal);
       if ((stones.length && !crystals.length && forceMode !== 'infuse') || forceMode === 'upgrade') {
-        const plus = target.plus || 0;
-        if (plus >= MAX_PLUS) return fail('This item is already at maximum upgrade (+10).');
-        const req = requiredStoneTier(plus);
-        const stone = stones.filter((s) => s.tier >= req).sort((a, b) => a.tier - b.tier)[0];
-        if (!stone) return fail(`Requires a ${STONE_NAMES[req - 1]} or better for +${plus + 1}.`);
-        const chance = clamp(UPGRADE_CHANCE[plus] + (stone.tier - req) * 8 + (stone.tier === 4 ? 15 : 0) + charmBonus, 1, 100);
-        const cost = Math.round(25 * Math.pow(plus + 1, 2) + (target.level || 1) * 5);
-        const consumes = [{ uid: stone.uid, count: 1 }];
-        if (charms.length) consumes.push({ uid: charms[0].uid, count: 1 });
-        return wrap({
-          ok: gold >= cost, mode: 'upgrade', title: `Upgrade to +${plus + 1}`, target: target.uid, chance, cost, consumes,
-          desc: `${target.name} → +${plus + 1} (+10% base stats). ${plus >= 4 && !charms.length ? 'On failure the item loses 1 upgrade level.' : 'No penalty on failure.'}`,
-          reason: gold < cost ? 'Not enough gold' : null,
-        });
+        return fail('Composing Stones no longer enhance gear. Use an Elixir at the Alchemy tab.');
       }
       if (crystals.length === 1 && !stones.length) {
         const c = crystals[0];
@@ -1377,25 +1386,87 @@ export class Inventory {
     if (!r.ok || r.leftover) this._emit('item:dropped', r.leftover || item);
   }
 
+  // ---- alchemy (+N) ----------------------------------------------------------
+  _alchemyOpts(opts) { return typeof opts === 'object' && opts && !Array.isArray(opts) ? opts : {}; }
+
+  previewAlchemy(itemUid, opts = {}) {
+    opts = this._alchemyOpts(opts);
+    const f = this.findItem(itemUid);
+    const bad = (reason, extra = {}) => ({ ok: false, reason, item: f ? f.item : null, targetPlus: 0, chance: 0, cost: 0, failText: '', statPreview: {}, ...extra });
+    if (!f || !isEquip(f.item)) return bad('Select a piece of equipment.');
+    const item = f.item;
+    if (f.container === 'equipment') return bad('Unequip the item first (place it in your bag).');
+    if (f.container !== 'bag') return bad('Move the item to your bag first.');
+    const plus = item.plus || 0;
+    if (plus >= ALCHEMY.maxPlus) return bad(`Already at maximum (+${ALCHEMY.maxPlus}).`);
+    const targetPlus = plus + 1;
+    const elixirId = `elixir_${elixirKindForSlot(item.slot)}`;
+    const powderId = `powder_${powderGradeForTier(item.tier)}`;
+    const talismanId = 'guardian_talisman';
+    const haveElixir = this.countItem(elixirId), havePowder = this.countItem(powderId), haveTalisman = this.countItem(talismanId);
+    const usePowder = !!opts.powder && havePowder > 0, useTalisman = !!opts.talisman && haveTalisman > 0;
+    const seal = item.seal && SEALS[item.seal] ? SEALS[item.seal] : null;
+    const rarityBonus = seal ? (seal.id === 'sun' ? 3 : seal.id === 'moon' ? 2 : 0) : 0; // seal perPlusMult folded in as a small bonus
+    const chance = alchemyChance(targetPlus, { powder: usePowder, rarityBonus });
+    const cost = ALCHEMY.goldCost(plus, item.tier || 0);
+    const failTo = useTalisman ? Math.max(0, plus - 1) : ALCHEMY.failResetTo;
+    const after = recalcItem({ ...item, plus: targetPlus });
+    const statPreview = {};
+    for (const k of new Set([...Object.keys(item.stats || {}), ...Object.keys(after.stats || {})])) {
+      const b = item.stats[k] || 0, a2 = after.stats[k] || 0;
+      if (b !== a2) statPreview[k] = [b, a2];
+    }
+    let reason = null;
+    if (haveElixir < 1) reason = `Requires ${ITEM_BASES[elixirId]?.name}.`;
+    else if (this.gold < cost) reason = 'Not enough gold';
+    return {
+      ok: !reason, reason, item, targetPlus, chance, cost, elixirId, haveElixir, powderId, havePowder, talismanId, haveTalisman,
+      usePowder, useTalisman, rarityBonus,
+      failText: useTalisman ? `On failure: drops to +${failTo}.` : `On failure: resets to +${ALCHEMY.failResetTo}.`,
+      statPreview,
+    };
+  }
+
+  alchemy(itemUid, opts = {}) {
+    opts = this._alchemyOpts(opts);
+    const p = this.previewAlchemy(itemUid, opts);
+    if (!p.ok) return { ok: false, success: false, msg: p.reason, preview: p };
+    const g = this.game;
+    if (p.cost && !(g && g.spendGold(p.cost))) return { ok: false, success: false, msg: 'Not enough gold', preview: p };
+    const item = p.item;
+    this.consume(p.elixirId, 1);
+    if (p.usePowder) this.consume(p.powderId, 1);
+    const prevPlus = item.plus || 0;
+    const success = Math.random() * 100 < p.chance;
+    let msg;
+    if (success) {
+      item.plus = prevPlus + 1;
+      msg = item.plus >= ALCHEMY.announceAt ? `⚡ ${item.baseName} reached +${item.plus}!` : `${item.baseName} enhanced to +${item.plus}!`;
+    } else if (p.useTalisman) {
+      this.consume(p.talismanId, 1);
+      item.plus = Math.max(0, prevPlus - 1);
+      msg = `Enhancement failed. The talisman shielded ${item.baseName}: now +${item.plus}.`;
+    } else {
+      item.plus = ALCHEMY.failResetTo;
+      msg = prevPlus > 0 ? `Enhancement failed... ${item.baseName} reset to +${item.plus}.` : 'Enhancement failed.';
+    }
+    recalcItem(item);
+    this._changed(true);
+    this._emit('alchemy', { success, item, plus: item.plus, prevPlus, chance: p.chance });
+    this._emit('toast', msg, success ? (item.plus >= ALCHEMY.announceAt ? 'levelup' : 'loot') : 'warning');
+    return { ok: true, success, msg, item, plus: item.plus, prevPlus, chance: p.chance };
+  }
+
   previewUpgrade(itemUid, matUids = []) {
-    const mats = Array.isArray(matUids) ? matUids : [matUids];
-    const it = this.getItem(itemUid);
-    const mode = mats.map((u) => this.getItem(u)).some(isCrystal) ? 'infuse' : 'upgrade';
-    return this.previewCompose([itemUid, ...mats], mode);
+    const mats = (Array.isArray(matUids) ? matUids : [matUids]).filter(Boolean);
+    if (mats.some((u) => isCrystal(this.getItem(u)))) return this.previewCompose([itemUid, ...mats], 'infuse');
+    const r = this.previewAlchemy(itemUid, { powder: true });
+    return { ...r, mode: 'alchemy', title: `Enhance to +${r.targetPlus}`, desc: r.reason || r.failText, text: r.reason || r.failText, msg: r.reason || r.failText, target: itemUid, consumes: [] };
   }
   upgrade(itemUid, matUids = []) {
-    const mats = Array.isArray(matUids) ? matUids : [matUids];
-    if (!mats.length || mats.every((m) => m == null)) {
-      // auto-pick the cheapest eligible stone (+ charm is never auto-used)
-      const it = this.getItem(itemUid);
-      if (!isEquip(it)) return { ok: false, msg: 'Select equipment to upgrade' };
-      const req = requiredStoneTier(it.plus || 0);
-      const stone = this.bag.filter((x) => isStone(x) && x.tier >= req).sort((a, b) => a.tier - b.tier)[0];
-      if (!stone) return { ok: false, msg: `Requires a ${STONE_NAMES[req - 1]} or better` };
-      mats.push(stone.uid);
-    }
-    const mode = mats.map((u) => this.getItem(u)).some(isCrystal) ? 'infuse' : 'upgrade';
-    return this.compose([itemUid, ...mats], mode);
+    const mats = (Array.isArray(matUids) ? matUids : [matUids]).filter(Boolean);
+    if (mats.some((u) => isCrystal(this.getItem(u)))) return this.compose([itemUid, ...mats], 'infuse');
+    return this.alchemy(itemUid, { powder: true });
   }
 
   // ---- views -----------------------------------------------------------------
@@ -1428,6 +1499,7 @@ export class Inventory {
     if (s.matk) lines.push(`Magic Attack: ${s.matk}`);
     if (s.def) lines.push(`Defense: ${s.def}`);
     if (!it.stackable) {
+      if (it.sealName) lines.push(`${it.sealShort || ''} ${it.sealName}`.trim());
       for (const k in it.baseStats || {}) if (!['atkMin', 'atkMax', 'matk', 'def'].includes(k)) lines.push(formatStat(k, s[k] ?? it.baseStats[k]));
       for (const a of it.affixes || []) lines.push(a);
       if (it.sockets) lines.push(`Sockets: ${(it.gems || []).length}/${it.sockets}`);
@@ -1442,7 +1514,7 @@ export class Inventory {
     const cc = it.slot ? canClassUse(this.game?.classId || DEFAULT_CLASS, it) : null;
     const typeLine = it.slot ? `${RARITY[it.rarity]?.name || ''} ${SLOT_NAMES[it.slot]}${it.subtype && it.subtype !== it.slot ? ' (' + it.subtype + ')' : ''}` : (it.subtype || it.type);
     return {
-      name: it.name + (it.count > 1 ? ` x${it.count}` : ''), color: it.color || RARITY[it.rarity]?.color, rarity: it.rarity, rarityName: RARITY[it.rarity]?.name,
+      name: it.name + (it.count > 1 ? ` x${it.count}` : ''), color: it.color || RARITY[it.rarity]?.color, rarity: it.rarity, rarityName: RARITY[it.rarity]?.name, seal: it.seal || null, sealName: it.sealName || null, sealColor: it.sealColor || null,
       typeLine, lines, reqLevel: it.reqLevel || 1, meetsLevel: (it.reqLevel || 1) <= this._level(), classReq: cc ? cc.classReq : null, meetsClass: cc ? cc.ok : true, value: it.value || 0, price: it.price || 0, lore: it.lore || null, icon: it.icon,
     };
   }

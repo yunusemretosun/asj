@@ -6,6 +6,29 @@ import {
 } from '../engine/models3d.js';
 // rpg-systems: floor -> monster level mapping (see floorMonsterLevel docs in inventory.js)
 import { floorMonsterLevel } from '../systems/inventory.js';
+// Milestone 2 shared contract: status effect definitions (burn/freeze/chill/shock/poison/stun/bleed)
+import { STATUS } from '../systems/mechanics.js';
+
+const STATUS_FALLBACK = {
+  burn: { id: 'burn', name: 'Burn', duration: 4, tick: 1, dotPctOfHit: 0.12, color: 0xff5522 },
+  freeze: { id: 'freeze', name: 'Frozen', duration: 1.6, slowPct: 100, color: 0x6fd4ff },
+  chill: { id: 'chill', name: 'Chilled', duration: 3, slowPct: 40, color: 0x93c5fd },
+  shock: { id: 'shock', name: 'Shocked', duration: 2.5, dmgTakenPct: 15, color: 0xffee44 },
+  poison: { id: 'poison', name: 'Poisoned', duration: 5, tick: 1, dotPctOfHit: 0.08, color: 0x7dff5a },
+  stun: { id: 'stun', name: 'Stunned', duration: 1.0, color: 0xffffff },
+  bleed: { id: 'bleed', name: 'Bleeding', duration: 4, tick: 1, dotPctOfHit: 0.1, color: 0xdc2626 }
+};
+const DOT_STATUSES = new Set(['burn', 'poison', 'bleed']);
+// Ring color priority when several statuses are active (first match wins)
+const STATUS_RING_PRIORITY = ['freeze', 'stun', 'shock', 'burn', 'poison', 'bleed', 'chill'];
+
+function statusDef(id) {
+  return (STATUS && STATUS[id]) || STATUS_FALLBACK[id] || null;
+}
+
+function colorToCss(c) {
+  return typeof c === 'number' ? `#${c.toString(16).padStart(6, '0')}` : String(c || '#ffffff');
+}
 
 export const AI_STATE = {
   IDLE: 'IDLE',
@@ -600,6 +623,9 @@ export class EnemyAI {
     this.attackCooldown = Math.random() * 0.6;
     this.skillCooldown = 4.5 + Math.random() * 2.5;
     this.stunTimer = 0;
+    // Active status effects keyed by STATUS id: { id, remaining, duration, tick, tickTimer, dotPerTick, slowPct, root, dmgTakenPct, color }
+    this.statuses = {};
+    this.statusRing = null;
     this.deathTimer = 0;
     this.dead = false;
     this.isDead = false;
@@ -716,6 +742,7 @@ export class EnemyManager {
   }
 
   clearEnemies() {
+    for (const e of this.enemies) this.clearStatuses(e);
     while (this.rootGroup.children.length > 0) {
       const child = this.rootGroup.children.pop();
       this.rootGroup.remove(child);
@@ -997,9 +1024,11 @@ export class EnemyManager {
 
     if (!enemy || enemy.dead) return { hit: false, killed: false, damage: 0 };
 
-    const dmg = Math.max(1, Math.round(Number(amount) || 1));
+    // Shock: +dmgTakenPct% damage taken (callers that already scaled pass statusScaled: true)
+    const takenMult = options.statusScaled ? 1 : this.getDamageTakenMult(enemy);
+    const dmg = Math.max(1, Math.round((Number(amount) || 1) * takenMult));
     enemy.hp = Math.max(0, enemy.hp - dmg);
-    enemy.mesh?.userData?.triggerHitFlash?.(0.15);
+    if (!options.isDot) enemy.mesh?.userData?.triggerHitFlash?.(0.15);
 
     // Apply knockback
     const kbResist = enemy.isBoss ? 0.85 : (enemy.modifier?.knockbackRes || 0);
@@ -1028,10 +1057,11 @@ export class EnemyManager {
       }
     }
 
-    // Light hit-stun on regular monsters if not mid-boss-skill
-    if (enemy.hp > 0 && !enemy.isBoss && enemy.state !== AI_STATE.TELEGRAPH) {
+    // Light hit-stun on regular monsters if not mid-boss-skill (DoT ticks never re-trigger it)
+    if (enemy.hp > 0 && !enemy.isBoss && !options.isDot && !options.noStun && enemy.state !== AI_STATE.TELEGRAPH) {
+      const wasStunned = enemy.state === AI_STATE.STUN;
       enemy.state = AI_STATE.STUN;
-      enemy.stunTimer = 0.16;
+      enemy.stunTimer = wasStunned ? Math.max(enemy.stunTimer, 0.16) : 0.16;
     }
 
     enemy.syncHealthBar(this.renderer?.camera);
@@ -1081,6 +1111,7 @@ export class EnemyManager {
     enemy.isDead = true;
     enemy.state = AI_STATE.DEAD;
     enemy.deathTimer = 1.05;
+    this.clearStatuses(enemy);
 
     if (enemy.telegraphMesh) enemy.telegraphMesh.visible = false;
     if (enemy.healthBarGroup) enemy.healthBarGroup.visible = false;
@@ -1205,6 +1236,18 @@ export class EnemyManager {
         continue;
       }
 
+      // Status effects (DoT ticks, timers, ring/tint). May kill the enemy.
+      this._updateStatuses(e, dt, time);
+      if (e.dead) continue;
+
+      // Frozen (non-boss): a statue - no movement, no attacks, no cooldown progress
+      if (this._isRooted(e)) {
+        if (e.telegraphMesh) e.telegraphMesh.visible = false;
+        this._applyStatusTint(e, dt);
+        e.syncHealthBar(this.renderer?.camera);
+        continue;
+      }
+
       e.attackCooldown = Math.max(0, e.attackCooldown - dt);
       e.skillCooldown = Math.max(0, e.skillCooldown - dt);
 
@@ -1218,6 +1261,7 @@ export class EnemyManager {
         if (e.stunTimer <= 0) {
           e.state = AI_STATE.CHASE;
         }
+        this._applyStatusTint(e, dt);
         e.syncHealthBar(this.renderer?.camera);
         continue;
       }
@@ -1365,7 +1409,227 @@ export class EnemyManager {
         e.mesh.position.set(e.x, 0, e.z);
         e.mesh.rotation.y = e.rotation;
       }
+      this._applyStatusTint(e, dt);
       e.syncHealthBar(this.renderer?.camera);
+    }
+  }
+
+  // ---------------------------------------------------------------- status effects
+  _resolveEnemy(enemyOrId) {
+    if (!enemyOrId) return null;
+    if (typeof enemyOrId === 'string') return this.enemies.find((e) => e.id === enemyOrId) || null;
+    if (enemyOrId.entity && !enemyOrId.statuses) return enemyOrId.entity; // getActiveBoss() wrapper
+    return enemyOrId;
+  }
+
+  /**
+   * Apply (or refresh) a status effect from mechanics.js STATUS.
+   * status: 'burn' | { id, duration?, dotPerTick? }. Same status refreshes its duration (no stacking).
+   * Bosses: freeze -> 50% slow for the same duration, stun duration x0.4.
+   * Returns the active status entry, or null when not applied.
+   */
+  applyStatus(enemyOrId, status) {
+    const enemy = this._resolveEnemy(enemyOrId);
+    if (!enemy || enemy.dead || !status) return null;
+    const id = String(typeof status === 'string' ? status : status.id || '').toLowerCase();
+    const def = statusDef(id);
+    if (!def) return null;
+    if (!enemy.statuses) enemy.statuses = {};
+
+    let duration = Number(typeof status === 'object' ? status.duration : NaN);
+    if (!Number.isFinite(duration) || duration <= 0) duration = Number(def.duration) || 1;
+    if (id === 'stun' && enemy.isBoss) duration *= 0.4;
+
+    const prev = enemy.statuses[id];
+    const entry = prev || { id, name: def.name || id, color: def.color ?? 0xffffff };
+    entry.duration = duration;
+    entry.remaining = duration;
+    entry.slowPct = 0;
+    entry.root = false;
+    entry.dmgTakenPct = 0;
+
+    if (DOT_STATUSES.has(id)) {
+      entry.tick = Math.max(0.2, Number(def.tick) || 1);
+      if (!prev) entry.tickTimer = entry.tick;
+      const given = Number(typeof status === 'object' ? status.dotPerTick : NaN);
+      const fallback = Math.max(1, Math.round(enemy.maxHp * (enemy.isBoss ? 0.03 : 0.06)));
+      // Keep the stronger DoT when refreshing
+      const dot = Number.isFinite(given) && given > 0 ? Math.round(given) : fallback;
+      entry.dotPerTick = prev ? Math.max(prev.dotPerTick || 0, dot) : dot;
+    } else if (id === 'chill') {
+      entry.slowPct = Number(def.slowPct) || 40;
+    } else if (id === 'freeze') {
+      if (enemy.isBoss) {
+        entry.slowPct = 50;
+      } else {
+        entry.slowPct = 100;
+        entry.root = true;
+        // Cancel a pending wind-up so the frozen enemy cannot release an attack on thaw
+        if (enemy.state === AI_STATE.TELEGRAPH || enemy.state === AI_STATE.ATTACK || enemy.state === AI_STATE.SKILL) {
+          enemy.state = AI_STATE.CHASE;
+          enemy.pendingSkill = null;
+          enemy.attackCooldown = Math.max(enemy.attackCooldown, enemy.attackCooldownMax * 0.5);
+        }
+        if (enemy.telegraphMesh) enemy.telegraphMesh.visible = false;
+      }
+    } else if (id === 'shock') {
+      entry.dmgTakenPct = Number(def.dmgTakenPct) || 15;
+    } else if (id === 'stun') {
+      if (enemy.telegraphMesh) enemy.telegraphMesh.visible = false;
+      enemy.pendingSkill = null;
+      const already = enemy.state === AI_STATE.STUN ? Number(enemy.stunTimer) || 0 : 0;
+      enemy.state = AI_STATE.STUN;
+      enemy.stunTimer = Math.max(already, duration);
+    }
+
+    enemy.statuses[id] = entry;
+    if (!prev && this.renderer?.spawnFloatingText) {
+      this.renderer.spawnFloatingText({ x: enemy.x, y: 0.9, z: enemy.z }, entry.name, { color: colorToCss(entry.color) });
+    }
+    this._refreshStatusRing(enemy);
+    return entry;
+  }
+
+  hasStatus(enemyOrId, id) {
+    const enemy = this._resolveEnemy(enemyOrId);
+    return Boolean(enemy?.statuses?.[id] && enemy.statuses[id].remaining > 0);
+  }
+
+  getStatuses(enemyOrId) {
+    const enemy = this._resolveEnemy(enemyOrId);
+    return enemy?.statuses ? Object.values(enemy.statuses).map((s) => ({ ...s })) : [];
+  }
+
+  /** Damage-taken multiplier from Shock (1 when unaffected). */
+  getDamageTakenMult(enemyOrId) {
+    const enemy = this._resolveEnemy(enemyOrId);
+    const pct = enemy?.statuses?.shock?.dmgTakenPct || 0;
+    return 1 + Math.max(0, pct) / 100;
+  }
+
+  /** Movement speed multiplier from Chill / Freeze (strongest slow wins). */
+  getSpeedMult(enemyOrId) {
+    const enemy = this._resolveEnemy(enemyOrId);
+    if (!enemy?.statuses) return 1;
+    let slow = 0;
+    for (const id in enemy.statuses) slow = Math.max(slow, enemy.statuses[id].slowPct || 0);
+    return Math.max(0, 1 - Math.min(100, slow) / 100);
+  }
+
+  _isRooted(enemy) {
+    return Boolean(enemy?.statuses?.freeze?.root);
+  }
+
+  clearStatuses(enemyOrId) {
+    const enemy = this._resolveEnemy(enemyOrId);
+    if (!enemy) return;
+    const hadTint = Boolean(enemy._statusTinted);
+    enemy.statuses = {};
+    if (hadTint) this._restoreTint(enemy);
+    this._removeStatusRing(enemy);
+  }
+
+  _updateStatuses(enemy, dt, time = 0) {
+    const st = enemy.statuses;
+    if (!st) return;
+    let changed = false;
+    for (const id of Object.keys(st)) {
+      const s = st[id];
+      if (s.dotPerTick > 0 && s.tick > 0) {
+        s.tickTimer -= dt;
+        while (s.tickTimer <= 0 && !enemy.dead && s.remaining > 0) {
+          s.tickTimer += s.tick;
+          const res = this.applyDamageToEnemy(enemy, s.dotPerTick, { isDot: true, noStun: true, knockback: 0, element: id });
+          if (res?.damage && this.renderer?.spawnFloatingText) {
+            this.renderer.spawnFloatingText({ x: enemy.x, y: 0.5, z: enemy.z }, res.damage, { color: colorToCss(s.color) });
+          }
+        }
+        if (enemy.dead) return;
+      }
+      s.remaining -= dt;
+      if (s.remaining <= 0) {
+        delete st[id];
+        changed = true;
+      }
+    }
+    if (changed) this._refreshStatusRing(enemy);
+    if (enemy.statusRing) {
+      enemy.statusRing.rotation.z = time * 2.4;
+      const pulse = 0.55 + Math.sin(time * 8) * 0.15;
+      enemy.statusRing.material.opacity = pulse;
+    }
+  }
+
+  _topStatus(enemy) {
+    const st = enemy?.statuses;
+    if (!st) return null;
+    for (const id of STATUS_RING_PRIORITY) if (st[id]) return st[id];
+    const keys = Object.keys(st);
+    return keys.length ? st[keys[0]] : null;
+  }
+
+  _refreshStatusRing(enemy) {
+    const top = this._topStatus(enemy);
+    if (!top) {
+      this._removeStatusRing(enemy);
+      return;
+    }
+    if (!enemy.mesh) return;
+    if (!enemy.statusRing) {
+      const inner = enemy.isBoss ? 0.8 : 0.42;
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(inner, inner + 0.12, 20),
+        new THREE.MeshBasicMaterial({ color: top.color, side: THREE.DoubleSide, transparent: true, opacity: 0.6, depthWrite: false })
+      );
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = 0.05;
+      ring.userData.noFlash = true;
+      enemy.mesh.add(ring);
+      enemy.statusRing = ring;
+    }
+    enemy.statusRing.material.color.setHex(top.color);
+  }
+
+  _removeStatusRing(enemy) {
+    const ring = enemy?.statusRing;
+    if (!ring) return;
+    ring.parent?.remove(ring);
+    ring.geometry?.dispose?.();
+    ring.material?.dispose?.();
+    enemy.statusRing = null;
+  }
+
+  /** Blue tint while frozen (bosses: lighter tint for the slow); restored on thaw / hit flash. */
+  _applyStatusTint(enemy, dt) {
+    const ud = enemy.mesh?.userData;
+    if (!ud) return;
+    const frozen = enemy.statuses?.freeze;
+    if (frozen && this._isRooted(enemy) && ud.hitFlashTimer > 0) {
+      // animate() is skipped while frozen: decay the hit flash here
+      ud.hitFlashTimer = Math.max(0, ud.hitFlashTimer - dt * 6);
+      ud.setHitFlash?.(ud.hitFlashTimer);
+    }
+    if (frozen && !(ud.hitFlashTimer > 0.02)) {
+      const k = enemy.isBoss ? 0.3 : 0.6;
+      for (const entry of ud.flashMaterials || []) {
+        if (!entry.mat?.emissive) continue;
+        entry.mat.emissive.setHex(frozen.color ?? 0x6fd4ff);
+        entry.mat.emissiveIntensity = k;
+      }
+      enemy._statusTinted = true;
+    } else if (!frozen && enemy._statusTinted) {
+      this._restoreTint(enemy);
+    }
+  }
+
+  _restoreTint(enemy) {
+    enemy._statusTinted = false;
+    const ud = enemy.mesh?.userData;
+    if (!ud || ud.hitFlashTimer > 0.02) return;
+    for (const entry of ud.flashMaterials || []) {
+      if (!entry.mat?.emissive) continue;
+      entry.mat.emissive.copy(entry.baseEmissive);
+      entry.mat.emissiveIntensity = entry.baseIntensity;
     }
   }
 
@@ -1389,8 +1653,9 @@ export class EnemyManager {
     const vx = dirX + sepX;
     const vz = dirZ + sepZ;
     const vLen = Math.hypot(vx, vz) || 1;
-    const moveX = (vx / vLen) * speed * dt;
-    const moveZ = (vz / vLen) * speed * dt;
+    const slowed = speed * this.getSpeedMult(enemy);
+    const moveX = (vx / vLen) * slowed * dt;
+    const moveZ = (vz / vLen) * slowed * dt;
 
     const nextX = enemy.x + moveX;
     const nextZ = enemy.z + moveZ;
