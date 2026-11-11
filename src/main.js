@@ -101,6 +101,7 @@ async function bootstrap() {
 
     const floorData = dungeon.generateFloor(targetFloor, renderer, models3d, extractedData);
     renderer.setEnvironmentTheme(floorData.theme || 'cave');
+    renderer.applyAtmosphere?.(floorData.atmosphere || null);
     renderer.brightenWorldMaterials?.(dungeon.rootGroup || renderer.scene);
     player.resetPosition(floorData.spawnPoint || { x: 0, y: 0, z: 0 });
 

@@ -12,6 +12,25 @@ import {
   createStairsMesh
 } from '../engine/models3d.js';
 import { buildVillage } from './villageBuilder.js';
+import {
+  InstanceBatch,
+  styleFor,
+  tint,
+  nearOpening,
+  bestCorner,
+  decorateFloor,
+  dressSpecialRoom,
+  buildVaultAlcove,
+  decorateBossArenaProps,
+  addTorchInstance,
+  buildBellMesh,
+  buildSteleMesh,
+  buildPuzzleStatueMesh,
+  buildAltarMesh,
+  BELL_PITCHES
+} from './dungeonDecor.js';
+
+const LIGHT_POOL_SIZE = 8;
 
 // Tile constants for grid collision and minimap
 export const TILE = {
@@ -24,6 +43,8 @@ export const TILE = {
   PIT: 6,
   WATER: 7
 };
+
+const SPECIAL_ROOM_CYCLE = ['vault', 'shrine', 'processional', 'trap_gallery'];
 
 export const DUNGEON_THEMES = {
   village: {
@@ -43,8 +64,10 @@ export const DUNGEON_THEMES = {
   },
   cave: {
     id: 'cave',
-    name: 'Whispering Caverns',
-    subtitle: 'Abandoned Mine & Goblin Burrows',
+    name: 'Mine Outskirts',
+    subtitle: 'Timbered Galleries & Glittering Ore',
+    decor: 'cave',
+    atmosphere: { fogColor: 0x1d1810, fogNear: 24, fogFar: 70, ambientColor: 0xd9b98a, ambientIntensity: 0.95, keyLightColor: 0xffd9a0, keyLightIntensity: 1.25, dust: true },
     floorColor: 0x7c6f5e,
     altFloorColor: 0x6e6150,
     wallColor: 0x94836d,
@@ -58,8 +81,10 @@ export const DUNGEON_THEMES = {
   },
   crypt: {
     id: 'crypt',
-    name: 'Forgotten Catacombs',
-    subtitle: 'Halls of the Restless Dead',
+    name: 'Sealed Catacombs',
+    subtitle: 'Sarcophagi, Bone Niches & Candlelight',
+    decor: 'crypt',
+    atmosphere: { fogColor: 0x141a2a, fogNear: 22, fogFar: 64, ambientColor: 0x9fb4d8, ambientIntensity: 0.9, keyLightColor: 0xa9c4ff, keyLightIntensity: 1.1, dust: true },
     floorColor: 0x5a657d,
     altFloorColor: 0x4d576e,
     wallColor: 0x707d99,
@@ -73,8 +98,10 @@ export const DUNGEON_THEMES = {
   },
   ruins: {
     id: 'ruins',
-    name: 'Sunken Arcane Ruins',
-    subtitle: 'Sanctum of the Old Kingdom',
+    name: 'Sunken Temple',
+    subtitle: 'Broken Pillars & Creeping Vines',
+    decor: 'ruins',
+    atmosphere: { fogColor: 0x10201c, fogNear: 26, fogFar: 74, ambientColor: 0xa8dcc4, ambientIntensity: 1.0, keyLightColor: 0xcfffe8, keyLightIntensity: 1.3, dust: true },
     floorColor: 0x56756c,
     altFloorColor: 0x49665d,
     wallColor: 0x6d9186,
@@ -88,8 +115,10 @@ export const DUNGEON_THEMES = {
   },
   lava: {
     id: 'lava',
-    name: 'Molten Hellforge',
-    subtitle: 'Depths of the Crimson Abyss',
+    name: 'Ember Forge',
+    subtitle: 'Magma Cracks, Anvils & Hanging Chains',
+    decor: 'lava',
+    atmosphere: { fogColor: 0x240d08, fogNear: 22, fogFar: 62, ambientColor: 0xffb487, ambientIntensity: 0.95, keyLightColor: 0xff9a5a, keyLightIntensity: 1.3, dust: false },
     floorColor: 0x7a4942,
     altFloorColor: 0x693d37,
     wallColor: 0x96564d,
@@ -103,8 +132,10 @@ export const DUNGEON_THEMES = {
   },
   boss: {
     id: 'boss',
-    name: 'Chaos Sanctum',
-    subtitle: 'Throne of the Abyssal Lord',
+    name: "Emperor's Tomb",
+    subtitle: 'Terracotta Legions & Quicksilver Rivers',
+    decor: 'abyss',
+    atmosphere: { fogColor: 0x0f0e1c, fogNear: 22, fogFar: 66, ambientColor: 0xa6a0d8, ambientIntensity: 0.9, keyLightColor: 0x9ff0cf, keyLightIntensity: 1.15, dust: true },
     floorColor: 0x634b82,
     altFloorColor: 0x553f73,
     wallColor: 0x7c5fa3,
@@ -121,19 +152,19 @@ export const DUNGEON_THEMES = {
 export const FLOOR_DEFINITIONS = [
   // recommendedLevel mirrors floorMonsterLevel(floor) in src/systems/inventory.js (monster level & loot tier)
   { floor: 1, name: 'Mine Outskirts B1F', theme: 'cave', recommendedLevel: 1, isBossFloor: false, monsterTypes: ['slime', 'goblin'] },
-  { floor: 2, name: 'Goblin Tunnels B2F', theme: 'cave', recommendedLevel: 3, isBossFloor: false, monsterTypes: ['slime', 'goblin', 'bat'] },
+  { floor: 2, name: 'Ore Galleries B2F', theme: 'cave', recommendedLevel: 3, isBossFloor: false, monsterTypes: ['slime', 'goblin', 'bat'] },
   { floor: 3, name: 'Chieftain Cavern B3F', theme: 'cave', recommendedLevel: 5, isBossFloor: true, bossId: 'goblin_king', bossName: 'Grimtooth the Goblin King', monsterTypes: ['goblin', 'wolf', 'slime'] },
-  { floor: 4, name: 'Damp Ossuary B4F', theme: 'crypt', recommendedLevel: 9, isBossFloor: false, monsterTypes: ['skeleton', 'bat', 'spider'] },
-  { floor: 5, name: 'Cursed Tombs B5F', theme: 'crypt', recommendedLevel: 13, isBossFloor: false, monsterTypes: ['skeleton', 'mage', 'spider'] },
+  { floor: 4, name: 'Bone Niche Ossuary B4F', theme: 'crypt', recommendedLevel: 9, isBossFloor: false, monsterTypes: ['skeleton', 'bat', 'spider'] },
+  { floor: 5, name: 'Sealed Tombs B5F', theme: 'crypt', recommendedLevel: 13, isBossFloor: false, monsterTypes: ['skeleton', 'mage', 'spider'] },
   { floor: 6, name: 'Necromancer Crypt B6F', theme: 'crypt', recommendedLevel: 17, isBossFloor: true, bossId: 'crypt_lich', bossName: 'Malakor the Undying Lich', monsterTypes: ['skeleton', 'mage'] },
-  { floor: 7, name: 'Overgrown Temple B7F', theme: 'ruins', recommendedLevel: 21, isBossFloor: false, monsterTypes: ['orc', 'wolf', 'mage'] },
+  { floor: 7, name: 'Sunken Temple B7F', theme: 'ruins', recommendedLevel: 21, isBossFloor: false, monsterTypes: ['orc', 'wolf', 'mage'] },
   { floor: 8, name: 'Hall of Pillars B8F', theme: 'ruins', recommendedLevel: 25, isBossFloor: false, monsterTypes: ['orc', 'golem', 'mage'] },
   { floor: 9, name: 'Runic Core B9F', theme: 'ruins', recommendedLevel: 28, isBossFloor: true, bossId: 'ancient_golem', bossName: 'Aegis the Runic Colossus', monsterTypes: ['golem', 'orc', 'mage'] },
-  { floor: 10, name: 'Magma Conduit B10F', theme: 'lava', recommendedLevel: 32, isBossFloor: false, monsterTypes: ['orc', 'golem', 'bat'] },
-  { floor: 11, name: 'Obsidian Bastion B11F', theme: 'lava', recommendedLevel: 36, isBossFloor: false, monsterTypes: ['orc', 'mage', 'golem'] },
+  { floor: 10, name: 'Ember Forge B10F', theme: 'lava', recommendedLevel: 32, isBossFloor: false, monsterTypes: ['orc', 'golem', 'bat'] },
+  { floor: 11, name: 'Obsidian Foundry B11F', theme: 'lava', recommendedLevel: 36, isBossFloor: false, monsterTypes: ['orc', 'mage', 'golem'] },
   { floor: 12, name: 'Hellforge Altar B12F', theme: 'lava', recommendedLevel: 40, isBossFloor: true, bossId: 'infernal_overlord', bossName: 'Ignis the Hellforge Tyrant', monsterTypes: ['golem', 'orc', 'mage'] },
-  { floor: 13, name: 'Void Corridor B13F', theme: 'boss', recommendedLevel: 44, isBossFloor: false, monsterTypes: ['skeleton', 'mage', 'golem'] },
-  { floor: 14, name: 'Citadel of Shadows B14F', theme: 'boss', recommendedLevel: 48, isBossFloor: false, monsterTypes: ['orc', 'mage', 'golem'] },
+  { floor: 13, name: 'Terracotta Avenue B13F', theme: 'boss', recommendedLevel: 44, isBossFloor: false, monsterTypes: ['skeleton', 'mage', 'golem'] },
+  { floor: 14, name: 'Quicksilver Halls B14F', theme: 'boss', recommendedLevel: 48, isBossFloor: false, monsterTypes: ['orc', 'mage', 'golem'] },
   { floor: 15, name: 'Heart of Chaos B15F', theme: 'boss', recommendedLevel: 52, isBossFloor: true, bossId: 'chaos_lord', bossName: 'Azrael, Lord of Chaos', monsterTypes: ['golem', 'mage', 'orc'] }
 ];
 
@@ -302,6 +333,16 @@ export class DungeonGenerator {
     this.groundLoot = [];
     this.solidObstacles = [];
     this.bossRoom = null;
+    this.bossArena = null;
+    this.puzzle = null;
+    this.puzzleProps = [];
+    this.specialRoomType = null;
+    this._reserved = [];
+    this._lightSources = [];
+    this._lightPool = [];
+    this._lightClock = 0;
+    this._batch = null;
+    this._wallTiles = [];
     this.unlockedMaxFloor = 1;
     this.elapsedTime = 0;
     this.villageBuild = null;
@@ -359,6 +400,7 @@ export class DungeonGenerator {
   }
 
   clearWorld() {
+    this._freeLightPool();
     if (this.renderer?.clearDynamicLights) {
       this.renderer.clearDynamicLights();
     }
@@ -387,6 +429,15 @@ export class DungeonGenerator {
     this.groundLoot = [];
     this.solidObstacles = [];
     this.bossRoom = null;
+    this.bossArena = null;
+    this.puzzle = null;
+    this.puzzleProps = [];
+    this.specialRoomType = null;
+    this._reserved = [];
+    this._lightSources = [];
+    this._lightPool = [];
+    this._batch = null;
+    this._wallTiles = [];
   }
 
   worldToGrid(x, z) {
@@ -672,6 +723,7 @@ export class DungeonGenerator {
     }
 
     const rand = seededRandom(fNum * 9973 + 1337);
+    this.specialRoomType = SPECIAL_ROOM_CYCLE[(fNum - 1) % SPECIAL_ROOM_CYCLE.length];
 
     this.tileSize = 2.0;
     this.gridWidth = isBossFloor ? 44 : 48;
@@ -713,6 +765,7 @@ export class DungeonGenerator {
       const roomObj = {
         id: idx,
         type: r.type,
+        special: r.type === 'treasure' ? 'vault' : (r.type === 'trap' ? 'trap_gallery' : r.type === 'processional' ? 'processional' : r.type === 'shrine' ? 'shrine' : null),
         gx: r.gx,
         gz: r.gz,
         gw: r.gw,
@@ -744,13 +797,14 @@ export class DungeonGenerator {
 
   _layoutDungeonRooms(floorNum, isBossFloor, rand) {
     // Structured 3x3 sector layout guarantees non-overlapping, rich multi-room dungeons
+    const special = SPECIAL_ROOM_CYCLE[(floorNum - 1) % SPECIAL_ROOM_CYCLE.length];
     const sectors = [
       { sx: 0, sz: 2, defaultType: 'start' },
       { sx: 1, sz: 2, defaultType: 'combat' },
       { sx: 2, sz: 2, defaultType: 'treasure' },
-      { sx: 2, sz: 1, defaultType: 'trap' },
-      { sx: 1, sz: 1, defaultType: 'combat' },
-      { sx: 0, sz: 1, defaultType: 'shrine' },
+      { sx: 2, sz: 1, defaultType: special === 'trap_gallery' ? 'trap' : 'combat' },
+      { sx: 1, sz: 1, defaultType: special === 'processional' ? 'processional' : 'combat' },
+      { sx: 0, sz: 1, defaultType: special === 'shrine' ? 'shrine' : 'combat' },
       { sx: 0, sz: 0, defaultType: 'combat' },
       { sx: 1, sz: 0, defaultType: isBossFloor ? 'boss' : 'exit' }
     ];
@@ -761,8 +815,16 @@ export class DungeonGenerator {
 
     sectors.forEach((sec, idx) => {
       const isBossRoom = sec.defaultType === 'boss';
-      const rw = isBossRoom ? Math.min(cellW + 4, 14) : Math.max(7, Math.floor(7 + rand() * 3));
-      const rh = isBossRoom ? Math.min(cellH + 4, 14) : Math.max(7, Math.floor(7 + rand() * 3));
+      const isHall = sec.defaultType === 'processional';
+      const isGallery = sec.defaultType === 'trap';
+      const rw = isBossRoom ? Math.min(cellW + 4, 14)
+        : isHall ? Math.min(cellW - 1, 13)
+        : isGallery ? 9
+        : Math.max(7, Math.floor(7 + rand() * 3));
+      const rh = isBossRoom ? Math.min(cellH + 4, 14)
+        : isHall ? 9
+        : isGallery ? 9
+        : Math.max(7, Math.floor(7 + rand() * 3));
 
       const baseGx = 3 + sec.sx * cellW;
       const baseGz = 3 + sec.sz * cellH;
@@ -849,20 +911,24 @@ export class DungeonGenerator {
         }
       }
     }
+    this._wallTiles = wallTiles;
+    this._batch = new InstanceBatch();
 
-    // Bright dungeon-wide ambient + hemisphere fill lights so all rooms & corridors are clearly visible
-    const dungeonAmbient = new THREE.AmbientLight(this.theme.ambientColor || 0xffffff, 1.15);
-    const dungeonHemi = new THREE.HemisphereLight(0xffffff, this.theme.floorColor, 0.95);
+    // Low, moody fill: the renderer's atmosphere carries most of the light; torches/braziers are
+    // emissive meshes and the 8-light pool (see _updateLightBudget) adds warm local light.
+    const atm = this.theme.atmosphere || {};
+    const dungeonAmbient = new THREE.AmbientLight(atm.ambientColor ?? this.theme.ambientColor ?? 0xffffff, 0.32);
+    const dungeonHemi = new THREE.HemisphereLight(0xb8c0d8, this.theme.floorColor, 0.38);
     dungeonHemi.position.set(0, 18, 0);
     this.rootGroup.add(dungeonAmbient, dungeonHemi);
 
-    // Instanced Floor Tiles (use white base material so instanceColor is not darkened by multiplication)
+    // Instanced floor tiles (white base material so instanceColor is not darkened by multiplication)
     const floorGeo = new THREE.BoxGeometry(this.tileSize, 0.16, this.tileSize);
     const floorMat = new THREE.MeshStandardMaterial({
       color: 0xffffff,
       emissive: new THREE.Color(this.theme.floorColor),
-      emissiveIntensity: 0.24,
-      roughness: 0.72,
+      emissiveIntensity: 0.22,
+      roughness: 0.74,
       metalness: 0.05
     });
     const floorInst = new THREE.InstancedMesh(floorGeo, floorMat, Math.max(1, floorTiles.length));
@@ -875,31 +941,31 @@ export class DungeonGenerator {
 
     floorTiles.forEach((tile, i) => {
       const pos = this.gridToWorld(tile.gx, tile.gz);
-      dummy.position.set(pos.x, -0.08, pos.z);
-      dummy.scale.set(1, 1, 1);
+      dummy.position.set(pos.x, -0.08 + (rand() - 0.5) * 0.03, pos.z);
+      dummy.scale.set(0.985, 1, 0.985);
       dummy.updateMatrix();
       floorInst.setMatrixAt(i, dummy.matrix);
 
       const checker = (tile.gx + tile.gz) % 2 === 0;
       color.copy(checker ? baseFloorCol : altFloorCol);
-      if (tile.t === TILE.CORRIDOR) {
-        color.multiplyScalar(0.95);
-      }
+      color.multiplyScalar(0.86 + rand() * 0.26);
+      if (rand() < 0.07) color.multiplyScalar(0.78); // cracked / soot-stained slab
+      if (tile.t === TILE.CORRIDOR) color.multiplyScalar(0.92);
       floorInst.setColorAt(i, color);
     });
     floorInst.instanceMatrix.needsUpdate = true;
     if (floorInst.instanceColor) floorInst.instanceColor.needsUpdate = true;
     this.rootGroup.add(floorInst);
 
-    // Instanced Perimeter Wall Blocks (use white base material so instanceColor stays bright)
+    // Instanced perimeter wall blocks
     const wallHeight = 2.7;
     const wallGeo = new THREE.BoxGeometry(this.tileSize, wallHeight, this.tileSize);
     const wallMat = new THREE.MeshStandardMaterial({
       color: 0xffffff,
       emissive: new THREE.Color(this.theme.wallColor),
-      emissiveIntensity: 0.2,
-      roughness: 0.68,
-      metalness: 0.08
+      emissiveIntensity: 0.18,
+      roughness: 0.7,
+      metalness: 0.06
     });
     const wallInst = new THREE.InstancedMesh(wallGeo, wallMat, Math.max(1, wallTiles.length));
     wallInst.castShadow = true;
@@ -914,7 +980,7 @@ export class DungeonGenerator {
       dummy.updateMatrix();
       wallInst.setMatrixAt(i, dummy.matrix);
 
-      color.copy(baseWallCol).multiplyScalar(0.96 + rand() * 0.12);
+      color.copy(baseWallCol).multiplyScalar(0.9 + rand() * 0.2);
       wallInst.setColorAt(i, color);
     });
     wallInst.instanceMatrix.needsUpdate = true;
@@ -922,8 +988,28 @@ export class DungeonGenerator {
     this.rootGroup.add(wallInst);
   }
 
+  /** True when a prop of `radius` can be dropped at (x, z) without clipping other solids/traps/doorways. */
+  _spotFree(x, z, radius = 0.5) {
+    if (nearOpening(this, x, z, 1)) return false;
+    for (const r of this._reserved) {
+      if (Math.hypot(x - r.x, z - r.z) < r.r) return false;
+    }
+    for (const o of this.solidObstacles) {
+      if (Math.hypot(x - o.x, z - o.z) < o.radius + radius) return false;
+    }
+    for (const t of this.traps) {
+      if (Math.hypot(x - t.x, z - t.z) < t.radius + radius + 0.4) return false;
+    }
+    for (const g of this.gates) {
+      if (Math.hypot(x - g.x, z - g.z) < g.radius + radius) return false;
+    }
+    return true;
+  }
+
   _populateDungeonFeatures(floorNum, isBossFloor, rand) {
     const startRoom = this.rooms[0];
+    const st = styleFor(this.theme);
+    const batch = this._batch || (this._batch = new InstanceBatch());
     this.spawnPoint = {
       x: startRoom.centerX,
       y: 0,
@@ -954,20 +1040,25 @@ export class DungeonGenerator {
       mesh: returnPortalMesh
     });
 
-    // Populate each room according to its role
-    this.rooms.forEach((room, idx) => {
-      // Overhead warm room fill light so every room center is well-lit
-      if (this.renderer?.addPointLight) {
-        this.renderer.addPointLight(
-          new THREE.Vector3(room.centerX, 4.2, room.centerZ),
-          this.theme.torchColor || 0xffbb66,
-          2.2,
-          22,
-          false
-        );
-      }
+    // --- Vault alcove + puzzle placement (reserved first so decor keeps clear of them) ---------
+    const vaultRoom = this.rooms.find((r) => r.type === 'treasure');
+    const vaultCorner = vaultRoom ? bestCorner(this, vaultRoom, 4) : null;
+    const vault = vaultRoom && vaultCorner ? buildVaultAlcove(this, batch, vaultRoom, vaultCorner) : null;
+    const gateId = `f${floorNum}_gate_treasure`;
+    if (vault) {
+      this._reserved.push({ x: vault.center.x, z: vault.center.z, r: 4.2 });
+      const gate = this._spawnGate(vault.gate.x, vault.gate.z, gateId, false);
+      if (gate.mesh) gate.mesh.rotation.y = Math.PI / 2;
+    }
+    const puzzleRoom = this.rooms[1];
+    if (vault) this._buildPuzzle(floorNum, puzzleRoom, gateId, rand);
 
-      // Corner torches in every room
+    // --- Theme decor: pillars, arches, rubble, per-theme props --------------------------------
+    decorateFloor(this, batch, rand, this._wallTiles || []);
+
+    // --- Per-room content --------------------------------------------------------------------
+    this.rooms.forEach((room, idx) => {
+      // Corner torches: emissive instances, lit by the pooled lights
       const torchOffsets = [
         [room.x + 1.8, room.z + 1.8],
         [room.x + room.w - 1.8, room.z + 1.8],
@@ -979,39 +1070,37 @@ export class DungeonGenerator {
       });
 
       if (room.type === 'start') {
-        // Starter breakable pots near entrance
         this._spawnBreakable(room.centerX + 2.8, room.centerZ - 2.0, 'barrel', `f${floorNum}_b_start1`);
         this._spawnBreakable(room.centerX + 3.5, room.centerZ - 1.2, 'crate', `f${floorNum}_b_start2`);
       } else if (room.type === 'treasure') {
-        // High-tier chest + minor chest + Locked Gate & Lever Switch in previous room
+        // Treasure vault: 2-3 chests inside the gated alcove
         const mainTier = floorNum >= 9 ? 'epic' : floorNum >= 4 ? 'rare' : 'magic';
-        this._spawnChest(room.centerX, room.centerZ, mainTier, `f${floorNum}_chest_treasure_main`);
-        this._spawnChest(room.centerX + 2.4, room.centerZ - 1.6, 'normal', `f${floorNum}_chest_treasure_side`);
-
-        // Spawn a Gate + Switch pair controlling access or bonus cache
-        const prevRoom = this.rooms[Math.max(0, idx - 1)];
-        const gateId = `f${floorNum}_gate_treasure`;
-        this._spawnSwitch(
-          prevRoom.centerX + 2.5,
-          prevRoom.centerZ + 2.5,
-          gateId,
-          `Pull Rune Lever (Unlocks Treasure Vault)`
-        );
-        this._spawnGate(room.x + room.w * 0.5, room.z + 0.5, gateId, false);
-      } else if (room.type === 'trap') {
-        // Grid of timed spike & elemental traps
-        const trapTypes = this.theme.trapTypes || ['spikes'];
-        for (let ox = -2.2; ox <= 2.2; ox += 2.2) {
-          for (let oz = -2.2; oz <= 2.2; oz += 2.2) {
-            const tType = trapTypes[Math.floor(rand() * trapTypes.length)];
-            this._spawnTrap(room.centerX + ox, room.centerZ + oz, tType, this.theme.element, rand() * Math.PI);
-          }
+        const chestCount = this.specialRoomType === 'vault' ? 3 : 2;
+        const slots = vault ? vault.slots : [{ x: room.centerX, z: room.centerZ }, { x: room.centerX + 2.4, z: room.centerZ - 1.6 }, { x: room.centerX - 2.4, z: room.centerZ - 1.6 }];
+        const tiers = [mainTier, 'rare', 'normal'];
+        for (let c = 0; c < chestCount; c++) {
+          const id = c === 0 ? `f${floorNum}_chest_treasure_main` : `f${floorNum}_chest_treasure_side${c}`;
+          this._spawnChest(slots[c].x, slots[c].z, c === 0 ? tiers[0] : (c === 1 ? 'normal' : 'rare'), id);
         }
-        this._spawnChest(room.centerX, room.centerZ + 3.2, 'rare', `f${floorNum}_chest_trap`);
+        if (floorNum === 1 && vault) {
+          // Floor 1 keeps the simple lever (puzzles start on floor 2)
+          const corner = this._pickPuzzleCorner(puzzleRoom);
+          const lx = puzzleRoom.centerX + (corner.sx * (puzzleRoom.w * 0.5 - 2.2));
+          const lz = puzzleRoom.centerZ + (corner.sz * (puzzleRoom.h * 0.5 - 2.2));
+          this._spawnSwitch(lx, lz, gateId, 'Pull Rune Lever (Unlocks Treasure Vault) [E]');
+          this._reserved.push({ x: lx, z: lz, r: 1.8 });
+          this.puzzle = { type: 'lever', solved: false, gateId };
+        }
+      } else if (room.type === 'trap') {
+        this._buildTrapGallery(room, floorNum, rand);
+        dressSpecialRoom(this, batch, room, 'trap_gallery', rand);
       } else if (room.type === 'shrine') {
         this._spawnShrine(room.centerX, room.centerZ, floorNum);
+        dressSpecialRoom(this, batch, room, 'shrine', rand);
+      } else if (room.type === 'processional') {
+        dressSpecialRoom(this, batch, room, 'processional', rand);
+        this._spawnChest(room.x + room.w - 2.4, room.centerZ, 'rare', `f${floorNum}_chest_hall`);
       } else if (room.type === 'exit') {
-        // Stairs & Portal to Next Floor
         const stairsMesh = (this.models3d?.createStairsMesh || createStairsMesh)('down');
         stairsMesh.position.set(room.centerX, 0, room.centerZ - 2.2);
         this.rootGroup.add(stairsMesh);
@@ -1020,15 +1109,8 @@ export class DungeonGenerator {
         nextPortalMesh.position.set(room.centerX, 0, room.centerZ);
         this.rootGroup.add(nextPortalMesh);
 
-        if (this.renderer?.addPointLight) {
-          this.renderer.addPointLight(
-            new THREE.Vector3(room.centerX, 1.8, room.centerZ),
-            this.theme.portalColor,
-            2.2,
-            11,
-            true
-          );
-        }
+        // portal glow joins the pooled light budget instead of owning a light
+        this._lightSources.push({ x: room.centerX, y: 1.8, z: room.centerZ, color: this.theme.portalColor, intensity: 2.2, distance: 11 });
 
         this.portals.push({
           id: `next_floor_f${floorNum}`,
@@ -1046,47 +1128,234 @@ export class DungeonGenerator {
 
         this._spawnChest(room.centerX + 3.0, room.centerZ - 2.0, 'magic', `f${floorNum}_chest_exit`);
       } else if (room.type === 'boss') {
-        // Grand Boss Arena pillars, Boss Victory Chest (locked until boss dies) & Next Floor Portal
         this._decorateBossArena(room, floorNum);
       }
 
-      // Scatter breakable barrels/urns/crystals in combat, trap, and treasure rooms
-      if (room.type !== 'start') {
+      // Scatter breakables (skipped where they would clog a puzzle, vault, trap lane or doorway)
+      if (room.type !== 'start' && room.type !== 'trap') {
         const count = 2 + Math.floor(rand() * 3);
         const breakTypes = this.theme.breakableTypes || ['barrel', 'crate', 'urn'];
         for (let b = 0; b < count; b++) {
           const bx = room.centerX + (rand() - 0.5) * (room.w - 4.2);
           const bz = room.centerZ + (rand() - 0.5) * (room.h - 4.2);
           if (Math.hypot(bx - room.centerX, bz - room.centerZ) < 2.2) continue;
+          if (!this._spotFree(bx, bz, 0.5)) continue;
           const bType = breakTypes[Math.floor(rand() * breakTypes.length)];
           this._spawnBreakable(bx, bz, bType, `f${floorNum}_r${idx}_b${b}`);
         }
       }
     });
+
+    void st;
+    this._decorMeshCount = batch.flush(this.rootGroup);
+    this._createLightPool();
+  }
+
+  _buildTrapGallery(room, floorNum, rand) {
+    // Rows of traps with one winding safe column per row; chest waits at the end of the path.
+    const trapTypes = this.theme.trapTypes || ['spikes'];
+    const colX = [-4.4, -2.2, 0, 2.2, 4.4];
+    const safe = [2, 1, 2, 3];
+    const rowZ = [-3.3, -1.1, 1.1, 3.3];
+    safe.forEach((sc, r) => {
+      const cols = [0, 1, 2, 3, 4]
+        .filter((c) => c !== sc)
+        .sort((a, b) => Math.abs(a - sc) - Math.abs(b - sc))
+        .slice(0, 3);
+      cols.forEach((c) => {
+        const tType = trapTypes[Math.floor(rand() * trapTypes.length)];
+        this._spawnTrap(room.centerX + colX[c], room.centerZ + rowZ[r], tType, this.theme.element, rand() * Math.PI);
+      });
+    });
+    room.safeLaneX = room.centerX;
+    this._spawnChest(room.centerX + colX[safe[safe.length - 1]], room.centerZ + 5.2, 'rare', `f${floorNum}_chest_trap`);
+  }
+
+  _pickPuzzleCorner(room) {
+    return bestCorner(this, room, 4) || { sx: 1, sz: 1 };
+  }
+
+  /** Builds the bell-order (even floors) or rotating-statue (odd floors >= 3) puzzle in `room`. */
+  _buildPuzzle(floorNum, room, gateId, rand) {
+    if (floorNum < 2 || !room) return;
+    const corner = this._pickPuzzleCorner(room);
+    const ex = corner.sx < 0 ? room.x : room.x + room.w;
+    const ez = corner.sz < 0 ? room.z : room.z + room.h;
+    const at = (tx, tz) => ({ x: ex - corner.sx * tx, z: ez - corner.sz * tz });
+    const st = styleFor(this.theme);
+    const addProp = (type, mesh, pos, name, prompt, radius, extra = {}) => {
+      mesh.position.set(pos.x, 0, pos.z);
+      this.rootGroup.add(mesh);
+      if (radius) this.solidObstacles.push({ x: pos.x, z: pos.z, radius });
+      const p = { id: `f${floorNum}_${type}_${this.puzzleProps.length}`, type, name, prompt, x: pos.x, y: 0, z: pos.z, position: { x: pos.x, y: 0, z: pos.z }, mesh, ...extra };
+      this.puzzleProps.push(p);
+      return p;
+    };
+
+    if (floorNum % 2 === 0) {
+      const order = BELL_PITCHES.slice();
+      for (let i = order.length - 1; i > 0; i--) {
+        const j = Math.floor(rand() * (i + 1));
+        [order[i], order[j]] = [order[j], order[i]];
+      }
+      if (order.join() === BELL_PITCHES.join()) order.reverse(); // never the trivial order
+      this.puzzle = { type: 'bells', solved: false, gateId, order, progress: [] };
+      const slots = [at(1.8, 1.8), at(1.8, 3.8), at(1.8, 5.8)];
+      const pitches = BELL_PITCHES.slice();
+      for (let i = pitches.length - 1; i > 0; i--) {
+        const j = Math.floor(rand() * (i + 1));
+        [pitches[i], pitches[j]] = [pitches[j], pitches[i]];
+      }
+      pitches.forEach((pitch, i) => {
+        const mesh = buildBellMesh(pitch);
+        mesh.rotation.y = Math.PI / 2;
+        addProp('bell', mesh, slots[i], `${pitch} Bell`, 'Ring Bell [E]', 0.5, { pitch });
+      });
+      addProp('stele', buildSteleMesh(st.stone), at(4.6, 1.3), 'Ancient Stele', 'Read Stele [E]', 0.6, {
+        text: `The stele reads: ${order.join(' – ')}`
+      });
+      this._reserved.push({ x: at(3.0, 3.6).x, z: at(3.0, 3.6).z, r: 4.6 });
+    } else {
+      // three guardians face the altar from three sides; each interaction turns one by 90 degrees
+      const altarPos = at(4.6, 4.6);
+      const dirs = [
+        { x: altarPos.x + corner.sx * 2.6, z: altarPos.z, face: [-corner.sx, 0] },
+        { x: altarPos.x, z: altarPos.z + corner.sz * 2.6, face: [0, -corner.sz] },
+        { x: altarPos.x - corner.sx * 2.6, z: altarPos.z, face: [corner.sx, 0] }
+      ];
+      this.puzzle = { type: 'statues', solved: false, gateId, statues: [] };
+      addProp('altar', buildAltarMesh(), altarPos, 'Guardian Altar', 'Altar of Guardians', 0.7);
+      dirs.forEach((d, i) => {
+        const target = ((Math.round(Math.atan2(d.face[0], d.face[1]) / (Math.PI / 2)) % 4) + 4) % 4;
+        let rot = Math.floor(rand() * 4);
+        if (i === 0 && rot === target) rot = (target + 1 + Math.floor(rand() * 3)) % 4;
+        const mesh = buildPuzzleStatueMesh(st.stone);
+        mesh.rotation.y = rot * (Math.PI / 2);
+        const p = addProp('puzzle_statue', mesh, d, 'Guardian Statue', 'Turn Statue [E]', 0.5, { rot, target });
+        this.puzzle.statues.push(p);
+      });
+      addProp('stele', buildSteleMesh(st.stone), at(1.4, 1.4), 'Ancient Stele', 'Read Stele [E]', 0.6, {
+        text: 'The stele reads: Let every guardian turn its gaze upon the altar flame.'
+      });
+      this._reserved.push({ x: altarPos.x, z: altarPos.z, r: 5.2 });
+    }
+  }
+
+  _solvePuzzle(ctx) {
+    const pz = this.puzzle;
+    if (!pz || pz.solved) return;
+    pz.solved = true;
+    this.setGateOpen(pz.gateId, true);
+    const msg = 'A deep grinding echoes... the vault gate opens!';
+    ctx?.hud?.showToast?.(msg, 'info');
+    ctx?.hud?.toast?.(msg, 'info');
+    for (const a of this.puzzleProps) {
+      if (a.mesh?.userData?.orb) a.mesh.userData.orb.scale?.set?.(1.8, 1.8, 1.8);
+    }
+  }
+
+  _ringBell(bell, ctx) {
+    const pz = this.puzzle;
+    if (!pz || pz.type !== 'bells' || pz.solved) return { ok: false, reason: 'The bells are silent now.' };
+    bell.mesh?.userData?.ring?.();
+    const expected = pz.order[pz.progress.length];
+    if (bell.pitch === expected) {
+      pz.progress.push(bell.pitch);
+      if (pz.progress.length >= pz.order.length) {
+        this._solvePuzzle(ctx);
+        return { ok: true, type: 'bell', solved: true };
+      }
+      ctx?.hud?.toast?.(`${bell.pitch} bell rings true.`, 'info');
+      return { ok: true, type: 'bell', solved: false, progress: pz.progress.length };
+    }
+    pz.progress = [];
+    const dmg = 6 + this.currentFloor * 2;
+    let hurt = false;
+    if (typeof ctx?.onPuzzleBackfire === 'function') { ctx.onPuzzleBackfire(dmg, 'physical'); hurt = true; }
+    else if (typeof ctx?.damagePlayer === 'function') { ctx.damagePlayer(dmg, { element: 'physical', source: bell }); hurt = true; }
+    else if (typeof ctx?.gameState?.takeDamage === 'function') { ctx.gameState.takeDamage(dmg, { element: 'physical', source: bell }); hurt = true; }
+    const msg = hurt ? 'A discordant clang! The sequence resets and a shockwave bites you.' : 'A discordant clang! The sequence resets.';
+    ctx?.hud?.showToast?.(msg, 'warning');
+    ctx?.hud?.toast?.(msg, 'info');
+    return { ok: true, type: 'bell', solved: false, wrong: true };
+  }
+
+  _turnStatue(statue, ctx) {
+    const pz = this.puzzle;
+    if (!pz || pz.type !== 'statues' || pz.solved) return { ok: false, reason: 'The guardians are at rest.' };
+    statue.rot = (statue.rot + 1) % 4;
+    if (statue.mesh) statue.mesh.rotation.y = statue.rot * (Math.PI / 2);
+    if (pz.statues.every((s) => s.rot === s.target)) {
+      this._solvePuzzle(ctx);
+      return { ok: true, type: 'puzzle_statue', solved: true };
+    }
+    return { ok: true, type: 'puzzle_statue', solved: false };
+  }
+
+  // --- Light budget -------------------------------------------------------------------------
+  _createLightPool() {
+    this._freeLightPool();
+    this._lightPrimed = false;
+    if (!this.renderer?.addPointLight || !this._lightSources.length) return;
+    const n = Math.min(LIGHT_POOL_SIZE, this._lightSources.length);
+    for (let i = 0; i < n; i++) {
+      const src = this._lightSources[i];
+      const light = this.renderer.addPointLight(new THREE.Vector3(src.x, src.y, src.z), src.color, src.intensity, src.distance, false);
+      this._lightPool.push({ light, src: -1, level: 0, target: 0, phase: Math.random() * 6.28 });
+    }
+  }
+
+  _freeLightPool() {
+    for (const slot of this._lightPool) {
+      if (this.renderer?.removeLight) this.renderer.removeLight(slot.light);
+      else slot.light?.parent?.remove?.(slot.light);
+    }
+    this._lightPool = [];
+  }
+
+  /** Re-point the pooled PointLights at the emissive sources nearest the player (call every ~0.25 s). */
+  _updateLightBudget(playerPos) {
+    const pool = this._lightPool;
+    if (!pool.length || !playerPos) return;
+    const px = Number(playerPos.x ?? playerPos.position?.x ?? 0);
+    const pz = Number(playerPos.z ?? playerPos.position?.z ?? 0);
+    const scored = this._lightSources.map((s, i) => ({ i, d: (s.x - px) * (s.x - px) + (s.z - pz) * (s.z - pz) }));
+    scored.sort((a, b) => a.d - b.d);
+    const want = scored.slice(0, pool.length).map((s) => s.i);
+    const wantSet = new Set(want);
+    const taken = new Set();
+    const free = [];
+    for (const slot of pool) {
+      if (wantSet.has(slot.src)) { taken.add(slot.src); slot.target = 1; } else free.push(slot);
+    }
+    let k = 0;
+    for (const idx of want) {
+      if (taken.has(idx)) continue;
+      const slot = free[k++];
+      if (!slot) break;
+      const src = this._lightSources[idx];
+      slot.src = idx;
+      slot.level = 0;
+      slot.target = 1;
+      slot.light.position.set(src.x, src.y, src.z);
+      slot.light.color.setHex(src.color);
+      slot.light.distance = Math.max(14, src.distance * 1.5);
+    }
+  }
+
+  _tickLightPool(dt, time) {
+    for (const slot of this._lightPool) {
+      const src = this._lightSources[slot.src];
+      if (!src) { slot.light.intensity = 0; continue; }
+      slot.level += (slot.target - slot.level) * Math.min(1, dt * 6);
+      const wave = Math.sin(time * 9 + slot.phase) * 0.1 + Math.cos(time * 15 + slot.phase * 1.7) * 0.06;
+      slot.light.intensity = Math.max(0, src.intensity * 1.45 * (1 + wave) * slot.level);
+    }
   }
 
   _decorateBossArena(bossRoom, floorNum) {
-    const pillarMat = new THREE.MeshStandardMaterial({
-      color: this.theme.trimColor,
-      roughness: 0.55,
-      metalness: 0.4
-    });
-
-    const offsets = [
-      [-4.5, -4.5], [4.5, -4.5],
-      [-4.5, 4.5], [4.5, 4.5]
-    ];
-    for (const [ox, oz] of offsets) {
-      const px = bossRoom.centerX + ox;
-      const pz = bossRoom.centerZ + oz;
-      const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.68, 3.2, 12), pillarMat);
-      pillar.position.set(px, 1.6, pz);
-      pillar.castShadow = true;
-      pillar.receiveShadow = true;
-      this.rootGroup.add(pillar);
-      this.solidObstacles.push({ x: px, z: pz, radius: 0.72 });
-      this._spawnTorch(px, pz + 0.75, 0xef4444);
-    }
+    // Pillar ring, braziers and dais (instanced) + arena metadata for the coordinator
+    this.bossArena = decorateBossArenaProps(this, this._batch, bossRoom, seededRandom(floorNum * 31 + 7));
 
     // Boss Victory Chest & Next Floor Portal at the north end of the Boss Arena
     const chestPos = { x: bossRoom.centerX - 2.6, z: bossRoom.centerZ - 4.2 };
@@ -1137,14 +1406,18 @@ export class DungeonGenerator {
   }
 
   _spawnTorch(x, z, color = 0xffaa44) {
+    if (this._batch) {
+      // emissive instanced torch; light comes from the shared 8-light pool
+      addTorchInstance(this._batch, this, x, z, color, styleFor(this.theme));
+      this.torches.push({ x, y: 0.85, z, color, mesh: null, pooled: true });
+      return;
+    }
     const mesh = (this.models3d?.createTorchMesh || createTorchMesh)(color);
     mesh.position.set(x, 0.85, z);
     this.rootGroup.add(mesh);
-
     if (this.renderer?.addPointLight && this.torches.length < 32) {
       this.renderer.addPointLight(new THREE.Vector3(x, 2.2, z), color, 2.5, 18.0, true);
     }
-
     this.torches.push({ x, y: 0.85, z, color, mesh });
   }
 
@@ -1515,6 +1788,11 @@ export class DungeonGenerator {
       }
     }
 
+    for (const p of this.puzzleProps) {
+      if (p.type === 'altar') continue;
+      if (p.type === 'stele' || !this.puzzle?.solved) consider(p, p.type, p.prompt, 0.4);
+    }
+
     for (const shrine of this.shrines) {
       if (!shrine.used || shrine.reusable) {
         consider(shrine, 'shrine', shrine.prompt, 0.5);
@@ -1560,6 +1838,7 @@ export class DungeonGenerator {
       entity.isActive = true;
       entity.mesh?.userData?.setActive?.(true);
       this.setGateOpen(entity.targetGateId, true);
+      if (this.puzzle && this.puzzle.gateId === entity.targetGateId) this.puzzle.solved = true;
       ctx.hud?.showToast?.('Ancient Gate Unlocked!', 'info');
       ctx.hud?.toast?.('Ancient Gate Unlocked!', 'info');
       return { ok: true, type: 'switch', gateId: entity.targetGateId, message: 'Ancient Gate Unlocked!' };
@@ -1580,6 +1859,14 @@ export class DungeonGenerator {
       ctx.hud?.showToast?.(`${entity.name}: Full HP & Mana Restored!`, 'heal');
       ctx.hud?.toast?.(`${entity.name}: Full HP & Mana Restored!`, 'info');
       return { ok: true, type: 'shrine', entity };
+    }
+
+    if (type === 'bell') return this._ringBell(entity, ctx);
+    if (type === 'puzzle_statue') return this._turnStatue(entity, ctx);
+    if (type === 'stele') {
+      ctx.hud?.showToast?.(entity.text, 'info');
+      ctx.hud?.toast?.(entity.text, 'info');
+      return { ok: true, type: 'stele', text: entity.text };
     }
 
     if (type === 'loot') {
@@ -1943,6 +2230,18 @@ export class DungeonGenerator {
     for (const torch of this.torches) {
       torch.mesh?.userData?.animate?.(time, dt);
     }
+    for (const p of this.puzzleProps) {
+      p.mesh?.userData?.animate?.(time, dt);
+    }
+    if (this._lightPool.length) {
+      this._lightClock += dt;
+      if (px !== null && (this._lightClock >= 0.25 || !this._lightPrimed)) {
+        this._lightClock = 0;
+        this._lightPrimed = true;
+        this._updateLightBudget(playerPos);
+      }
+      this._tickLightPool(dt, time);
+    }
     for (const chest of this.chests) {
       chest.mesh?.userData?.animate?.(time, dt);
     }
@@ -2059,7 +2358,12 @@ export class DungeonGenerator {
       gates: this.gates,
       shrines: this.shrines,
       groundLoot: this.groundLoot,
-      bossRoom: this.bossRoom
+      bossRoom: this.bossRoom,
+      bossArena: this.bossArena,
+      atmosphere: this.zone === 'dungeon' && this.theme?.atmosphere ? { ...this.theme.atmosphere } : null,
+      puzzle: this.puzzle,
+      specialRoom: this.zone === 'dungeon' ? this.specialRoomType : null,
+      puzzleProps: this.puzzleProps
     };
   }
 }

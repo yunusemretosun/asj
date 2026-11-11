@@ -221,6 +221,8 @@ export class Renderer {
         : key.includes('village') || key.includes('town') || key.includes('hub') ? THEME_CONFIGS.village
         : THEME_CONFIGS.cave);
 
+    this._atmo = null;
+    this._setDust?.(false);
     this.scene.background.setHex(cfg.bg);
     if (this.scene.fog) {
       this.scene.fog.color.setHex(cfg.fog);
@@ -238,6 +240,82 @@ export class Renderer {
     this.heroLight.intensity = cfg.heroLightIntensity;
     this.heroFillLight.color.setHex(cfg.fillLightColor);
     this.heroFillLight.intensity = cfg.fillLightIntensity;
+  }
+
+  /**
+   * Apply a per-floor atmosphere override on top of the current theme (floorData.atmosphere from
+   * dungeonGenerator). Fog/ambient/key light blend smoothly over ~0.6s in update(). Values are
+   * clamped so tombs stay moody but readable from the isometric camera.
+   * atm: { fogColor, fogNear, fogFar, ambientColor, ambientIntensity, keyLightColor, keyLightIntensity, dust }
+   */
+  applyAtmosphere(atm = null) {
+    if (!atm || typeof atm !== 'object') { this._atmo = null; this._setDust(false); return; }
+    const num = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
+    const fog = this.scene.fog;
+    const target = {
+      fogColor: new THREE.Color(num(atm.fogColor, fog ? fog.color.getHex() : 0x000000)),
+      fogNear: Math.max(6, num(atm.fogNear, fog ? fog.near : 20)),
+      fogFar: Math.max(28, num(atm.fogFar, fog ? fog.far : 60)),
+      ambientColor: new THREE.Color(num(atm.ambientColor, this.ambientLight.color.getHex())),
+      ambientIntensity: Math.max(0.55, num(atm.ambientIntensity, this.ambientLight.intensity)),
+      keyColor: new THREE.Color(num(atm.keyLightColor, this.dirLight.color.getHex())),
+      keyIntensity: Math.max(0.35, num(atm.keyLightIntensity, this.dirLight.intensity)),
+    };
+    target.fogFar = Math.max(target.fogFar, target.fogNear + 14);
+    this._atmo = { target, t: 0 };
+    this._setDust(!!atm.dust, atm.fogColor);
+  }
+
+  _updateAtmosphere(dt) {
+    const a = this._atmo;
+    if (!a) return;
+    a.t = Math.min(1, a.t + dt / 0.6);
+    const k = Math.min(1, dt * 6);
+    const T = a.target;
+    const fog = this.scene.fog;
+    if (fog) {
+      fog.color.lerp(T.fogColor, k);
+      fog.near += (T.fogNear - fog.near) * k;
+      fog.far += (T.fogFar - fog.far) * k;
+      if (this.scene.background && this.scene.background.isColor) this.scene.background.lerp(T.fogColor, k);
+    }
+    this.ambientLight.color.lerp(T.ambientColor, k);
+    this.ambientLight.intensity += (T.ambientIntensity - this.ambientLight.intensity) * k;
+    this.dirLight.color.lerp(T.keyColor, k);
+    this.dirLight.intensity += (T.keyIntensity - this.dirLight.intensity) * k;
+    if (a.t >= 1 && k >= 1) this._atmo = { target: T, t: 1 };
+  }
+
+  /** Cheap floating dust motes around the hero (one Points object, reused). */
+  _setDust(on, tint = 0xd6c7a1) {
+    if (!on) { if (this._dust) this._dust.visible = false; return; }
+    if (!this._dust) {
+      const n = 160;
+      const pos = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) {
+        pos[i * 3] = (Math.random() - 0.5) * 30;
+        pos[i * 3 + 1] = Math.random() * 5;
+        pos[i * 3 + 2] = (Math.random() - 0.5) * 30;
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      const mat = new THREE.PointsMaterial({ size: 0.07, transparent: true, opacity: 0.55, depthWrite: false, color: 0xd6c7a1 });
+      this._dust = new THREE.Points(geo, mat);
+      this._dust.userData.noFlash = true;
+      this._dust.frustumCulled = false;
+      this.scene.add(this._dust);
+    }
+    const c = new THREE.Color(Number.isFinite(Number(tint)) ? Number(tint) : 0xd6c7a1);
+    this._dust.material.color.copy(c).lerp(new THREE.Color(0xffffff), 0.6);
+    this._dust.visible = true;
+  }
+
+  _updateDust(dt, elapsed, heroPos) {
+    const d = this._dust;
+    if (!d || !d.visible) return;
+    if (heroPos) { d.position.x = heroPos.x; d.position.z = heroPos.z; }
+    d.rotation.y = elapsed * 0.02;
+    d.position.y = Math.sin(elapsed * 0.4) * 0.15;
   }
 
   /**
@@ -770,6 +848,8 @@ export class Renderer {
 
   update(dt = 0.016, elapsed = 0, heroPos = null) {
     this.updateCamera(heroPos, dt);
+    this._updateAtmosphere(dt);
+    this._updateDust(dt, elapsed, heroPos);
 
     // Flicker dynamic torch/portal lights
     for (const entry of this.dynamicLights) {
