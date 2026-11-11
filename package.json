@@ -1,0 +1,18 @@
+{
+  "name": "asj",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ARKENVEIL: SIGILS & JOURNEYS — 3D Action-RPG built with Three.js and Vite",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
+  }
+}
