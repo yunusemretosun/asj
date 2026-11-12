@@ -316,7 +316,7 @@ check('Archer can equip Scout Longbow (set_archer_1_weapon) after save load', Bo
 check('Archer can equip Scout Jerkin (set_archer_1_armor) after save load', Boolean(eqArmRes.ok && reloadedGame.inventory.equipment.armor?.uid === archerSetArmor.uid));
 
 // 15. European Dual Axes, Visual Degree Progression (01..04) & Boss SOS Drops
-import { getEquipmentGlbTier, getWeaponGlbInfo, createEuropeanAxeMesh, SRO_CHAR_GLB_MAP } from '../src/engine/models3d.js';
+import { getEquipmentGlbTier, getWeaponGlbInfo, createEuropeanAxeMesh, SRO_CHAR_GLB_MAP, gearFxProfile } from '../src/engine/models3d.js';
 import { rollLoot } from '../src/systems/inventory.js';
 
 check('Axeman character uses European Adventurer GLB', SRO_CHAR_GLB_MAP.axeman === '/assets/sro/char/europeman_adventurer.glb');
@@ -337,5 +337,14 @@ check('createEuropeanAxeMesh builds 3D European battle axe mesh with child geome
 const bossDrops = rollLoot(15, { isBoss: true, classId: 'axeman' });
 const bossSealedCount = bossDrops.items.filter((it) => it && it.seal).length;
 check('Boss loot guarantees at least one SOS/SOM/SOSun sealed equipment drop', bossSealedCount >= 1);
+
+
+// Gear FX: +3 and above glow, seal particles, combined profile
+check('Items below +3 without a seal get no gear FX', gearFxProfile({ plus: 2 }) === null);
+check('+3 item gets a faint glow tier without particles', gearFxProfile({ plus: 3 })?.plusTier === 1 && gearFxProfile({ plus: 3 }).sparkles === 0);
+check('+9 item gets the gold tier with glints', gearFxProfile({ plus: 9 })?.plusTier === 4 && gearFxProfile({ plus: 9 }).sparkles > 0);
+const comboFx = gearFxProfile({ plus: 9, seal: 'star' });
+check('Sealed +N item keeps both effects with fewer +N glints', comboFx.seal === 'star' && comboFx.sealParticles > 0 && comboFx.sparkles < gearFxProfile({ plus: 9 }).sparkles && comboFx.glowHex !== gearFxProfile({ plus: 9 }).glowHex);
+check('Seal-only +0 item still gets its seal FX', gearFxProfile({ plus: 0, seal: 'moon' })?.seal === 'moon');
 
 console.log(`ALL ${passed} CHECKS PASSED.`);

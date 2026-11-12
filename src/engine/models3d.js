@@ -1104,6 +1104,280 @@ export function createEuropeanStaffMesh(weaponItem = null, tierStr = '01') {
  * Weapon-specific clips per class (all embedded in the class character GLB).
  * Each logical slot lists candidates in priority order; the first existing clip wins.
  */
+/* ---------------- equipment +N / seal FX (small, animated, stackable) ---------------- */
+const GEAR_PLUS_TIERS = [
+  null,
+  { color: 0x7dd3fc, base: 0.22, amp: 0.10, sparkles: 0 },  // +3..+4 faint frost shimmer
+  { color: 0x60a5fa, base: 0.32, amp: 0.14, sparkles: 3 },  // +5..+6 blue glints
+  { color: 0xa78bfa, base: 0.42, amp: 0.18, sparkles: 4 },  // +7..+8 violet
+  { color: 0xfacc15, base: 0.55, amp: 0.22, sparkles: 6 }   // +9 and above, gold
+];
+const GEAR_SEAL_FX = {
+  star: { color: 0x7dd3fc, particle: 0xe0f2fe, tex: 'star', count: 5 },
+  moon: { color: 0xc4b5fd, particle: 0xd8b4fe, tex: 'dot', count: 4 },
+  sun: { color: 0xfbbf24, particle: 0xfde68a, tex: 'dot', count: 6 }
+};
+
+/** Pure description of the visual FX an item should get (+3 and above glow, seal particles). */
+export function gearFxProfile(item) {
+  if (!item) return null;
+  const plus = Number(item.plus ?? item.enhance ?? 0) || 0;
+  const sealId = String(item.seal || '').toLowerCase().replace(/^sealof/, '');
+  const seal = GEAR_SEAL_FX[sealId] ? sealId : null;
+  const tierIdx = plus >= 9 ? 4 : plus >= 7 ? 3 : plus >= 5 ? 2 : plus >= 3 ? 1 : 0;
+  if (!tierIdx && !seal) return null;
+  const tier = GEAR_PLUS_TIERS[tierIdx];
+  const sealFx = seal ? GEAR_SEAL_FX[seal] : null;
+  let glowHex = tier ? tier.color : sealFx.color;
+  if (tier && sealFx) glowHex = new THREE.Color(tier.color).lerp(new THREE.Color(sealFx.color), 0.35).getHex();
+  // When both are present the seal particles lead, so +N glints are halved to avoid clutter
+  const sparkles = tier ? (sealFx ? Math.ceil(tier.sparkles / 2) : tier.sparkles) : 0;
+  return {
+    plus,
+    plusTier: tierIdx,
+    seal,
+    glowHex,
+    base: tier ? tier.base : 0.25,
+    amp: tier ? tier.amp : 0.08,
+    sparkles,
+    sparkleHex: tier ? tier.color : null,
+    sealParticles: sealFx ? sealFx.count : 0
+  };
+}
+
+const _gearFxTex = {};
+function gearFxTexture(kind) {
+  if (_gearFxTex[kind]) return _gearFxTex[kind];
+  if (typeof document === 'undefined') return null;
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d');
+  if (kind === 'star') {
+    g.fillStyle = 'rgba(255,255,255,0.9)';
+    g.beginPath();
+    g.moveTo(32, 2); g.quadraticCurveTo(35, 29, 62, 32); g.quadraticCurveTo(35, 35, 32, 62);
+    g.quadraticCurveTo(29, 35, 2, 32); g.quadraticCurveTo(29, 29, 32, 2);
+    g.fill();
+    const core = g.createRadialGradient(32, 32, 0, 32, 32, 12);
+    core.addColorStop(0, 'rgba(255,255,255,1)');
+    core.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = core;
+    g.fillRect(0, 0, 64, 64);
+  } else {
+    const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    grad.addColorStop(0, 'rgba(255,255,255,1)');
+    grad.addColorStop(0.3, 'rgba(255,255,255,0.55)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 64, 64);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  _gearFxTex[kind] = t;
+  return t;
+}
+
+function makeFxSprite(hex, texKind) {
+  const mat = new THREE.SpriteMaterial({
+    color: hex,
+    map: gearFxTexture(texKind),
+    transparent: true,
+    opacity: 0,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  });
+  const sp = new THREE.Sprite(mat);
+  sp.userData.isGlowShell = true;
+  sp.frustumCulled = false;
+  sp.renderOrder = 5;
+  return sp;
+}
+
+/** Glow follows the texture detail instead of painting the whole mesh a flat color. */
+function useTextureGlow(mats) {
+  for (const m of mats) {
+    if (m.map && m.emissiveMap !== m.map) {
+      m.emissiveMap = m.map;
+      m.needsUpdate = true;
+    }
+  }
+}
+
+/** Adds a soft fresnel rim in the gear color; returns the uniforms so the strength can pulse per frame. */
+function addRimGlow(mats, hex) {
+  const uniforms = [];
+  for (const m of mats) {
+    const u = { uRimColor: { value: new THREE.Color(hex) }, uRimStrength: { value: 0 } };
+    m.onBeforeCompile = (shader) => {
+      shader.uniforms.uRimColor = u.uRimColor;
+      shader.uniforms.uRimStrength = u.uRimStrength;
+      shader.fragmentShader = shader.fragmentShader
+        .replace('void main() {', 'uniform vec3 uRimColor;\nuniform float uRimStrength;\nvoid main() {')
+        .replace('#include <opaque_fragment>', `#include <opaque_fragment>
+#if defined( USE_GEAR_RIM )
+  float gearRim = pow( 1.0 - clamp( dot( normalize( normal ), normalize( vViewPosition ) ), 0.0, 1.0 ), 2.6 );
+  gl_FragColor.rgb += uRimColor * gearRim * uRimStrength;
+#endif`);
+    };
+    m.defines = { ...(m.defines || {}), USE_GEAR_RIM: '' };
+    m.customProgramCacheKey = () => 'gear-rim';
+    m.needsUpdate = true;
+    uniforms.push(u);
+  }
+  return uniforms;
+}
+
+function collectEmissiveMats(obj) {
+  const mats = [];
+  obj.traverse((child) => {
+    if (!child.isMesh || child.userData.isGlowShell || !child.material) return;
+    const cloned = Array.isArray(child.material) ? child.material.map((m) => m.clone()) : child.material.clone();
+    child.material = cloned;
+    child.userData._origMat = cloned;
+    for (const m of Array.isArray(cloned) ? cloned : [cloned]) if (m.emissive) mats.push(m);
+  });
+  useTextureGlow(mats);
+  return mats;
+}
+
+/**
+ * Builds the animated FX for one equipped weapon/offhand: a breathing emissive glow for +3 and above,
+ * small glints running along the blade, and seal particles (Star twinkles, Moon orbiting motes,
+ * Sun rising embers). Returns an updater `(time, dt) => void` or null.
+ */
+function buildWeaponGearFx(modelClone, item) {
+  const prof = gearFxProfile(item);
+  if (!modelClone || !prof) return null;
+  const mats = collectEmissiveMats(modelClone);
+  const glow = new THREE.Color(prof.glowHex);
+  const wBase = prof.base * 1.35;
+  const wAmp = prof.amp * 1.35;
+  for (const m of mats) { m.emissive.copy(glow); m.emissiveIntensity = wBase; }
+  const rims = addRimGlow(mats, prof.glowHex);
+  const rimBase = 0.3 + prof.plusTier * 0.12;
+
+  // Local-space bounds of the weapon (computed before it is attached to a socket)
+  modelClone.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(modelClone);
+  if (box.isEmpty()) return (time) => {
+    const b = Math.sin(time * 2.2);
+    for (const m of mats) m.emissiveIntensity = wBase + wAmp * b;
+    for (const r of rims) r.uRimStrength.value = rimBase * (0.75 + 0.25 * b);
+  };
+  box.applyMatrix4(new THREE.Matrix4().copy(modelClone.matrixWorld).invert());
+  const size = box.getSize(new THREE.Vector3());
+  const axis = size.z >= size.x && size.z >= size.y ? 'z' : size.y >= size.x ? 'y' : 'x';
+  const len = Math.max(0.2, size[axis]);
+  const lo = box.min[axis];
+  const hi = box.max[axis];
+  const center = box.getCenter(new THREE.Vector3());
+  const pointAt = (u, out = new THREE.Vector3()) => { out.copy(center); out[axis] = lo + (hi - lo) * u; return out; };
+  const spriteSize = len * 0.11;
+
+  const fxGroup = new THREE.Group();
+  fxGroup.name = 'GearFx';
+  fxGroup.userData.isGlowShell = true;
+  modelClone.add(fxGroup);
+
+  const glints = [];
+  for (let i = 0; i < prof.sparkles; i++) {
+    const sp = makeFxSprite(prof.sparkleHex, 'dot');
+    fxGroup.add(sp);
+    glints.push({ sp, phase: i / Math.max(1, prof.sparkles), speed: 0.28 + (i % 3) * 0.06 });
+  }
+
+  const sealParts = [];
+  const sealFx = prof.seal ? GEAR_SEAL_FX[prof.seal] : null;
+  for (let i = 0; i < prof.sealParticles; i++) {
+    const sp = makeFxSprite(sealFx.particle, sealFx.tex);
+    fxGroup.add(sp);
+    sealParts.push({ sp, u: 0.35 + 0.6 * ((i * 0.618) % 1), phase: i * 1.37, life: (i / prof.sealParticles) });
+  }
+
+  const tmp = new THREE.Vector3();
+  const qInv = new THREE.Quaternion();
+  const up = new THREE.Vector3();
+  const perpA = axis === 'x' ? 'y' : 'x';
+  const perpB = axis === 'z' ? 'y' : 'z';
+
+  return (time, dt) => {
+    const breathe = Math.sin(time * 2.2);
+    for (const m of mats) m.emissiveIntensity = wBase + wAmp * breathe;
+    for (const r of rims) r.uRimStrength.value = rimBase * (0.75 + 0.25 * breathe);
+
+    for (const g of glints) {
+      const u = (g.phase + time * g.speed) % 1;
+      pointAt(0.3 + u * 0.68, g.sp.position);
+      g.sp.material.opacity = Math.sin(u * Math.PI) * 0.95;
+      g.sp.scale.setScalar(spriteSize * (0.7 + 0.3 * Math.sin(u * Math.PI)));
+    }
+
+    if (!sealParts.length) return;
+    if (prof.seal === 'sun') {
+      modelClone.getWorldQuaternion(qInv).invert();
+      up.set(0, 1, 0).applyQuaternion(qInv);
+      const ws = modelClone.getWorldScale(tmp).x || 1;
+      up.multiplyScalar(1 / ws);
+    }
+    for (const p of sealParts) {
+      if (prof.seal === 'star') {
+        // Short twinkle flashes at fixed points on the weapon
+        const tw = Math.max(0, Math.sin(time * 1.9 + p.phase));
+        const flash = tw ** 8;
+        pointAt(p.u, p.sp.position);
+        p.sp.material.opacity = 0.15 + flash * 0.85;
+        p.sp.scale.setScalar(spriteSize * (0.9 + flash * 1.4));
+        p.sp.material.rotation = time * 0.6 + p.phase;
+      } else if (prof.seal === 'moon') {
+        // Slow motes spiralling around the weapon
+        const a = time * 0.9 + p.phase;
+        const u = 0.3 + ((p.u + time * 0.07) % 1) * 0.68;
+        pointAt(u, p.sp.position);
+        p.sp.position[perpA] += Math.cos(a) * len * 0.07;
+        p.sp.position[perpB] += Math.sin(a) * len * 0.07;
+        p.sp.material.opacity = 0.35 + 0.3 * Math.sin(a * 0.7) ** 2;
+        p.sp.scale.setScalar(spriteSize * 0.9);
+      } else {
+        // Sun: warm embers that rise from the weapon and fade out
+        p.life += dt * 0.55;
+        if (p.life >= 1) { p.life -= 1; p.u = 0.35 + Math.random() * 0.6; }
+        pointAt(p.u, p.sp.position);
+        p.sp.position.addScaledVector(up, p.life * 0.18);
+        p.sp.material.opacity = Math.sin(p.life * Math.PI) * 0.75;
+        p.sp.scale.setScalar(spriteSize * (1 - p.life * 0.5));
+      }
+    }
+  };
+}
+
+/** Armor pieces are skinned, so they only get a gentle emissive shimmer (seal pattern + plus glow). */
+function buildArmorGearFx(clonedArmor, item) {
+  const prof = gearFxProfile(item);
+  if (!clonedArmor || !prof) return null;
+  const mats = [];
+  clonedArmor.traverse((child) => {
+    if (!child.isMesh || child.userData.isGlowShell || !child.material) return;
+    for (const m of Array.isArray(child.material) ? child.material : [child.material]) if (m.emissive) mats.push(m);
+  });
+  if (!mats.length) return null;
+  useTextureGlow(mats);
+  const glow = new THREE.Color(prof.glowHex);
+  const base = prof.base * 0.45;
+  const amp = prof.amp * 0.45;
+  for (const m of mats) { m.emissive.copy(glow); m.emissiveIntensity = base; }
+  const rims = addRimGlow(mats, prof.glowHex);
+  const rimBase = prof.plusTier ? 0.25 + prof.plusTier * 0.12 : 0.22;
+  return (time) => {
+    const rb = Math.sin(time * 1.8);
+    for (const r of rims) r.uRimStrength.value = rimBase * (0.7 + 0.3 * rb);
+    let k = base + amp * Math.sin(time * 1.8);
+    if (prof.seal === 'star') k += Math.max(0, Math.sin(time * 1.3)) ** 12 * 0.1;
+    else if (prof.seal === 'moon') k += 0.04 * Math.sin(time * 0.8);
+    else if (prof.seal === 'sun') k += 0.03 * Math.sin(time * 7.3) * Math.sin(time * 2.1);
+    for (const m of mats) m.emissiveIntensity = Math.max(0, k);
+  };
+}
+
 export const CLASS_CLIP_MAP = {
   knight: {
     RUN: ['RUN_chinaman_fighter_runforward_sword'],
@@ -2212,113 +2486,26 @@ export function createHeroMesh(equipment = {}, look = {}) {
   let glbEquipVer = 0;
 
   function applyGLBWeaponGlow(modelClone, item) {
-    if (!modelClone || !item) return;
-    const plus = Number(item.plus ?? item.enhance ?? 0) || 0;
-    const seal = item.seal ? String(item.seal).toLowerCase() : null;
-    if (!seal && plus < 3) return;
-
-    let glowHex = 0x38bdf8;
-    if (seal === 'sun') glowHex = 0xffb800;
-    else if (seal === 'moon') glowHex = 0xc084fc;
-    else if (seal === 'star') glowHex = 0x38bdf8;
-    else if (plus >= 9) glowHex = 0xfacc15;
-    else if (plus >= 7) glowHex = 0xc084fc;
-    else if (plus >= 5) glowHex = 0x38bdf8;
-    else glowHex = 0x60a5fa;
-
-    const isSeal = Boolean(seal);
-    const meshes = [];
-    modelClone.traverse((child) => {
-      if (child.isMesh && !child.userData.isGlowShell) {
-        meshes.push(child);
-      }
-    });
-
-    for (const m of meshes) {
-      if (m.material) {
-        const clonedMat = Array.isArray(m.material) ? m.material.map((mt) => mt.clone()) : m.material.clone();
-        const applyEmissive = (mt) => {
-          if (mt.emissive) {
-            mt.emissive.setHex(glowHex);
-            mt.emissiveIntensity = isSeal ? 0.65 : 0.4;
-          }
-        };
-        if (Array.isArray(clonedMat)) clonedMat.forEach(applyEmissive);
-        else applyEmissive(clonedMat);
-        m.material = clonedMat;
-        m.userData._origMat = clonedMat;
-      }
-      if (m.geometry) {
-        const shellMat = new THREE.MeshBasicMaterial({
-          color: glowHex,
-          transparent: true,
-          opacity: isSeal ? 0.34 : 0.22,
-          blending: THREE.AdditiveBlending,
-          depthWrite: false,
-          side: THREE.DoubleSide
-        });
-        const shell = new THREE.Mesh(m.geometry, shellMat);
-        shell.userData.isGlowShell = true;
-        shell.scale.setScalar(1.06);
-        shell.frustumCulled = false;
-        m.add(shell);
-      }
-    }
-
-    if (isSeal || plus >= 7) {
-      const box = new THREE.Box3().setFromObject(modelClone);
-      if (!box.isEmpty()) {
-        const center = new THREE.Vector3();
-        const size = new THREE.Vector3();
-        box.getCenter(center);
-        box.getSize(size);
-        modelClone.worldToLocal(center);
-        const orbGeo = new THREE.OctahedronGeometry(0.055, 1);
-        const orbMat = new THREE.MeshBasicMaterial({
-          color: isSeal && seal === 'star' ? 0xe0f2fe : glowHex,
-          transparent: true,
-          opacity: 0.85,
-          blending: THREE.AdditiveBlending,
-          depthWrite: false
-        });
-        const maxAxis = size.y >= size.x && size.y >= size.z ? 'y' : size.z >= size.x ? 'z' : 'x';
-        const span = Math.max(0.25, size[maxAxis] * 0.7);
-        for (let i = -1; i <= 1; i++) {
-          const orb = new THREE.Mesh(orbGeo, orbMat);
-          orb.userData.isGlowShell = true;
-          orb.position.copy(center);
-          orb.position[maxAxis] += i * (span * 0.35);
-          orb.frustumCulled = false;
-          modelClone.add(orb);
-        }
-      }
-    }
+    const fx = buildWeaponGearFx(modelClone, item);
+    if (fx) root.userData.gearFx.push({ target: modelClone, update: fx });
   }
 
   function applyGLBArmorLook(clonedArmor, item) {
     if (!clonedArmor || !item) return;
-    const plus = Number(item.plus ?? item.enhance ?? 0) || 0;
     const seal = item.seal ? String(item.seal).toLowerCase() : null;
     const rarity = String(item.rarity || 'normal').toLowerCase();
     const tier = Number(item.tier ?? 0);
 
     let tintHex = null;
     let tintStrength = 0;
-    if (seal === 'sun') { tintHex = 0xfef08a; tintStrength = 0.24; }
-    else if (seal === 'moon') { tintHex = 0xd8b4fe; tintStrength = 0.22; }
-    else if (seal === 'star') { tintHex = 0xbae6fd; tintStrength = 0.20; }
+    if (seal === 'sun') { tintHex = 0xfef08a; tintStrength = 0.10; }
+    else if (seal === 'moon') { tintHex = 0xd8b4fe; tintStrength = 0.09; }
+    else if (seal === 'star') { tintHex = 0xbae6fd; tintStrength = 0.08; }
     else if (rarity === 'unique') { tintHex = 0xfdba74; tintStrength = 0.18; }
     else if (rarity === 'epic') { tintHex = 0xd8b4fe; tintStrength = 0.15; }
     else if (rarity === 'rare') { tintHex = 0xfef08a; tintStrength = 0.12; }
     else if (tier >= 5) { tintHex = 0xfde68a; tintStrength = 0.12; }
     else if (tier === 4) { tintHex = 0xc7d2fe; tintStrength = 0.10; }
-
-    let glowHex = null;
-    if (seal === 'sun') glowHex = 0xffb800;
-    else if (seal === 'moon') glowHex = 0xc084fc;
-    else if (seal === 'star') glowHex = 0x38bdf8;
-    else if (plus >= 7) glowHex = 0xfacc15;
-    else if (plus >= 5) glowHex = 0x60a5fa;
 
     clonedArmor.traverse((child) => {
       if (!child.isMesh || child.userData.isGlowShell) return;
@@ -2333,10 +2520,6 @@ export function createHeroMesh(equipment = {}, look = {}) {
           if (tintHex && c.color) {
             c.color.lerp(new THREE.Color(tintHex), tintStrength);
           }
-          if (glowHex && c.emissive) {
-            c.emissive.setHex(glowHex);
-            c.emissiveIntensity = seal ? 0.35 : 0.2;
-          }
           return c;
         };
         const newMat = Array.isArray(child.material)
@@ -2345,24 +2528,9 @@ export function createHeroMesh(equipment = {}, look = {}) {
         child.material = newMat;
         child.userData._origMat = newMat;
       }
-      if ((seal || plus >= 7) && child.geometry && glowHex) {
-        const shell = new THREE.Mesh(
-          child.geometry,
-          new THREE.MeshBasicMaterial({
-            color: glowHex,
-            transparent: true,
-            opacity: seal ? 0.22 : 0.15,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-            side: THREE.DoubleSide
-          })
-        );
-        shell.userData.isGlowShell = true;
-        shell.scale.setScalar(1.03);
-        shell.frustumCulled = false;
-        child.add(shell);
-      }
     });
+    const fx = buildArmorGearFx(clonedArmor, item);
+    if (fx) root.userData.gearFx.push({ target: clonedArmor, update: fx });
   }
 
   function applyGLBEquipment(equipped = {}) {
@@ -2378,6 +2546,7 @@ export function createHeroMesh(equipment = {}, look = {}) {
     const classId = lookState.classId || 'knight';
     const starterSet = SRO_STARTER_SETS[classId] || 'heavy_01';
 
+    root.userData.gearFx = [];
     // Clear previous GLB gear
     for (const grp of [armorGroup, neckMount, rWeaponMount, lWeaponMount, shieldMount]) {
       if (!grp) continue;
@@ -2821,6 +2990,10 @@ export function createHeroMesh(equipment = {}, look = {}) {
 
   // ---------------------------------------------------------------- animation
   root.userData.animate = (state = 'idle', time = 0, dt = 0.016, comboStep = 0, attackProgress = 0) => {
+    const gearFx = root.userData.gearFx;
+    if (gearFx && gearFx.length) {
+      for (const fx of gearFx) if (fx.target.parent) fx.update(time, dt);
+    }
     if (root.userData.hitFlashTimer > 0) {
       root.userData.hitFlashTimer = Math.max(0, root.userData.hitFlashTimer - dt * 6);
       root.userData.setHitFlash(root.userData.hitFlashTimer);
