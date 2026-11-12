@@ -4406,18 +4406,54 @@ export function createPortalMesh(colorOrOptions = 0x38bdf8, type = 'dungeon') {
   innerRing.userData.keepWithGLB = true;
   root.add(innerRing);
 
-  // SRO Portal GLB (scaled compactly and grounded at native floor y=0 so underground foundation stays buried)
-  attachGLBModel(root, '/assets/sro/props/cj_portal.glb', {
-    scale: 0.22,
-    yOffset: -0.20,
-    groundAtZero: true,
-    centerXZ: true
-  });
+  if (type === 'selector') {
+    // Waystone: SRO teleport stele with a flat rune circle at its foot
+    vortex.userData.keepWithGLB = false;
+    innerRing.rotation.x = -Math.PI / 2;
+    innerRing.position.y = 0.06;
+    innerRing.scale.setScalar(1.15);
+    attachGLBModel(root, '/assets/sro/props/cj_portal_stone.glb', {
+      targetHeight: 1.85,
+      groundAtZero: true,
+      centerXZ: true
+    });
+  } else {
+    // SRO portal pavilion: its floor slab (CJ_por_floor, y~0.91) is the ground line; the rock
+    // shaft below it is a foundation that must stay buried instead of lifting the pavilion up.
+    const PAVILION_SCALE = 0.32;
+    attachGLBModel(root, '/assets/sro/props/cj_portal.glb', {
+      scale: PAVILION_SCALE,
+      centerXZ: true,
+      onLoaded: (clone) => {
+        let floorY = 0.91;
+        const floor = clone.getObjectByName('CJ_por_floor');
+        if (floor?.geometry) {
+          floor.geometry.computeBoundingBox();
+          floorY = floor.geometry.boundingBox.min.y;
+        }
+        clone.position.y = -floorY * PAVILION_SCALE;
+      }
+    });
+    // Vortex sits between the pavilion pillars, just in front of the teleport stone
+    vortex.scale.setScalar(0.72);
+    vortex.position.set(0, 0.95, 0.12);
+    innerRing.scale.setScalar(0.72);
+    innerRing.position.set(0, 0.95, 0.12);
+  }
+  const vortexBaseScale = vortex.scale.x;
+
+  // Sealed state (boss rift before the floor boss dies): dim, slow vortex
+  root.userData.locked = false;
+  root.userData.setLocked = (locked = true) => {
+    root.userData.locked = Boolean(locked);
+    vortexMat.opacity = locked ? 0.22 : 0.72;
+    runeMat.emissiveIntensity = locked ? 0.15 : 0.9;
+  };
 
   root.userData.animate = (time = 0) => {
     const t = typeof time === 'number' ? time : 0;
-    innerRing.rotation.z = t * 2.5;
-    vortex.scale.setScalar(0.96 + Math.sin(t * 4) * 0.05);
+    innerRing.rotation.z = t * (root.userData.locked ? 0.4 : 2.5);
+    vortex.scale.setScalar(vortexBaseScale * (0.96 + Math.sin(t * 4) * 0.05));
   };
 
   enableShadows(root, true, true);

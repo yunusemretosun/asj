@@ -618,7 +618,6 @@ export class DungeonGenerator {
 
     // Floor Selector Runestone Pillar right next to the portal
     const selectorMesh = (this.models3d?.createPortalMesh || createPortalMesh)(0xa855f7, 'selector');
-    selectorMesh.scale.setScalar(0.68);
     selectorMesh.position.set(3.2, 0, -15.2);
     this.rootGroup.add(selectorMesh);
 
@@ -1046,12 +1045,13 @@ export class DungeonGenerator {
       z: startRoom.centerZ
     };
 
-    // Return-to-Village portal in start room
+    // Return-to-Village portal in start room, outside interaction reach of the spawn point so
+    // pressing E right after arriving does not bounce the player straight back to town
     const returnPortalMesh = (this.models3d?.createPortalMesh || createPortalMesh)(0x38bdf8, 'village');
     const returnPortalPos = {
-      x: startRoom.centerX - 2.4,
+      x: startRoom.centerX - 2.8,
       y: 0,
-      z: startRoom.centerZ - 2.4
+      z: startRoom.centerZ - 3.4
     };
     returnPortalMesh.position.set(returnPortalPos.x, 0, returnPortalPos.z);
     this.rootGroup.add(returnPortalMesh);
@@ -1069,6 +1069,10 @@ export class DungeonGenerator {
       prompt: 'Return to Oakhaven Village [E]',
       mesh: returnPortalMesh
     });
+    // Keep decor/breakables off the portal pavilions
+    this._reserved.push({ x: returnPortalPos.x, z: returnPortalPos.z, r: 2.4 });
+    const exitRoom = this.rooms.find((r) => r.type === 'exit');
+    if (exitRoom) this._reserved.push({ x: exitRoom.centerX, z: exitRoom.centerZ, r: 2.4 });
 
     // --- Vault alcove + puzzle placement (reserved first so decor keeps clear of them) ---------
     const vaultRoom = this.rooms.find((r) => r.type === 'treasure');
@@ -1388,13 +1392,15 @@ export class DungeonGenerator {
     this.bossArena = decorateBossArenaProps(this, this._batch, bossRoom, seededRandom(floorNum * 31 + 7));
 
     // Boss Victory Chest & Next Floor Portal at the north end of the Boss Arena
-    const chestPos = { x: bossRoom.centerX - 2.6, z: bossRoom.centerZ - 4.2 };
+    // Rift pavilion on the north axis between the diagonal braziers; chest beside it on the dais
+    const chestPos = { x: bossRoom.centerX - 3.0, z: bossRoom.centerZ - 2.6 };
     const bossChest = this._spawnChest(chestPos.x, chestPos.z, 'boss', `f${floorNum}_boss_chest`);
     bossChest.lockedByBoss = true;
 
     const nextPortalMesh = (this.models3d?.createPortalMesh || createPortalMesh)(0xef4444, 'boss_exit');
-    const portalPos = { x: bossRoom.centerX + 2.6, y: 0, z: bossRoom.centerZ - 4.2 };
+    const portalPos = { x: bossRoom.centerX, y: 0, z: bossRoom.centerZ - 4.9 };
     nextPortalMesh.position.set(portalPos.x, 0, portalPos.z);
+    nextPortalMesh.userData.setLocked?.(true);
     this.rootGroup.add(nextPortalMesh);
 
     this.portals.push({
@@ -1422,6 +1428,7 @@ export class DungeonGenerator {
     for (const portal of this.portals) {
       if (portal.lockedByBoss) {
         portal.lockedByBoss = false;
+        portal.mesh?.userData?.setLocked?.(false);
       }
     }
     for (const gate of this.gates) {
@@ -1918,13 +1925,14 @@ export class DungeonGenerator {
 
     if (type === 'portal') {
       if (entity.lockedByBoss) {
-        ctx.hud?.showToast?.('Defeat the Floor Boss to unseal this portal!', 'warning');
-        ctx.hud?.toast?.('Defeat the Floor Boss to unseal this portal!', 'info');
+        const sealedMsg = 'Defeat the Floor Boss to unseal this portal!';
+        if (ctx.hud?.showToast) ctx.hud.showToast(sealedMsg, 'warning');
+        else ctx.hud?.toast?.(sealedMsg, 'info');
         return { ok: false, reason: 'Locked by Boss' };
       }
       if (entity.portalType === 'floor_selector') {
-        ctx.menus?.openMenu?.('map');
-        ctx.menus?.toggle?.('map');
+        if (ctx.menus?.openMenu) ctx.menus.openMenu('map');
+        else ctx.menus?.toggle?.('map');
         return { ok: true, type: 'portal', action: 'open_floor_selector', entity };
       }
       if (entity.targetFloor === 0 || entity.portalType === 'village') {

@@ -126,6 +126,9 @@ const enemyMgr = createEnemyManager({ renderer: mockRenderer, scene, models3d, d
 for (let f = 1; f <= 15; f++) {
   const fData = dungeon.generateFloor(f, mockRenderer, models3d, {});
   check(`Floor ${f} spawnPoint is walkable`, dungeon.isWalkable(fData.spawnPoint.x, fData.spawnPoint.z, 0.35));
+  const atSpawn = dungeon.getNearestInteractable(fData.spawnPoint.x, fData.spawnPoint.z, 3.0);
+  check(`Floor ${f} spawn is outside portal interaction reach`, atSpawn?.type !== 'portal');
+  check(`Floor ${f} portals stand on walkable floor`, dungeon.portals.every((p) => dungeon.isWalkable(p.x, p.z, 0.35)));
   check(`Floor ${f} has rooms and atmosphere`, fData.rooms.length >= 4 && Boolean(fData.atmosphere));
   if ([3, 6, 9, 12, 15].includes(f)) {
     check(`Boss floor ${f} has bossArena`, Boolean(fData.bossArena?.center && fData.bossArena?.radius > 5));
@@ -153,6 +156,9 @@ enemyMgr.clearEnemies();
 enemyMgr.spawnFloorEnemies(f3, 3, scene, models3d, {});
 const boss = enemyMgr.enemies.find((e) => e.isBoss);
 check('Floor 3 boss spawned', Boolean(boss));
+const bossRift = dungeon.portals.find((p) => p.id === 'boss_exit_f3');
+check('Boss rift starts sealed and refuses entry', bossRift?.lockedByBoss === true && dungeon.interact({ type: 'portal', entity: bossRift }, {}).ok === false);
+check('Boss rift clears arena braziers/pillars', dungeon.solidObstacles.every((o) => Math.hypot(o.x - bossRift.x, o.z - bossRift.z) > o.radius + 1.5));
 boss.skillCooldown = 0;
 boss.state = AI_STATE.CHASE;
 enemyMgr.update(0.05, 1.0, { x: boss.x + 2, z: boss.z + 2 }, dungeon, {});

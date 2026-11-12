@@ -442,15 +442,17 @@ export function buildVillage(ctx = {}) {
   obs(-4.8, -11.5, 0.5); obs(4.8, -11.5, 0.5);
   obs(-2.6, -11.0, 0.45); obs(2.6, -11.0, 0.45);
 
-  // Dimensional portal stone stele beside northern dungeon portal
+  // Dimensional portal stone stele beside northern dungeon portal (clear of the pavilion's west eave;
+  // mirrors the interactive Waystone on the east side)
   loadSROProp('/assets/sro/props/cj_portal_stone.glb', {
-    position: [-2.3, 0, -16.5],
+    position: [-3.3, 0, -15.2],
     targetHeight: 1.85,
     autoGround: true,
     rotationY: 0,
     parent: group
   });
   obs(0, -16.5, 1.2);
+  obs(-3.3, -15.2, 0.5);
 
   /* ---------------- buildings ---------------- */
   const building = (cx, cz, w, d, h, ry, roofKey, opts = {}) => {

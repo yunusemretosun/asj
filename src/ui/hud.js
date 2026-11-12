@@ -267,9 +267,6 @@ export class HUD {
           this.showAlchemyBanner(`\u26A1 +${d.plus | 0} ${nm.toUpperCase()} \u26A1`);
         }
       }));
-      this._unsub.push(host.on('townPortal', () => {
-        if (this.ctx && typeof this.ctx.returnToVillage === 'function') this.ctx.returnToVillage();
-      }));
     }
   }
 
@@ -1091,7 +1088,8 @@ export function createHost(ctx = {}) {
       const d = getDungeon();
       if (d && typeof d.getNearestInteractable === 'function' && getPlayerCtrl()) {
         const pPos = getPlayerPos();
-        const hit = d.getNearestInteractable(pPos.x, pPos.z);
+        // same reach as the E/F interact handler in main.js
+        const hit = d.getNearestInteractable(pPos.x, pPos.z, 3.0);
         return hit ? (hit.prompt || hit.label || null) : null;
       }
       return null;
