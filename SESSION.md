@@ -4,7 +4,7 @@
 - **Project Name:** `asj` (**ARKENVEIL: SIGILS & JOURNEYS**)
 - **Tech Stack:** Three.js (`^0.170.0`), Vite (`^6.0.0`), Vanilla ES Modules, WebAudio procedural SFX.
 - **Build & Test Status:**
-  - `npm test` (`node tests/run_tests.mjs`) -> **ALL 353 CHECKS PASSED**
+  - `npm test` (`node tests/run_tests.mjs`) -> **ALL 361 CHECKS PASSED**
   - `npm run build` (`vite build`) -> **27 modules transformed, 0 errors**
 
 ## Completed Work
@@ -40,6 +40,8 @@
    - Save repair re-applies visual metadata (old wizard `spear_*` → `staff_*`). Fixed NPC weapon glow infinite traverse.
    - Verified with a Playwright harness (local, untracked `.asj-harness/`): all classes mount their gear, 0 page/console errors, 0 missing assets.
    - Limitation: no European item models exist upstream; staff/axes are procedural.
+
+7. **Alchemy fixes (`menus.js`, `inventory.js`):** Fuse button handler (`alchgo`) was missing; O-hotkey/NPC selection crashed (missing `_composeClick`); equipped items can now be enhanced (3D refresh via `equip` emit) with a visible block reason; each + level adds at least +1 stat; alchemy counts for the compose quest; double-click no longer cancels the fuse; result timer and history labels fixed. Verified by `.asj-harness/alchemy.mjs` (19/19).
 
 ## Next Actions
 - Run `npm.cmd run dev` for live browser playtesting and fine-tuning combat balance or audio levels if desired.

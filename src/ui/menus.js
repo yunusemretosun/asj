@@ -431,7 +431,7 @@ export class MenuManager {
     const S = this.state;
     switch (this.current) {
       case 'inventory': S.sel = String(uid); this._render(); break;
-      case 'compose': if (S.tab === 'alchemy') { if (isEquipItem(it)) this._alchSelect(it.uid); } else this._composeClick(it); break;
+      case 'compose': if (isEquipItem(it)) this._alchSelect(it.uid); else this._say('Only equipment can be enhanced.', false); break;
       case 'shop': this._shopClick(it, e); break;
       case 'storage': this._storageClick(it); break;
       default: break;
@@ -462,9 +462,12 @@ export class MenuManager {
       case 'questturn': this._do(() => host.turnInQuest(ds.id)); break;
       case 'questabandon': if (host.abandonQuest) this._do(() => host.abandonQuest(ds.id)); break;
       // compose
-      case 'composego': if (S.tab === 'alchemy') this._alchStart(); else this._composeGo(); break;
+      case 'alchgo': case 'composego': this._alchStart(); break;
       case 'alchclear': this._alchCancel(); S.alchUid = null; this._render(); break;
-      case 'alchcancel': this._alchCancel(); this._render(); break;
+      case 'alchcancel':
+        // the Fuse button turns into Cancel in place: ignore the second click of a double-click
+        if (this._fuse && performance.now() - this._fuse.t0 < 400) break;
+        this._alchCancel(); this._render(); break;
       case 'alchpowder': S.alchPowder = !S.alchPowder; this._render(); break;
       case 'alchtalisman': S.alchTalisman = !S.alchTalisman; this._render(); break;
       case 'composeclear': this._alchCancel(); S.picks = []; this._render(); break;
@@ -712,7 +715,10 @@ export class MenuManager {
     const S = this.state;
     if (this._fuse || !S.alchUid) return;
     const it = this._alchFind(S.alchUid); if (!it) return;
-    S.alchRes = null;
+    const pv = this.host.previewAlchemy ? this.host.previewAlchemy(it.uid, this._alchOpts()) : null;
+    if (pv && pv.ok === false) { this._say(pv.reason || 'Not possible.', false); return; }
+    S.alchRes = null; S.flash = null;
+    clearTimeout(this._alchFlashT);
     const uid = String(S.alchUid), opts = this._alchOpts();
     const f = this._fuse = { uid, opts, t0: performance.now(), dur: ALCHEMY.fuseSeconds * 1000, raf: 0 };
     this._render();
@@ -732,7 +738,7 @@ export class MenuManager {
   _alchFinish(uid, opts) {
     const S = this.state;
     const before = this._alchFind(uid);
-    const name = before ? before.name : 'Item';
+    const name = before ? before.baseName || before.name : 'Item';
     let r;
     try { r = this.host.alchemy(uid, opts); } catch (e) { console.error(e); r = { ok: false, msg: String(e.message || e) }; }
     r = r || {};
@@ -748,9 +754,10 @@ export class MenuManager {
       this._alchHist = [{ ok: success, name, from: prev, to: plus, chance: r.chance }, ...(this._alchHist || [])].slice(0, 5);
     } else this._toast(text, 'warn');
     this._render();
+    clearTimeout(this._alchFlashT);
     if (S.flash) {
-      setTimeout(() => {
-        if (this.state && this.state.flash) {
+      this._alchFlashT = setTimeout(() => {
+        if (this.current === 'compose' && this.state && this.state.flash && !this._fuse) {
           this.state.flash = null;
           this._render();
         }
@@ -797,7 +804,8 @@ export class MenuManager {
 
     let chance = null;
     if (pv) {
-      if (pv.chance != null) chance = pv.legacy && pv.chance <= 1 ? pv.chance * 100 : pv.chance;
+      if (pv.ok === false && !pv.chance) chance = null;
+      else if (pv.chance != null) chance = pv.legacy && pv.chance <= 1 ? pv.chance * 100 : pv.chance;
       else if (it && !pv.legacy) chance = alchemyChance(target, { powder: !!S.alchPowder });
     }
     const chCls = chance == null ? '' : chance >= 60 ? 'hi' : chance >= 30 ? 'mid' : 'lo';
@@ -830,7 +838,7 @@ export class MenuManager {
               <div class="alcm-chance-line">
                 ${it ? (maxed ? '<span style="color:#b45309">Maximum +10 enhancement reached</span>' : `Success Chance: <b class="alcm-chance-val ${chCls}">${chance != null ? Math.round(chance) + '%' : '—'}</b>${pv && pv.cost != null ? ` · Cost: <b class="arc-gold">${pv.cost} G</b>` : ''}`) : 'Place equipment and Elixir in chamber to preview'}
               </div>
-              <div class="alcm-warn">${failTxt}</div>
+              ${it && !maxed && pv && pv.ok === false && pv.reason ? `<div class="alcm-warn alcm-reason">${esc(pv.reason)}</div>` : `<div class="alcm-warn">${failTxt}</div>`}
             </div>
           </div>
 

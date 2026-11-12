@@ -61,6 +61,37 @@ const prev = game.inventory.previewAlchemy(sword.uid, { usePowder: true, useTali
 check('previewAlchemy returns valid chance and cost', prev && prev.ok && prev.chance > 0);
 check('Alchemy constants and Seals defined', Boolean(ALCHEMY && SEALS && STATUS && IMBUE_DEFAULTS));
 
+{
+  const ag = createGame({});
+  ag.newCharacter({ name: 'AlchKnight', classId: 'knight', slot: 0 });
+  ag.addGold(5000);
+  const inv = ag.inventory;
+  const wpn = inv.equipment.weapon;
+  const atk0 = ag.atkMax, gold0 = ag.hero.gold, armorElx0 = inv.countItem('elixir_armor');
+  const events = []; ag.on('alchemy', (e) => events.push(e));
+  let questHook = 0; const origOnCompose = ag.quests.onCompose.bind(ag.quests);
+  ag.quests.onCompose = (...a) => { questHook++; return origOnCompose(...a); };
+  const pv = inv.previewAlchemy(wpn.uid, {});
+  check('Equipped starter weapon can be previewed for alchemy', pv.ok && pv.elixirId === 'elixir_weapon' && pv.haveElixir === 2 && pv.chance === ALCHEMY.elixirChance[0]);
+  const rnd = Math.random;
+  Math.random = () => 0;
+  const r1 = inv.alchemy(wpn.uid, {});
+  Math.random = rnd;
+  check('Equipped weapon alchemy success raises +1 and keeps it equipped', r1.ok && r1.success && inv.equipment.weapon === wpn && wpn.plus === 1);
+  check('Alchemy consumes exactly one matching elixir and the gold cost', inv.countItem('elixir_weapon') === 1 && inv.countItem('elixir_armor') === armorElx0 && ag.hero.gold === gold0 - pv.cost);
+  check('Equipped weapon alchemy updates hero attack stats', ag.atkMax > atk0);
+  check('Alchemy emits event and counts toward compose/upgrade quests', events.length === 1 && events[0].item === wpn && questHook === 1);
+  const saved = JSON.parse(JSON.stringify(ag.toJSON()));
+  const lg = createGame({}); lg.fromJSON(saved);
+  check('Alchemy +N persists through save/load', lg.inventory.equipment.weapon && lg.inventory.equipment.weapon.plus === 1);
+  Math.random = () => 0.999;
+  const r2 = inv.alchemy(wpn.uid, {});
+  Math.random = rnd;
+  check('Alchemy failure resets to +0 without breaking the item', r2.ok && !r2.success && wpn.plus === 0 && inv.equipment.weapon === wpn && inv.countItem('elixir_weapon') === 0);
+  const r3 = inv.alchemy(wpn.uid, {});
+  check('Alchemy without a matching elixir is refused', !r3.ok && wpn.plus === 0);
+}
+
 // 3. Village Hub, Forest Outskirts, and Minimap Contract
 const scene = new THREE.Scene();
 const telegraphs = [];

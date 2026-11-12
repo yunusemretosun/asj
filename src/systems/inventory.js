@@ -641,7 +641,8 @@ export function recalcItem(item) {
   for (const k in item.baseStats || {}) {
     const v = item.baseStats[k];
     const scalable = ['atkMin', 'atkMax', 'def', 'matk', 'hp', 'mp', 'atk'].includes(k);
-    stats[k] = scalable ? Math.round(v * plusMult) : v;
+    // every + level adds at least 1 point, so low base stats do not round the bonus away
+    stats[k] = scalable ? Math.max(Math.round(v * plusMult), Math.round(v * (seal ? seal.statMult : 1)) + (v > 0 ? item.plus || 0 : 0)) : v;
   }
   if (seal && seal.critRate) stats.critRate = (stats.critRate || 0) + seal.critRate;
   const affixes = [];
@@ -1792,8 +1793,7 @@ export class Inventory {
     const bad = (reason, extra = {}) => ({ ok: false, reason, item: f ? f.item : null, targetPlus: 0, chance: 0, cost: 0, failText: '', statPreview: {}, ...extra });
     if (!f || !isEquip(f.item)) return bad('Select a piece of equipment.');
     const item = f.item;
-    if (f.container === 'equipment') return bad('Unequip the item first (place it in your bag).');
-    if (f.container !== 'bag') return bad('Move the item to your bag first.');
+    if (f.container !== 'bag' && f.container !== 'equipment') return bad('Move the item to your bag first.');
     const plus = item.plus || 0;
     if (plus >= ALCHEMY.maxPlus) return bad(`Already at maximum (+${ALCHEMY.maxPlus}).`);
     const targetPlus = plus + 1;
@@ -1849,6 +1849,7 @@ export class Inventory {
     }
     recalcItem(item);
     this._changed(true);
+    if (g && g.quests) g.quests.onCompose('alchemy', success, item);
     this._emit('alchemy', { success, item, plus: item.plus, prevPlus, chance: p.chance });
     this._emit('toast', msg, success ? (item.plus >= ALCHEMY.announceAt ? 'levelup' : 'loot') : 'warning');
     return { ok: true, success, msg, item, plus: item.plus, prevPlus, chance: p.chance };
