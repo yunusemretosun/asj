@@ -142,6 +142,23 @@ async function bootstrap() {
     player.syncEquipment();
   });
 
+  gameState.on('berserk', (info) => {
+    if (info?.active) {
+      renderer.setBerserkAura?.(player.mesh, true);
+      player.setBerserkAura?.(true);
+      hud.toast?.('🔥 HWAN BERSERK UNLEASHED! (2x Damage & Speed)', 'levelup');
+    } else {
+      renderer.setBerserkAura?.(player.mesh, false);
+      player.setBerserkAura?.(false);
+    }
+  });
+
+  gameState.on('nemesisSlain', (info) => {
+    renderer.spawnLevelUpPillar(player.position);
+    player.sound.play('levelup');
+    hud.toast?.(`⚔️ VENGEANCE CLAIMED! Slain ${info?.name || 'Nemesis'} (+${info?.gold || 0}G)`, 'levelup');
+  });
+
   // Re-apply class look (body parts, colors, attack style) whenever the hero changes
   gameState.on('loaded', () => player.applyHeroLook?.());
   gameState.on('reset', () => player.applyHeroLook?.());

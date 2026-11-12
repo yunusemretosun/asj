@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { RARITY_BEAMS, HOT_SPRINGS } from '../systems/mechanics.js';
 import {
   models3d as defaultModels3d,
   createNPCMesh,
@@ -27,7 +28,9 @@ import {
   buildSteleMesh,
   buildPuzzleStatueMesh,
   buildAltarMesh,
-  BELL_PITCHES
+  BELL_PITCHES,
+  createSilkroadCofferMesh,
+  loadSROProp
 } from './dungeonDecor.js';
 
 const LIGHT_POOL_SIZE = 8;
@@ -151,21 +154,21 @@ export const DUNGEON_THEMES = {
 
 export const FLOOR_DEFINITIONS = [
   // recommendedLevel mirrors floorMonsterLevel(floor) in src/systems/inventory.js (monster level & loot tier)
-  { floor: 1, name: 'Mine Outskirts B1F', theme: 'cave', recommendedLevel: 1, isBossFloor: false, monsterTypes: ['slime', 'goblin'] },
-  { floor: 2, name: 'Ore Galleries B2F', theme: 'cave', recommendedLevel: 3, isBossFloor: false, monsterTypes: ['slime', 'goblin', 'bat'] },
-  { floor: 3, name: 'Chieftain Cavern B3F', theme: 'cave', recommendedLevel: 5, isBossFloor: true, bossId: 'goblin_king', bossName: 'Grimtooth the Goblin King', monsterTypes: ['goblin', 'wolf', 'slime'] },
-  { floor: 4, name: 'Bone Niche Ossuary B4F', theme: 'crypt', recommendedLevel: 9, isBossFloor: false, monsterTypes: ['skeleton', 'bat', 'spider'] },
-  { floor: 5, name: 'Sealed Tombs B5F', theme: 'crypt', recommendedLevel: 13, isBossFloor: false, monsterTypes: ['skeleton', 'mage', 'spider'] },
-  { floor: 6, name: 'Necromancer Crypt B6F', theme: 'crypt', recommendedLevel: 17, isBossFloor: true, bossId: 'crypt_lich', bossName: 'Malakor the Undying Lich', monsterTypes: ['skeleton', 'mage'] },
-  { floor: 7, name: 'Sunken Temple B7F', theme: 'ruins', recommendedLevel: 21, isBossFloor: false, monsterTypes: ['orc', 'wolf', 'mage'] },
-  { floor: 8, name: 'Hall of Pillars B8F', theme: 'ruins', recommendedLevel: 25, isBossFloor: false, monsterTypes: ['orc', 'golem', 'mage'] },
-  { floor: 9, name: 'Runic Core B9F', theme: 'ruins', recommendedLevel: 28, isBossFloor: true, bossId: 'ancient_golem', bossName: 'Aegis the Runic Colossus', monsterTypes: ['golem', 'orc', 'mage'] },
-  { floor: 10, name: 'Ember Forge B10F', theme: 'lava', recommendedLevel: 32, isBossFloor: false, monsterTypes: ['orc', 'golem', 'bat'] },
-  { floor: 11, name: 'Obsidian Foundry B11F', theme: 'lava', recommendedLevel: 36, isBossFloor: false, monsterTypes: ['orc', 'mage', 'golem'] },
-  { floor: 12, name: 'Hellforge Altar B12F', theme: 'lava', recommendedLevel: 40, isBossFloor: true, bossId: 'infernal_overlord', bossName: 'Ignis the Hellforge Tyrant', monsterTypes: ['golem', 'orc', 'mage'] },
-  { floor: 13, name: 'Terracotta Avenue B13F', theme: 'boss', recommendedLevel: 44, isBossFloor: false, monsterTypes: ['skeleton', 'mage', 'golem'] },
-  { floor: 14, name: 'Quicksilver Halls B14F', theme: 'boss', recommendedLevel: 48, isBossFloor: false, monsterTypes: ['orc', 'mage', 'golem'] },
-  { floor: 15, name: 'Heart of Chaos B15F', theme: 'boss', recommendedLevel: 52, isBossFloor: true, bossId: 'chaos_lord', bossName: 'Azrael, Lord of Chaos', monsterTypes: ['golem', 'mage', 'orc'] }
+  { floor: 1, name: 'Bifrost Valley B1F', theme: 'cave', recommendedLevel: 1, isBossFloor: false, monsterTypes: ['mangyang', 'gyo_weasel', 'bigeye_ghost', 'slime'] },
+  { floor: 2, name: 'Jangan Outskirts B2F', theme: 'cave', recommendedLevel: 3, isBossFloor: false, monsterTypes: ['mangyang', 'gyo_weasel', 'tiger', 'goblin'] },
+  { floor: 3, name: 'Tiger Lair B3F', theme: 'cave', recommendedLevel: 5, isBossFloor: true, bossId: 'tiger_girl', bossName: 'Tiger Girl (Unique Boss)', monsterTypes: ['gyo_weasel', 'tiger', 'white_tiger', 'bigeye_ghost'] },
+  { floor: 4, name: 'Black Tiger Fortress B4F', theme: 'crypt', recommendedLevel: 9, isBossFloor: false, monsterTypes: ['bandit', 'bandit_archer', 'water_ghost', 'tombstone_ghost'] },
+  { floor: 5, name: 'Bandit Stronghold B5F', theme: 'crypt', recommendedLevel: 13, isBossFloor: false, monsterTypes: ['bandit', 'bandit_archer', 'ghost_bug', 'yeoha'] },
+  { floor: 6, name: 'Bandit Keep B6F', theme: 'crypt', recommendedLevel: 17, isBossFloor: true, bossId: 'bandit_lord', bossName: 'Black Tiger Bandit Leader (Unique Boss)', monsterTypes: ['bandit_archer', 'water_ghost', 'ghost_bug', 'yeoha'] },
+  { floor: 7, name: 'Qin-Shi Tomb Ruins B7F', theme: 'ruins', recommendedLevel: 21, isBossFloor: false, monsterTypes: ['stone_ghost', 'earth_ghost', 'chakji', 'gunpowder_ghost'] },
+  { floor: 8, name: 'Tomb of the Emperor B8F', theme: 'ruins', recommendedLevel: 25, isBossFloor: false, monsterTypes: ['stone_ghost', 'earth_ghost', 'chakji', 'tombstone_ghost'] },
+  { floor: 9, name: 'Sanctum of the Tao B9F', theme: 'ruins', recommendedLevel: 28, isBossFloor: true, bossId: 'earth_king', bossName: 'Earth Taoist King (Unique Boss)', monsterTypes: ['chakji', 'stone_ghost', 'gunpowder_ghost', 'earth_ghost'] },
+  { floor: 10, name: 'Taklamakan Wastes B10F', theme: 'lava', recommendedLevel: 32, isBossFloor: false, monsterTypes: ['white_tiger', 'blue_tiger', 'devil_bug', 'hyungno'] },
+  { floor: 11, name: 'Blue Mountain Caverns B11F', theme: 'lava', recommendedLevel: 36, isBossFloor: false, monsterTypes: ['white_tiger', 'blue_tiger', 'devil_bug', 'hyungno'] },
+  { floor: 12, name: 'Sovereign Pinnacle B12F', theme: 'lava', recommendedLevel: 40, isBossFloor: true, bossId: 'blue_tiger_boss', bossName: 'Blue Tiger Sovereign (Unique Boss)', monsterTypes: ['blue_tiger', 'devil_bug', 'hyungno', 'chakji'] },
+  { floor: 13, name: 'Niwa Netherworld B13F', theme: 'boss', recommendedLevel: 44, isBossFloor: false, monsterTypes: ['hyungno', 'chakji', 'gunpowder_ghost', 'blue_tiger'] },
+  { floor: 14, name: 'Temple of the Underworld B14F', theme: 'boss', recommendedLevel: 48, isBossFloor: false, monsterTypes: ['hyungno', 'chakji', 'gunpowder_ghost', 'stone_ghost'] },
+  { floor: 15, name: 'Heart of Hyeongcheon B15F', theme: 'boss', recommendedLevel: 52, isBossFloor: true, bossId: 'hyeongcheon', bossName: 'Hyeongcheon the Immortal (Unique Boss)', monsterTypes: ['hyungno', 'gunpowder_ghost', 'blue_tiger', 'earth_ghost'] }
 ];
 
 export const VILLAGE_NPCS = [
@@ -331,6 +334,8 @@ export class DungeonGenerator {
     this.gates = [];
     this.shrines = [];
     this.groundLoot = [];
+    this.lootDrops = this.groundLoot;
+    this.hotSprings = null;
     this.solidObstacles = [];
     this.bossRoom = null;
     this.bossArena = null;
@@ -346,6 +351,22 @@ export class DungeonGenerator {
     this.unlockedMaxFloor = 1;
     this.elapsedTime = 0;
     this.villageBuild = null;
+  }
+
+  get context() {
+    return this.gameContext;
+  }
+
+  set context(v) {
+    this.gameContext = v;
+  }
+
+  get lootDrops() {
+    return this.groundLoot;
+  }
+
+  set lootDrops(v) {
+    this.groundLoot = v;
   }
 
   _applyInitArgs(rendererOrOptions, models3dArg, dataArg) {
@@ -427,6 +448,8 @@ export class DungeonGenerator {
     this.gates = [];
     this.shrines = [];
     this.groundLoot = [];
+    this.lootDrops = this.groundLoot;
+    this.hotSprings = null;
     this.solidObstacles = [];
     this.bossRoom = null;
     this.bossArena = null;
@@ -528,6 +551,13 @@ export class DungeonGenerator {
 
     // Silk-Road caravan town (see villageBuilder.js)
     const vb = this._buildVillageScenery();
+    this.villageBuild = vb;
+    this.hotSprings = vb?.hotSprings || {
+      x: HOT_SPRINGS.center.x,
+      z: HOT_SPRINGS.center.z,
+      radius: HOT_SPRINGS.radius,
+      name: 'Jade Mist Hot Springs'
+    };
     const fountainGroup = vb.fountain;
 
     this.shrines.push({
@@ -550,15 +580,15 @@ export class DungeonGenerator {
       const spot = vb.npcSpots[baseDef.id];
       const npcDef = spot ? { ...baseDef, x: spot.x, z: spot.z, rotationY: spot.rotationY } : baseDef;
       const mesh = (this.models3d?.createNPCMesh || createNPCMesh)(npcDef);
-      mesh.position.set(npcDef.x, 0, npcDef.z);
+      mesh.position.set(npcDef.x, 0.08, npcDef.z);
       mesh.rotation.y = npcDef.rotationY || 0;
       this.rootGroup.add(mesh);
 
       this.npcs.push({
         ...npcDef,
         type: 'npc',
-        y: 0,
-        position: { x: npcDef.x, y: 0, z: npcDef.z },
+        y: 0.08,
+        position: { x: npcDef.x, y: 0.08, z: npcDef.z },
         mesh
       });
       this.solidObstacles.push({ x: npcDef.x, z: npcDef.z, radius: 0.65 });
@@ -1423,7 +1453,7 @@ export class DungeonGenerator {
 
   _spawnChest(x, z, tier = 'normal', id = null) {
     const chestId = id || `chest_${this.chests.length + 1}`;
-    const mesh = (this.models3d?.createChestMesh || createChestMesh)(tier, false);
+    const mesh = createSilkroadCofferMesh(tier, false);
     mesh.position.set(x, 0, z);
     this.rootGroup.add(mesh);
 
@@ -1535,6 +1565,19 @@ export class DungeonGenerator {
     group.add(barsGroup);
 
     group.userData.barsGroup = barsGroup;
+
+    // Silkroad portal arch frame
+    if (typeof window !== 'undefined') {
+      loadSROProp('/assets/sro/props/cj_portal.glb', {
+        parent: group,
+        position: [0, 0, 0],
+        targetHeight: 5.0,
+        autoGround: true,
+        castShadow: false,
+        receiveShadow: false
+      });
+    }
+
     this.rootGroup.add(group);
 
     const gate = {
@@ -2076,7 +2119,95 @@ export class DungeonGenerator {
     };
   }
 
-  spawnGroundLoot(posOrX, itemOrZ, maybeItem = null) {
+  _attachRarityBeam(mesh, beamDef) {
+    if (!mesh || !beamDef) return;
+    const col = beamDef.color || 0x38bdf8;
+    // Vertical beam pillar
+    const beamGeo = new THREE.CylinderGeometry(beamDef.radius * 0.45, beamDef.radius, beamDef.height, 16, 1, true);
+    const beamMat = new THREE.MeshBasicMaterial({
+      color: col,
+      transparent: true,
+      opacity: 0.45,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+    const beamMesh = new THREE.Mesh(beamGeo, beamMat);
+    beamMesh.position.y = beamDef.height * 0.5;
+    mesh.add(beamMesh);
+
+    // Ground ring
+    const ringGeo = new THREE.RingGeometry(beamDef.ringRadius * 0.82, beamDef.ringRadius, 24);
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: col,
+      transparent: true,
+      opacity: 0.65,
+      side: THREE.DoubleSide
+    });
+    const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+    ringMesh.rotation.x = -Math.PI / 2;
+    ringMesh.position.y = 0.04;
+    mesh.add(ringMesh);
+
+    // Orbit group with orbiting crystal motes
+    const orbitGroup = new THREE.Group();
+    orbitGroup.name = 'RarityOrbitGroup';
+    const moteGeo = new THREE.OctahedronGeometry(0.12, 0);
+    const moteMat = new THREE.MeshStandardMaterial({
+      color: col,
+      emissive: new THREE.Color(col),
+      emissiveIntensity: 0.85,
+      roughness: 0.2,
+      metalness: 0.6
+    });
+    const count = Math.max(1, beamDef.orbitCount || 2);
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2;
+      const mote = new THREE.Mesh(moteGeo, moteMat);
+      mote.position.set(
+        Math.cos(angle) * beamDef.ringRadius,
+        0.35,
+        Math.sin(angle) * beamDef.ringRadius
+      );
+      orbitGroup.add(mote);
+    }
+    mesh.add(orbitGroup);
+    mesh.userData.orbitGroup = orbitGroup;
+  }
+
+  spawnLoot(item, pos = null) {
+    if (!item) return null;
+    let actualItem = item;
+    let actualPos = pos;
+    if (
+      item &&
+      typeof item === 'object' &&
+      'x' in item &&
+      'z' in item &&
+      !('type' in item) &&
+      !('slot' in item) &&
+      !('rarity' in item) &&
+      !('baseId' in item)
+    ) {
+      actualPos = item;
+      actualItem = pos;
+    }
+    const origin = actualPos || { x: 0, z: 0 };
+    const targetX = actualPos?.targetX ?? actualPos?.x ?? 0;
+    const targetZ = actualPos?.targetZ ?? actualPos?.z ?? 0;
+
+    const lootEntry = this.spawnGroundLoot({ x: targetX, z: targetZ }, actualItem, null, origin);
+    if (lootEntry) {
+      lootEntry.startX = Number(origin.x || 0);
+      lootEntry.startZ = Number(origin.z || 0);
+      lootEntry.targetX = lootEntry.x;
+      lootEntry.targetZ = lootEntry.z;
+      lootEntry.tossElapsed = 0;
+      lootEntry.tossDuration = RARITY_BEAMS.tossDuration;
+    }
+    return lootEntry;
+  }
+
+  spawnGroundLoot(posOrX, itemOrZ, maybeItem = null, startOrigin = null) {
     let x = 0;
     let z = 0;
     let item = itemOrZ;
@@ -2095,8 +2226,15 @@ export class DungeonGenerator {
     const rarity = item.rarity || 'normal';
 
     const mesh = (this.models3d?.createLootMesh || createLootMesh)(isGold ? 'gold' : item, rarity);
-    mesh.position.set(x, 0, z);
+    const startX = startOrigin ? Number(startOrigin.x ?? x) : x;
+    const startZ = startOrigin ? Number(startOrigin.z ?? z) : z;
+    mesh.position.set(startX, 0.25, startZ);
     this.rootGroup.add(mesh);
+
+    const sealKey = item?.seal;
+    if (sealKey && RARITY_BEAMS[sealKey]) {
+      this._attachRarityBeam(mesh, RARITY_BEAMS[sealKey]);
+    }
 
     const lootEntry = {
       id: `ground_loot_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -2108,9 +2246,15 @@ export class DungeonGenerator {
       rarity,
       collected: false,
       x,
-      y: 0,
+      y: 0.25,
       z,
-      position: { x, y: 0, z },
+      position: { x, y: 0.25, z },
+      startX,
+      startZ,
+      targetX: x,
+      targetZ: z,
+      tossElapsed: 0,
+      tossDuration: RARITY_BEAMS.tossDuration,
       mesh
     };
     this.groundLoot.push(lootEntry);
@@ -2223,6 +2367,14 @@ export class DungeonGenerator {
 
     if (this.villageBuild) this.villageBuild.update(dt, time, playerPos);
 
+    if (this.currentFloor === 0 && px !== null && pz !== null) {
+      const distToHotSprings = Math.hypot(px - HOT_SPRINGS.center.x, pz - HOT_SPRINGS.center.z);
+      if (distToHotSprings <= HOT_SPRINGS.radius) {
+        const gs = this.context?.gameState || this.gameContext?.gameState;
+        gs?.soakInHotSprings?.(dt);
+      }
+    }
+
     // Animate Portals, Torches, Chests, Shrines, and Ground Loot
     for (const portal of this.portals) {
       portal.mesh?.userData?.animate?.(time, dt);
@@ -2255,9 +2407,46 @@ export class DungeonGenerator {
         shrine.mesh.userData.crystal.position.y = 2.05 + Math.sin(time * 2.6) * 0.1;
       }
     }
-    for (const loot of this.groundLoot) {
-      if (!loot.collected) {
-        loot.mesh?.userData?.animate?.(time, dt);
+    for (const loot of this.lootDrops) {
+      if (loot.collected) continue;
+
+      if (loot.tossElapsed < loot.tossDuration) {
+        loot.tossElapsed += dt;
+      }
+      const t = Math.min(1, loot.tossElapsed / loot.tossDuration);
+
+      if (t < 1) {
+        const curX = loot.startX + (loot.targetX - loot.startX) * t;
+        const curZ = loot.startZ + (loot.targetZ - loot.startZ) * t;
+        const arcY = 0.25 + 4 * RARITY_BEAMS.tossApex * t * (1 - t);
+        loot.x = curX;
+        loot.z = curZ;
+        loot.y = arcY;
+        if (loot.mesh) {
+          loot.mesh.position.set(curX, arcY, curZ);
+        }
+        if (loot.position) {
+          loot.position.x = curX;
+          loot.position.y = arcY;
+          loot.position.z = curZ;
+        }
+      } else {
+        loot.x = loot.targetX;
+        loot.z = loot.targetZ;
+        if (loot.mesh) {
+          loot.mesh.position.x = loot.targetX;
+          loot.mesh.position.z = loot.targetZ;
+          loot.mesh.position.y = 0.25 + Math.sin(time * 3 + (loot.startX || 0)) * 0.06;
+          loot.mesh.userData?.animate?.(time, dt);
+          if (loot.mesh.userData?.orbitGroup) {
+            loot.mesh.userData.orbitGroup.rotation.y += dt * 2.4;
+          }
+        }
+        if (loot.position) {
+          loot.position.x = loot.targetX;
+          loot.position.y = loot.mesh ? loot.mesh.position.y : 0.25;
+          loot.position.z = loot.targetZ;
+        }
       }
     }
 
@@ -2358,6 +2547,12 @@ export class DungeonGenerator {
       gates: this.gates,
       shrines: this.shrines,
       groundLoot: this.groundLoot,
+      hotSprings: this.currentFloor === 0 ? (this.hotSprings || this.villageBuild?.hotSprings || {
+        x: HOT_SPRINGS.center.x,
+        z: HOT_SPRINGS.center.z,
+        radius: HOT_SPRINGS.radius,
+        name: 'Jade Mist Hot Springs'
+      }) : null,
       bossRoom: this.bossRoom,
       bossArena: this.bossArena,
       atmosphere: this.zone === 'dungeon' && this.theme?.atmosphere ? { ...this.theme.atmosphere } : null,

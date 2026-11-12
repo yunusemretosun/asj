@@ -83,6 +83,7 @@ export function floorMonsterLevel(floor) {
 const EQUIP_NAMES = {
   sword: ['Short Sword', 'Long Sword', 'Broad Sword', 'Knight Sword', 'Flamberge', 'Rune Blade', 'Dragon Slayer', 'Arkenveil Blade'],
   axe: ['Hand Axe', 'Battle Axe', 'War Axe', 'Bearded Axe', 'Executioner', 'Rune Axe', 'Dragon Cleaver', 'Titan Axe'],
+  dagger: ['Bronze Dagger', 'Iron Dagger', 'Steel Dagger', 'Assassin Blade', 'Shadow Dagger', 'Rune Dagger', 'Dragon Tooth', 'Nether Dagger'],
   mace: ['Club', 'Mace', 'Morning Star', 'Flail', 'War Hammer', 'Rune Maul', 'Dragon Hammer', 'Thunder Maul'],
   staff: ['Wooden Staff', 'Oak Staff', 'Crystal Staff', 'Mystic Staff', 'Sage Staff', 'Rune Staff', 'Dragon Staff', 'Arcane Scepter'],
   bow: ['Short Bow', 'Hunting Bow', 'Recurve Bow', 'Longbow', 'Composite Bow', 'Rune Bow', 'Dragonbone Bow', 'Arkenveil Greatbow'],
@@ -95,7 +96,7 @@ const EQUIP_NAMES = {
 };
 const WEAPON_ATK = [[3, 6], [7, 12], [12, 19], [18, 28], [26, 39], [36, 53], [50, 72], [68, 96]];
 const ICONS = {
-  sword: '🗡️', axe: '🪓', mace: '🔨', staff: '🪄', bow: '🏹', shield: '🛡️', helmet: '⛑️', armor: '🥋', boots: '👢', necklace: '📿', ring: '💍',
+  sword: '🗡️', axe: '🪓', dagger: '🗡️', mace: '🔨', staff: '🪄', bow: '🏹', shield: '🛡️', helmet: '⛑️', armor: '🥋', boots: '👢', necklace: '📿', ring: '💍',
   hp: '🧪', mp: '🔷', elixir: '⚗️', scroll: '📜', crystal: '💎', stone: '🪨', charm: '🍀', quest: '📦', tonic: '🍶', antidote: '🌿',
 };
 
@@ -109,23 +110,78 @@ export function registerItemBase(def) {
 }
 export const getItemBase = (id) => ITEM_BASES[id] || null;
 
+function tierToDeg(t) {
+  const n = Number(t) || 0;
+  if (n <= 0) return '01';
+  if (n === 1) return '02';
+  if (n === 2) return '03';
+  return '04';
+}
+
 function buildEquipmentBases() {
   for (let t = 0; t < 8; t++) {
+    const deg = tierToDeg(t);
     const reqLevel = TIER_LEVELS[t];
     const price = Math.round(30 * Math.pow(t + 1, 2.2));
     const [mn, mx] = WEAPON_ATK[t];
+    const weaponIcons = {
+      sword: `/assets/sro/icons/weapon/sword_${deg}.png`,
+      mace: `/assets/sro/icons/weapon/blade_${deg}.png`,
+      dagger: `/assets/sro/icons/weapon/blade_${deg}.png`,
+      axe: `/assets/sro/icons/weapon/axe_${deg}.png`,
+      staff: `/assets/sro/icons/weapon/spear_${deg}.png`,
+      bow: `/assets/sro/icons/weapon/bow_${deg}.png`,
+    };
+    const weaponGlb = {
+      sword: `/assets/sro/equipment/sword_${deg}.glb`,
+      mace: `/assets/sro/equipment/blade_${deg}.glb`,
+      dagger: `/assets/sro/equipment/blade_${deg}.glb`,
+      axe: `/assets/sro/equipment/axe_${deg}.glb`,
+      staff: `/assets/sro/equipment/spear_${deg}.glb`,
+      bow: `/assets/sro/equipment/bow_${deg}.glb`,
+    };
+    const weaponModel = {
+      sword: `sword_${deg}`,
+      mace: `blade_${deg}`,
+      dagger: `blade_${deg}`,
+      axe: `axe_${deg}`,
+      staff: `spear_${deg}`,
+      bow: `bow_${deg}`,
+    };
     const W = (sub, stats, extra = {}) => registerItemBase({
       id: `${sub}_${t + 1}`, name: EQUIP_NAMES[sub][t], type: 'weapon', slot: 'weapon', subtype: sub, tier: t, reqLevel,
-      stats, price: Math.round(price * (extra.pmul || 1)), icon: ICONS[sub], material: TIER_MATERIALS[t],
+      stats, price: Math.round(price * (extra.pmul || 1)), icon: weaponIcons[sub] || ICONS[sub],
+      visualModel: weaponModel[sub], visualGlb: weaponGlb[sub], material: TIER_MATERIALS[t],
     });
     W('sword', { atkMin: mn, atkMax: mx });
+    W('dagger', { atkMin: Math.round(mn * 0.95), atkMax: Math.round(mx * 1.05), critRate: 3 + t, attackSpeedPct: 5 });
     W('axe', { atkMin: Math.round(mn * 0.85), atkMax: Math.round(mx * 1.22), attackSpeedPct: -6 });
     W('mace', { atkMin: Math.round(mn * 1.12), atkMax: Math.round(mx * 1.04), critDmg: 10 + t * 3 });
     W('staff', { atkMin: Math.round(mn * 0.6), atkMax: Math.round(mx * 0.6), matk: Math.round((mn + mx) * 0.6), mp: 10 + t * 8 }, { pmul: 1.1 });
     W('bow', { atkMin: Math.round(mn * 0.9), atkMax: Math.round(mx * 1.05), critRate: 2 + t });
+    const armorIcons = {
+      shield: `/assets/sro/icons/shield/shield_${deg}.png`,
+      helmet: `/assets/sro/icons/armor/heavy_${deg}_ha.png`,
+      armor: `/assets/sro/icons/armor/heavy_${deg}_ba.png`,
+      boots: `/assets/sro/icons/armor/heavy_${deg}_fa.png`,
+      necklace: `/assets/sro/icons/acc/necklace_${deg}.png`,
+      ring: `/assets/sro/icons/acc/ring_${deg}.png`,
+    };
+    const armorGlb = {
+      shield: `/assets/sro/equipment/shield_${deg}.glb`,
+      helmet: `/assets/sro/equipment/heavy_${deg}_ha.glb`,
+      armor: `/assets/sro/equipment/heavy_${deg}_ba.glb`,
+      boots: `/assets/sro/equipment/heavy_${deg}_fa.glb`,
+    };
     const A = (slot, type, stats) => registerItemBase({
       id: `${slot}_${t + 1}`, name: EQUIP_NAMES[slot][t], type, slot, subtype: slot, tier: t, reqLevel,
-      stats, price: Math.round(price * (type === 'accessory' ? 1.3 : 0.9)), icon: ICONS[slot], material: TIER_MATERIALS[t],
+      stats, price: Math.round(price * (type === 'accessory' ? 1.3 : 0.9)), icon: armorIcons[slot] || ICONS[slot],
+      visualModel: slot === 'shield' ? `shield_${deg}` : undefined,
+      visualGlb: armorGlb[slot],
+      visualSet: slot !== 'shield' && type !== 'accessory' ? `heavy_${deg}` : undefined,
+      visualPart: slot === 'helmet' ? 'ha' : slot === 'boots' ? 'fa' : slot === 'armor' ? 'ba' : undefined,
+      armorFamily: slot !== 'shield' && type !== 'accessory' ? 'heavy' : undefined,
+      material: TIER_MATERIALS[t],
     });
     A('shield', 'armor', { def: [3, 6, 10, 15, 21, 29, 39, 52][t], block: Math.round(5 + t * 1.5) });
     A('helmet', 'armor', { def: [2, 4, 7, 10, 14, 19, 26, 35][t], hp: t * 8 });
@@ -142,23 +198,23 @@ const STONE_NAMES = ['Lesser Composing Stone', 'Composing Stone', 'Greater Compo
 function buildConsumables() {
   const C = (id, name, icon, price, reqLevel, effect, desc, extra = {}) =>
     registerItemBase({ id, name, icon, type: 'consumable', stackable: true, maxStack: 99, price, reqLevel, effect, desc, ...extra });
-  C('hp_potion_s', 'Small HP Potion', ICONS.hp, 20, 1, { heal: 50 }, 'Restores 50 HP.', { potion: true });
-  C('hp_potion_m', 'HP Potion', ICONS.hp, 60, 8, { heal: 150 }, 'Restores 150 HP.', { potion: true });
-  C('hp_potion_l', 'Large HP Potion', ICONS.hp, 160, 18, { heal: 400 }, 'Restores 400 HP.', { potion: true });
-  C('hp_potion_x', 'Grand HP Potion', ICONS.hp, 380, 32, { heal: 900 }, 'Restores 900 HP.', { potion: true });
-  C('mp_potion_s', 'Small SP Potion', ICONS.mp, 25, 1, { mana: 30 }, 'Restores 30 SP (mana).', { potion: true });
-  C('mp_potion_m', 'SP Potion', ICONS.mp, 70, 8, { mana: 90 }, 'Restores 90 SP (mana).', { potion: true });
-  C('mp_potion_l', 'Large SP Potion', ICONS.mp, 180, 18, { mana: 220 }, 'Restores 220 SP (mana).', { potion: true });
-  C('mp_potion_x', 'Grand SP Potion', ICONS.mp, 400, 32, { mana: 500 }, 'Restores 500 SP (mana).', { potion: true });
-  C('elixir', 'Elixir of Life', ICONS.elixir, 600, 15, { healPct: 1, manaPct: 1, stamina: 999 }, 'Fully restores HP, SP and stamina.', { potion: true });
-  C('antidote', 'Antidote Herb', ICONS.antidote, 15, 1, { cure: true }, 'Removes all negative effects.');
-  C('stamina_tonic', 'Stamina Tonic', ICONS.tonic, 45, 3, { stamina: 999, buff: { id: 'tonic', name: 'Second Wind', icon: '🍶', duration: 30, mods: { staminaRegen: 15 } } }, 'Restores stamina and boosts stamina regeneration for 30s.');
-  C('scroll_return', 'Return Scroll', ICONS.scroll, 40, 1, { townPortal: true }, 'Teleports you back to the village.');
-  C('scroll_might', 'Scroll of Might', ICONS.scroll, 120, 5, { buff: { id: 'scroll_might', name: 'Might', icon: '⚔', duration: 60, mods: { atkPct: 25 } } }, '+25% attack for 60s.');
-  C('scroll_iron', 'Scroll of Iron Skin', ICONS.scroll, 120, 5, { buff: { id: 'scroll_iron', name: 'Iron Skin', icon: '🛡', duration: 60, mods: { defPct: 35 } } }, '+35% defense for 60s.');
-  C('scroll_haste', 'Scroll of Haste', ICONS.scroll, 150, 10, { buff: { id: 'scroll_haste', name: 'Haste', icon: '💨', duration: 45, mods: { moveSpeedPct: 20, attackSpeedPct: 15 } } }, '+20% move speed, +15% attack speed for 45s.');
-  C('scroll_fortune', 'Scroll of Fortune', ICONS.scroll, 200, 10, { buff: { id: 'scroll_fortune', name: 'Fortune', icon: '🍀', duration: 120, mods: { magicFind: 50, goldFind: 50 } } }, '+50% magic find and gold find for 120s.');
-  C('scroll_reset', 'Scroll of Rebirth', ICONS.scroll, 1500, 10, { resetAll: true }, 'Refunds all attribute and skill points.');
+  C('hp_potion_s', 'Small HP Potion', '/assets/sro/icons/etc/hp_potion_01.png', 20, 1, { heal: 50 }, 'Restores 50 HP.', { potion: true });
+  C('hp_potion_m', 'HP Potion', '/assets/sro/icons/etc/hp_potion_02.png', 60, 8, { heal: 150 }, 'Restores 150 HP.', { potion: true });
+  C('hp_potion_l', 'Large HP Potion', '/assets/sro/icons/etc/hp_potion_03.png', 160, 18, { heal: 400 }, 'Restores 400 HP.', { potion: true });
+  C('hp_potion_x', 'Grand HP Potion', '/assets/sro/icons/etc/hp_potion_04.png', 380, 32, { heal: 900 }, 'Restores 900 HP.', { potion: true });
+  C('mp_potion_s', 'Small SP Potion', '/assets/sro/icons/etc/mp_potion_01.png', 25, 1, { mana: 30 }, 'Restores 30 SP (mana).', { potion: true });
+  C('mp_potion_m', 'SP Potion', '/assets/sro/icons/etc/mp_potion_02.png', 70, 8, { mana: 90 }, 'Restores 90 SP (mana).', { potion: true });
+  C('mp_potion_l', 'Large SP Potion', '/assets/sro/icons/etc/mp_potion_03.png', 180, 18, { mana: 220 }, 'Restores 220 SP (mana).', { potion: true });
+  C('mp_potion_x', 'Grand SP Potion', '/assets/sro/icons/etc/mp_potion_04.png', 400, 32, { mana: 500 }, 'Restores 500 SP (mana).', { potion: true });
+  C('elixir', 'Elixir of Life', '/assets/sro/icons/etc/all_potion_01.png', 600, 15, { healPct: 1, manaPct: 1, stamina: 999 }, 'Fully restores HP, SP and stamina.', { potion: true });
+  C('antidote', 'Antidote Herb', '/assets/sro/icons/etc/cure_all_01.png', 15, 1, { cure: true }, 'Removes all negative effects.');
+  C('stamina_tonic', 'Stamina Tonic', '/assets/sro/icons/etc/all_potion_02.png', 45, 3, { stamina: 999, buff: { id: 'tonic', name: 'Second Wind', icon: '🍶', duration: 30, mods: { staminaRegen: 15 } } }, 'Restores stamina and boosts stamina regeneration for 30s.');
+  C('scroll_return', 'Return Scroll', '/assets/sro/icons/etc/scroll_return_01.png', 40, 1, { townPortal: true }, 'Teleports you back to the village.');
+  C('scroll_might', 'Scroll of Might', '/assets/sro/icons/etc/scroll_return_02.png', 120, 5, { buff: { id: 'scroll_might', name: 'Might', icon: '⚔', duration: 60, mods: { atkPct: 25 } } }, '+25% attack for 60s.');
+  C('scroll_iron', 'Scroll of Iron Skin', '/assets/sro/icons/etc/scroll_return_02.png', 120, 5, { buff: { id: 'scroll_iron', name: 'Iron Skin', icon: '🛡', duration: 60, mods: { defPct: 35 } } }, '+35% defense for 60s.');
+  C('scroll_haste', 'Scroll of Haste', '/assets/sro/icons/etc/scroll_return_02.png', 150, 10, { buff: { id: 'scroll_haste', name: 'Haste', icon: '💨', duration: 45, mods: { moveSpeedPct: 20, attackSpeedPct: 15 } } }, '+20% move speed, +15% attack speed for 45s.');
+  C('scroll_fortune', 'Scroll of Fortune', '/assets/sro/icons/etc/scroll_return_02.png', 200, 10, { buff: { id: 'scroll_fortune', name: 'Fortune', icon: '🍀', duration: 120, mods: { magicFind: 50, goldFind: 50 } } }, '+50% magic find and gold find for 120s.');
+  C('scroll_reset', 'Scroll of Rebirth', '/assets/sro/icons/etc/scroll_return_02.png', 1500, 10, { resetAll: true }, 'Refunds all attribute and skill points.');
 
   for (const el of ELEMENTS) {
     for (let t = 1; t <= 5; t++) {
@@ -182,11 +238,17 @@ function buildConsumables() {
     desc: 'Composing material (recipes, refining). Gear enhancement now uses Elixirs at the Alchemy tab.',
   }));
   const ELX = { weapon: 'Weapon', shield: 'Shield', armor: 'Armor', accessory: 'Accessory' };
-  for (const k in ELX) registerItemBase({ id: `elixir_${k}`, name: `Elixir of Tempering (${ELX[k]})`, icon: '⚗️', type: 'material', subtype: 'elixir', elixirKind: k, stackable: true, maxStack: 99, price: 2500, reqLevel: 1, color: '#7dd3fc',
+  const ELX_ICONS = {
+    weapon: '/assets/sro/icons/etc/archemy_reinforce_recipe_weapon_b.png',
+    shield: '/assets/sro/icons/etc/archemy_reinforce_recipe_shield_b.png',
+    armor: '/assets/sro/icons/etc/archemy_reinforce_recipe_armor_b.png',
+    accessory: '/assets/sro/icons/etc/archemy_reinforce_recipe_accessary_b.png',
+  };
+  for (const k in ELX) registerItemBase({ id: `elixir_${k}`, name: `Elixir of Tempering (${ELX[k]})`, icon: ELX_ICONS[k], type: 'material', subtype: 'elixir', elixirKind: k, stackable: true, maxStack: 99, price: 2500, reqLevel: 1, color: '#7dd3fc',
     desc: `Alchemy material: required to enhance ${k === 'armor' ? 'helmets, armor and boots' : k === 'accessory' ? 'necklaces and rings' : k + 's'} (+N). Use at the Alchemy tab.` });
-  [400, 900, 1800, 3500].forEach((price, i) => registerItemBase({ id: `powder_${i + 1}`, name: `Luck Powder (Grade ${i + 1})`, icon: '✨', type: 'material', subtype: 'powder', powderGrade: i + 1, stackable: true, maxStack: 99, price, reqLevel: 1, color: '#fde68a',
+  [400, 900, 1800, 3500].forEach((price, i) => registerItemBase({ id: `powder_${i + 1}`, name: `Luck Powder (Grade ${i + 1})`, icon: '/assets/sro/icons/etc/archemy_reinforce_prob_up_a.png', type: 'material', subtype: 'powder', powderGrade: i + 1, stackable: true, maxStack: 99, price, reqLevel: 1, color: '#fde68a',
     desc: `Alchemy: raises the success chance of gear of grade ${i + 1} (tiers ${i * 2}-${i * 2 + 1}).` }));
-  registerItemBase({ id: 'guardian_talisman', name: 'Guardian Talisman', icon: '🧿', type: 'material', subtype: 'talisman', stackable: true, maxStack: 99, price: 6000, reqLevel: 1, color: '#a7f3d0', desc: 'Alchemy: on failure the item only loses 1 + instead of resetting to +0.' });
+  registerItemBase({ id: 'guardian_talisman', name: 'Guardian Talisman', icon: '/assets/sro/icons/etc/scroll_return_03.png', type: 'material', subtype: 'talisman', stackable: true, maxStack: 99, price: 6000, reqLevel: 1, color: '#a7f3d0', desc: 'Alchemy: on failure the item only loses 1 + instead of resetting to +0.' });
   registerItemBase({ id: 'lucky_charm', name: 'Lucky Charm', icon: ICONS.charm, type: 'material', subtype: 'charm', stackable: true, maxStack: 99, price: 500, reqLevel: 1, desc: 'Add when composing: +15% success and prevents upgrade level loss on failure.' });
 }
 
@@ -357,8 +419,11 @@ function classSetBonuses(cls, t) {
 }
 export const SET_BASE_IDS = []; // every class set piece base id (for drop pools)
 function buildClassSets() {
+  const armorPrefixByClass = { knight: 'heavy', axeman: 'heavy', archer: 'light', wizard: 'clothes' };
+  const armorSuffixBySlot = { helmet: 'ha', armor: 'ba', boots: 'fa' };
   for (const cls of CLASS_IDS) {
     for (let t = 0; t < 8; t++) {
+      const deg = tierToDeg(t);
       const setName = CLASS_SET_NAMES[cls][t];
       const id = `${cls}_${t + 1}`;
       const reqLevel = TIER_LEVELS[t];
@@ -370,9 +435,36 @@ function buildClassSets() {
         const subtype = isWeapon ? getClass(cls).weapons[0] : slot;
         const gen = ITEM_BASES[`${isWeapon ? subtype : slot}_${t + 1}`];
         const baseId = `set_${cls}_${t + 1}_${slot}`;
+        let icon, visualGlb, visualModel, visualSet, visualPart, armorFamily;
+        if (isWeapon) {
+          const weaponPrefixMap = {
+            sword: 'sword',
+            mace: 'blade',
+            dagger: 'blade',
+            axe: 'axe',
+            staff: 'spear',
+            bow: 'bow',
+          };
+          const pref = weaponPrefixMap[subtype] || 'sword';
+          visualModel = `${pref}_${deg}`;
+          visualGlb = `/assets/sro/equipment/${pref}_${deg}.glb`;
+          icon = `/assets/sro/icons/weapon/${pref}_${deg}.png`;
+        } else if (slot === 'shield') {
+          visualModel = `shield_${deg}`;
+          visualGlb = `/assets/sro/equipment/shield_${deg}.glb`;
+          icon = `/assets/sro/icons/shield/shield_${deg}.png`;
+        } else {
+          armorFamily = armorPrefixByClass[cls] || 'heavy';
+          const suffix = armorSuffixBySlot[slot] || 'ba';
+          visualSet = `${armorFamily}_${deg}`;
+          visualPart = suffix;
+          visualGlb = `/assets/sro/equipment/${armorFamily}_${deg}_${suffix}.glb`;
+          icon = `/assets/sro/icons/armor/${armorFamily}_${deg}_${suffix}.png`;
+        }
         registerItemBase({
           id: baseId, name, type: isWeapon ? 'weapon' : 'armor', slot, subtype, tier: t, reqLevel,
-          stats: classSetStats(cls, slot, t), price: Math.round(gen.price * 1.5), icon: ICONS[subtype] || ICONS[slot], material: TIER_MATERIALS[t],
+          stats: classSetStats(cls, slot, t), price: Math.round(gen.price * 1.5), icon,
+          visualModel, visualGlb, visualSet, visualPart, armorFamily, material: TIER_MATERIALS[t],
           classOnly: cls, setId: id, setName, noDrop: false,
         });
         SET_BASE_IDS.push(baseId);
@@ -384,8 +476,143 @@ function buildClassSets() {
 buildClassSets();
 
 // =============================================================================
-// Item creation
+// Drop box models & Item creation
 // =============================================================================
+export function getDropModelForItem(item) {
+  if (!item) return '/assets/sro/item_drops/drop_ch_bag.glb';
+  const id = item.baseId || item.id || '';
+  const rarity = item.rarity || 'common';
+  const isNotCommon = rarity !== 'common' && rarity !== 'normal';
+
+  // Alchemy materials (elixir_*, lucky_powder, powder_*, attr_stone_*, materials)
+  if (
+    id.startsWith('elixir_') ||
+    id.startsWith('powder_') ||
+    id.startsWith('lucky_powder') ||
+    id.startsWith('attr_stone_') ||
+    item.type === 'material'
+  ) {
+    return '/assets/sro/item_drops/drop_archemy.glb';
+  }
+
+  // Potions / scrolls / consumables
+  if (
+    item.type === 'consumable' ||
+    id.startsWith('hp_potion') ||
+    id.startsWith('mp_potion') ||
+    id.startsWith('scroll_')
+  ) {
+    return '/assets/sro/item_drops/drop_ch_bag.glb';
+  }
+
+  // Accessories (ring, amulet, necklace)
+  if (item.type === 'accessory' || item.slot === 'necklace' || item.slot === 'ring' || item.slot === 'amulet') {
+    return isNotCommon || Boolean(item.seal)
+      ? '/assets/sro/item_drops/drop_ch_acc_rare.glb'
+      : '/assets/sro/item_drops/drop_ch_acc.glb';
+  }
+
+  // Equipment (weapon, shield, armor, helmet, boots, gloves)
+  if (
+    item.type === 'weapon' ||
+    item.type === 'armor' ||
+    item.slot === 'weapon' ||
+    item.slot === 'shield' ||
+    item.slot === 'helmet' ||
+    item.slot === 'armor' ||
+    item.slot === 'boots' ||
+    item.slot === 'gloves'
+  ) {
+    return isNotCommon || Boolean(item.seal) || Boolean(item.setId)
+      ? '/assets/sro/item_drops/drop_ch_equip_rare.glb'
+      : '/assets/sro/item_drops/drop_ch_equip.glb';
+  }
+
+  return '/assets/sro/item_drops/drop_ch_bag.glb';
+}
+
+/** Set exact visual metadata matching Silkroad icons and GLB equipment models. */
+export function applyVisualMetadata(item) {
+  if (!item) return item;
+  const slot = String(item.slot || item.type || '').toLowerCase();
+  const sub = String(item.subtype || item.subType || item.type || '').toLowerCase();
+  const deg = tierToDeg(item.tier != null ? item.tier : 0);
+
+  // Armor parts: armor, helmet, boots, gloves
+  if (['armor', 'helmet', 'helm', 'boots', 'gloves'].includes(slot)) {
+    const partCode = (slot === 'helmet' || slot === 'helm') ? 'ha' : (slot === 'boots') ? 'fa' : (slot === 'gloves') ? 'aa' : 'ba';
+    let armorFamily = item.armorFamily;
+    if (!armorFamily) {
+      if (item.classOnly === 'wizard') armorFamily = 'clothes';
+      else if (item.classOnly === 'archer') armorFamily = 'light';
+      else if (item.classOnly === 'knight') armorFamily = 'heavy';
+      else if (item.classOnly === 'axeman') armorFamily = 'heavy';
+      else if (/robe|cloth|vest|silk|linen/i.test(item.name || item.baseId || '')) armorFamily = 'clothes';
+      else if (/leather|scale|tunic|shadow/i.test(item.name || item.baseId || '')) armorFamily = 'light';
+      else if (/plate|mail|iron|steel|heavy|knight/i.test(item.name || item.baseId || '')) armorFamily = 'heavy';
+      else {
+        const h = String(item.uid || item.baseId || item.id || '').split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+        armorFamily = ['heavy', 'light', 'clothes'][h % 3];
+      }
+    }
+    item.armorFamily = armorFamily;
+    item.icon = `/assets/sro/icons/armor/${armorFamily}_${deg}_${partCode}.png`;
+    item.visualSet = `${armorFamily}_${deg}`;
+    item.visualPart = partCode;
+    item.visualGlb = `/assets/sro/equipment/${armorFamily}_${deg}_${partCode}.glb`;
+    return item;
+  }
+
+  // Shield slot: shield or offhand axe
+  if (slot === 'shield' || item.type === 'shield') {
+    if (sub === 'axe' || item.type === 'weapon') {
+      const modelName = `axe_${deg}`;
+      item.visualModel = modelName;
+      item.visualGlb = `/assets/sro/equipment/${modelName}.glb`;
+      item.icon = `/assets/sro/icons/weapon/${modelName}.png`;
+    } else {
+      const modelName = `shield_${deg}`;
+      item.visualModel = modelName;
+      item.visualGlb = `/assets/sro/equipment/${modelName}.glb`;
+      item.icon = `/assets/sro/icons/shield/${modelName}.png`;
+    }
+    return item;
+  }
+
+  // Weapon: sword, dagger/blade/mace, axe, staff/spear, bow
+  if (slot === 'weapon' || item.type === 'weapon') {
+    let prefix = 'sword';
+    if (sub === 'dagger' || sub === 'blade' || sub === 'mace') prefix = 'blade';
+    else if (sub === 'axe') prefix = 'axe';
+    else if (sub === 'staff' || sub === 'spear') prefix = 'spear';
+    else if (sub === 'bow') prefix = 'bow';
+    else if (sub === 'sword') prefix = 'sword';
+
+    const modelName = `${prefix}_${deg}`;
+    item.visualModel = modelName;
+    item.visualGlb = `/assets/sro/equipment/${modelName}.glb`;
+    item.icon = `/assets/sro/icons/weapon/${modelName}.png`;
+    return item;
+  }
+
+  // Accessories
+  if (slot === 'necklace' || slot === 'ring' || item.type === 'accessory') {
+    const accType = (slot === 'ring' || sub === 'ring') ? 'ring' : 'necklace';
+    item.icon = `/assets/sro/icons/acc/${accType}_${deg}.png`;
+    return item;
+  }
+
+  return item;
+}
+
+/** Create an instance of a class set piece with complete visual metadata. */
+export function createSetItem(setId, slot, opts = {}) {
+  const set = SETS[setId];
+  if (!set) return null;
+  const baseId = `set_${set.classId}_${set.tier + 1}_${slot}`;
+  return generateItem({ baseId, rarity: opts.rarity || 'rare', level: set.minLevel || 1, ...opts });
+}
+
 const SOCKET_GEM_DMG = [4, 9, 16, 26, 40];
 const SOCKET_GEM_RES = [5, 9, 14, 20, 28];
 const SOCKET_PRISM_ATTR = [1, 2, 4, 6, 9];
@@ -436,6 +663,8 @@ export function recalcItem(item) {
   item.price = Math.round(item.basePrice * r.priceMult * (1 + 0.06 * (item.mods || []).length) * (1 + 0.15 * (item.plus || 0)) * (seal ? seal.priceMult : 1) + (item.gems || []).length * 40);
   item.value = Math.max(1, Math.floor(item.price * 0.25));
   item.atk = stats.atkMin != null ? `${stats.atkMin}-${stats.atkMax}` : undefined;
+  applyVisualMetadata(item);
+  item.dropModel = getDropModelForItem(item);
   return item;
 }
 
@@ -528,7 +757,7 @@ export function generateItem(opts = {}) {
   }
   // ---- stackables
   if (base && base.stackable) {
-    return {
+    const it = {
       uid: newUid(), baseId: base.id, name: base.name, baseName: base.name, icon: base.icon, type: base.type, subtype: base.subtype || base.type,
       tier: base.tier || 0, element: base.element, rarity: base.rarity || (base.type === 'quest' ? 'rare' : 'normal'),
       rarityName: RARITY[base.rarity || 'normal']?.name || 'Normal', color: base.color || RARITY[base.rarity || 'normal']?.color,
@@ -536,6 +765,8 @@ export function generateItem(opts = {}) {
       stackable: true, maxStack: base.maxStack || 99, count: clamp(num(opts.count, 1) | 0, 1, 99),
       price: base.price || 0, value: Math.max(base.type === 'quest' ? 0 : 1, Math.floor((base.price || 0) * 0.25)), effect: base.effect || null, questItem: !!base.questItem,
     };
+    it.dropModel = getDropModelForItem(it);
+    return it;
   }
   // ---- equipment
   if (!base) {
@@ -621,31 +852,33 @@ export function rollLoot(level = 1, { isBoss = false, isElite = false, isChest =
   for (let i = 0; i < equipRolls; i++) {
     items.push(generateItem({ level, magicFind, isBoss, isElite, classId, setChance, sealRoll: true, setPiece: isBoss && i === 0 ? true : undefined, minRarity: isBoss ? (i === 0 ? 'rare' : 'magic') : 'normal' }));
   }
+  // Guarantee at least one SOS/SOM/SOSun sealed equipment drop on every Boss kill
+  if (isBoss) {
+    const eqItems = items.filter((it) => it && !it.stackable && it.slot);
+    if (eqItems.length && !eqItems.some((it) => Boolean(it.seal))) {
+      const chosen = eqItems[0];
+      chosen.seal = (level >= 20 && Math.random() < 0.22) ? 'sun' : (level >= 10 && Math.random() < 0.42) ? 'moon' : 'star';
+      recalcItem(chosen);
+    }
+  }
   const potionChance = isBoss ? 1 : isChest ? 0.6 : isElite ? 0.4 : 0.12;
   if (Math.random() < potionChance) {
     const t = level < 8 ? 's' : level < 18 ? 'm' : level < 32 ? 'l' : 'x';
     items.push(generateItem({ baseId: `${Math.random() < 0.6 ? 'hp' : 'mp'}_potion_${t}`, count: isBoss ? randi(2, 4) : 1 }));
   }
-  const crystalChance = isBoss ? 1 : isChest ? 0.35 : isElite ? 0.25 : 0.05;
-  if (Math.random() < crystalChance) {
-    const t = clamp(Math.floor(level / 15) + 1 + (isBoss && Math.random() < 0.3 ? 1 : 0), 1, 5);
-    items.push(generateItem({ baseId: `crystal_${pick(ELEMENTS)}_${t}`, count: isBoss ? randi(1, 3) : 1 }));
+  // Silkroad Alchemy materials (elixirs, powders, talismans) replacing old composing materials
+  const elixirChance = isBoss ? 0.95 : isChest ? 0.4 : isElite ? 0.28 : 0.08;
+  if (Math.random() < elixirChance) {
+    items.push(generateItem({ baseId: `elixir_${weighted([['weapon', 3], ['armor', 3], ['shield', 1], ['accessory', 1]])}`, count: isBoss ? randi(1, 3) : 1 }));
   }
-  const stoneChance = isBoss ? 1 : isChest ? 0.15 : isElite ? 0.12 : 0.025;
-  if (Math.random() < stoneChance) {
-    const t = clamp(level < 15 ? 1 : level < 32 ? weighted([[1, 2], [2, 1]]) : weighted([[2, 2], [3, 1]]), 1, 4);
-    items.push(generateItem({ baseId: `stone_${t}` }));
+  const powderChance = isBoss ? 0.8 : isChest ? 0.3 : isElite ? 0.2 : 0.05;
+  if (Math.random() < powderChance) {
+    items.push(generateItem({ baseId: `powder_${powderGradeForTier(tierForLevel(level))}`, count: isBoss ? randi(1, 2) : 1 }));
   }
   if (Math.random() < (isBoss ? 0.5 : isChest ? 0.1 : 0.01)) {
     items.push(generateItem({ baseId: pick(['scroll_return', 'scroll_might', 'scroll_iron', 'antidote', 'stamina_tonic', level >= 10 ? 'scroll_fortune' : 'scroll_return']) }));
   }
-  if (isBoss && Math.random() < 0.25) items.push(generateItem({ baseId: 'lucky_charm' }));
-  // alchemy materials
-  if (level >= 5 && Math.random() < (isBoss ? 0.6 : isElite ? 0.08 : isChest ? 0.03 : 0.012)) {
-    items.push(generateItem({ baseId: `elixir_${weighted([['weapon', 3], ['armor', 3], ['shield', 1], ['accessory', 1]])}`, count: isBoss ? randi(1, 2) : 1 }));
-  }
-  if (Math.random() < (isBoss ? 0.25 : 0.025)) items.push(generateItem({ baseId: `powder_${powderGradeForTier(tierForLevel(level))}` }));
-  if (isBoss && Math.random() < 0.1) items.push(generateItem({ baseId: 'guardian_talisman' }));
+  if (isBoss && Math.random() < 0.25) items.push(generateItem({ baseId: 'guardian_talisman' }));
   return { gold, items: items.filter(Boolean) };
 }
 
@@ -655,7 +888,7 @@ export function rollLoot(level = 1, { isBoss = false, isElite = false, isChest =
 export const SHOP_DEFS = {
   blacksmith: { id: 'blacksmith', name: 'Blacksmith', kind: 'equipment', size: 12 },
   merchant: { id: 'merchant', name: 'Potion Merchant', kind: 'fixed', items: ['hp_potion_s', 'hp_potion_m', 'hp_potion_l', 'hp_potion_x', 'mp_potion_s', 'mp_potion_m', 'mp_potion_l', 'mp_potion_x', 'elixir', 'antidote', 'stamina_tonic', 'scroll_return', 'scroll_might', 'scroll_iron', 'scroll_haste', 'scroll_fortune'] },
-  composer: { id: 'composer', name: 'Composing Master', kind: 'fixed', items: ['elixir_weapon', 'elixir_shield', 'elixir_armor', 'elixir_accessory', 'powder_1', 'powder_2', 'powder_3', 'powder_4', 'guardian_talisman', 'stone_1', 'stone_2', 'stone_3', 'lucky_charm', 'crystal_fire_1', 'crystal_ice_1', 'crystal_lightning_1', 'crystal_poison_1', 'scroll_reset'] },
+  composer: { id: 'composer', name: 'Alchemy Master', kind: 'fixed', items: ['elixir_weapon', 'elixir_shield', 'elixir_armor', 'elixir_accessory', 'powder_1', 'powder_2', 'powder_3', 'powder_4', 'guardian_talisman', 'scroll_reset'] },
 };
 const SHOP_ALIASES = [
   ['blacksmith', ['smith', 'weapon', 'armor', 'armour', 'forge', 'equipment', 'gorn', 'fallon', 'gran', 'npc2']],
@@ -698,8 +931,15 @@ const isCharm = (it) => it && it.subtype === 'charm';
 // Inventory
 // =============================================================================
 export class Inventory {
-  constructor(game = null, { bagSize = 36, storageSize = 48 } = {}) {
+  constructor(game = null, opts = {}) {
     this.game = game;
+    if (typeof opts === 'string') {
+      this._classId = opts;
+      opts = {};
+    } else if (opts && opts.classId) {
+      this._classId = opts.classId;
+    }
+    const { bagSize = 36, storageSize = 48 } = opts || {};
     this.bagSize = bagSize;
     this.bag = new Array(bagSize).fill(null);
     this.storageSize = storageSize;
@@ -713,6 +953,14 @@ export class Inventory {
   }
 
   // ---- compat aliases ------------------------------------------------------
+  get classId() {
+    if (this.game) {
+      const gClass = this.game.hero?.classId || this.game.classId;
+      if (gClass) return gClass;
+    }
+    return this._classId || DEFAULT_CLASS;
+  }
+  set classId(v) { this._classId = v; }
   get equipped() { return this.equipment; }
   get gold() { return this.game ? this.game.hero.gold : 0; }
   equipItem(uid) { return this.equip(uid); }
@@ -733,7 +981,7 @@ export class Inventory {
   }
   _classOf(it) {
     if (!it || !it.slot) return null;
-    const c = canClassUse(this.game?.classId || DEFAULT_CLASS, it);
+    const c = canClassUse(this.classId, it);
     return { classReq: c.classReq, classOk: c.ok };
   }
   _annotate(it) {
@@ -752,18 +1000,61 @@ export class Inventory {
   _level() { return this.game ? this.game.hero.level : 1; }
 
   grantStarterKit(classId = this.game?.classId || DEFAULT_CLASS) {
-    const eq = (baseId) => { const it = generateItem({ baseId, rarity: 'normal', level: 1 }); if (it) this.equipment[it.slot] = it; };
-    const starter = getClass(classId).starter || {};
+    const cls = getClass(classId);
+    const cid = cls.id;
+    this.classId = cid;
+    for (const s of SLOTS) this.equipment[s] = null;
+    this.bag.fill(null);
+    const starterArmorFamily = cid === 'knight' ? 'heavy' : cid === 'wizard' ? 'clothes' : 'light';
+    const eq = (baseId) => {
+      const it = generateItem({ baseId, rarity: 'normal', level: 1, classId: cid });
+      if (!it) return;
+      if (it.type === 'armor' && it.slot !== 'shield') {
+        it.armorFamily = starterArmorFamily;
+        applyVisualMetadata(it);
+      }
+      this.equipment[it.slot] = it;
+    };
+    const starter = cls.starter || {};
     for (const k of ['weapon', 'shield', 'armor']) if (starter[k]) eq(starter[k]);
     for (const k in starter) if (!['weapon', 'shield', 'armor'].includes(k) && starter[k]) eq(starter[k]);
-    if (getClass(classId).id === 'wizard') this.addItem(generateItem({ baseId: 'mp_potion_s', count: 3 }), { silent: true });
+
+    // Explicitly ensure two-handed classes (Wizard, Archer) never start with a shield
+    if (cid === 'wizard' || cid === 'archer' || !starter.shield) {
+      this.equipment.shield = null;
+    }
+
+    // Axeman starts with dual axes equipped (mainhand axe + offhand Twin Bronze Cleaver)
+    if (cid === 'axeman') {
+      const offhandAxe = generateItem({ baseId: 'axe_1', rarity: 'normal', level: 1 }) || {
+        uid: newUid(),
+        baseId: 'axe_1',
+        stats: { atkMin: 3, atkMax: 6 },
+        tier: 0,
+        reqLevel: 1,
+        price: 30,
+        value: 7,
+      };
+      offhandAxe.name = 'Twin Bronze Cleaver';
+      offhandAxe.baseName = 'Twin Bronze Cleaver';
+      offhandAxe.type = 'weapon';
+      offhandAxe.subtype = 'axe';
+      offhandAxe.subType = 'axe';
+      offhandAxe.slot = 'shield';
+      offhandAxe.visualModel = 'axe_01';
+      offhandAxe.visualGlb = '/assets/sro/equipment/axe_01.glb';
+      offhandAxe.icon = '/assets/sro/icons/weapon/axe_01.png';
+      offhandAxe.dropModel = getDropModelForItem(offhandAxe);
+      this.equipment.shield = offhandAxe;
+    }
+
+    if (cid === 'wizard') this.addItem(generateItem({ baseId: 'mp_potion_s', count: 3 }), { silent: true });
     this.addItem(generateItem({ baseId: 'hp_potion_s', count: 5 }), { silent: true });
     this.addItem(generateItem({ baseId: 'mp_potion_s', count: 3 }), { silent: true });
     this.addItem(generateItem({ baseId: 'scroll_return', count: 1 }), { silent: true });
-    this.addItem(generateItem({ baseId: 'stone_1', count: 2 }), { silent: true });
-    this.addItem(generateItem({ baseId: 'elixir_weapon', count: 1 }), { silent: true });
-    this.addItem(generateItem({ baseId: 'powder_1', count: 1 }), { silent: true });
-    this.addItem(generateItem({ baseId: 'crystal_fire_1', count: 2 }), { silent: true });
+    this.addItem(generateItem({ baseId: 'elixir_weapon', count: 2 }), { silent: true });
+    this.addItem(generateItem({ baseId: 'elixir_armor', count: 2 }), { silent: true });
+    this.addItem(generateItem({ baseId: 'powder_1', count: 2 }), { silent: true });
     if (this.game) this.game.markDirty();
   }
 
@@ -900,30 +1191,85 @@ export class Inventory {
   canEquip(item) {
     if (!isEquip(item)) return { ok: false, msg: 'Cannot equip this' };
     if ((item.reqLevel || 1) > this._level()) return { ok: false, msg: `Requires level ${item.reqLevel}` };
-    const cc = canClassUse(this.game?.classId || DEFAULT_CLASS, item);
+    const cc = canClassUse(this.classId, item);
     if (!cc.ok) return { ok: false, msg: cc.msg };
     return { ok: true };
   }
 
-  equip(uid) {
-    const f = this.findItem(uid);
+  equip(uidOrIndex, targetSlot = null) {
+    let f;
+    if (typeof uidOrIndex === 'number') {
+      const it = this.bag[uidOrIndex];
+      if (!it) return { ok: false, msg: 'Item not found' };
+      f = { container: 'bag', index: uidOrIndex, item: it };
+    } else if (typeof uidOrIndex === 'object' && uidOrIndex !== null) {
+      f = this.findItem(uidOrIndex.uid);
+    } else {
+      f = this.findItem(uidOrIndex);
+    }
     if (!f) return { ok: false, msg: 'Item not found' };
     if (f.container === 'equipment') return { ok: true, msg: 'Already equipped' };
     const item = f.item;
     const can = this.canEquip(item);
     if (!can.ok) return can;
-    const slot = item.slot;
+
+    let slot = targetSlot ? (normalizeSlot(targetSlot) || targetSlot) : (item.slot || (item.type === 'weapon' ? 'weapon' : item.type));
+
+    const currentClass = this.classId || this.game?.classId || DEFAULT_CLASS;
+    const isAxeman = currentClass === 'axeman';
+    const sub = String(item.subtype || item.subType || item.type || '').toLowerCase();
+    const isAxe = (item.type === 'weapon' || item.slot === 'weapon' || item.slot === 'shield') && sub === 'axe';
+
+    if (isAxeman && isAxe) {
+      if (targetSlot) {
+        slot = normalizeSlot(targetSlot) || targetSlot;
+      } else if (item.preferOffhand) {
+        slot = 'shield';
+      } else if (this.equipment.weapon && (String(this.equipment.weapon.subtype || this.equipment.weapon.subType).toLowerCase() === 'axe')) {
+        // Mainhand is occupied by an axe
+        if (!this.equipment.shield) {
+          // Offhand is empty -> equip this axe into shield!
+          slot = 'shield';
+        } else {
+          // Both have axes -> swap with weapon
+          slot = 'weapon';
+        }
+      } else {
+        slot = 'weapon';
+      }
+    }
+
     const arr = f.container === 'storage' ? this.storage : this.bag;
     const prev = this.equipment[slot];
     arr[f.index] = prev || null; // swap into the same bag cell
     this.equipment[slot] = item;
+
+    // Two-handed weapon check: unequip shield when equipping a bow or staff
+    if (slot === 'weapon' && (sub === 'bow' || sub === 'staff' || getClass(currentClass).twoHanded) && this.equipment.shield) {
+      const oldShield = this.equipment.shield;
+      this.equipment.shield = null;
+      const freeIdx = this.bag.indexOf(null);
+      if (freeIdx >= 0 && canClassUse(currentClass, oldShield).ok) {
+        this.bag[freeIdx] = oldShield;
+      }
+    }
+
     this._emit('equip', slot, item, prev);
     this._changed(true);
     return { ok: true, msg: `Equipped ${item.name}`, slot, item, prev };
   }
 
-  unequip(slot) {
-    slot = normalizeSlot(slot) || slot;
+  equipToSlot(bagIndexOrUid, targetSlot) {
+    return this.equip(bagIndexOrUid, targetSlot);
+  }
+
+  unequip(slotOrUid) {
+    let slot = normalizeSlot(slotOrUid) || slotOrUid;
+    if (!this.equipment[slot]) {
+      const targetUid = (typeof slotOrUid === 'object' && slotOrUid) ? slotOrUid.uid : slotOrUid;
+      const foundSlot = Object.keys(this.equipment).find((s) => this.equipment[s] && String(this.equipment[s].uid) === String(targetUid));
+      if (foundSlot) slot = foundSlot;
+    }
     const item = this.equipment[slot];
     if (!item) return { ok: false, msg: 'Nothing equipped' };
     const idx = this.bag.indexOf(null);
@@ -942,20 +1288,46 @@ export class Inventory {
     return counts;
   }
 
+  calcEquipmentBonuses() {
+    return this.getEquipStats();
+  }
+
   /** Summed stat modifiers from equipped gear (+ set bonuses). */
   getEquipStats() {
     const out = {};
     for (const s of SLOTS) {
       const it = this.equipment[s];
       if (!it || !it.stats) continue;
-      for (const k in it.stats) if (typeof it.stats[k] === 'number') out[k] = (out[k] || 0) + it.stats[k];
+      for (const k in it.stats) {
+        if (typeof it.stats[k] === 'number') {
+          out[k] = (out[k] || 0) + it.stats[k];
+          if (k === 'dmg') out.atk = (out.atk || 0) + it.stats[k];
+          if (k === 'crit') out.critRate = (out.critRate || 0) + it.stats[k];
+          if (k === 'atkSpeed') out.attackSpeedPct = (out.attackSpeedPct || 0) + it.stats[k];
+        }
+      }
     }
     const counts = this.getSetCounts();
     for (const id in counts) {
       const set = SETS[id];
       if (!set) continue;
-      for (const n in set.bonuses) if (counts[id] >= Number(n)) for (const k in set.bonuses[n]) out[k] = (out[k] || 0) + set.bonuses[n][k];
+      for (const n in set.bonuses) {
+        if (counts[id] >= Number(n)) {
+          for (const k in set.bonuses[n]) {
+            out[k] = (out[k] || 0) + set.bonuses[n][k];
+            if (k === 'dmg') out.atk = (out.atk || 0) + set.bonuses[n][k];
+            if (k === 'crit') out.critRate = (out.critRate || 0) + set.bonuses[n][k];
+            if (k === 'atkSpeed') out.attackSpeedPct = (out.attackSpeedPct || 0) + set.bonuses[n][k];
+          }
+        }
+      }
     }
+    if ((out.atkMin || out.atkMax) && !out.atk) {
+      out.atk = Math.round(((out.atkMin || 0) + (out.atkMax || 0)) / 2);
+    }
+    if (out.atk && !out.dmg) out.dmg = out.atk;
+    if (out.critRate && !out.crit) out.crit = out.critRate;
+    if (out.attackSpeedPct && !out.atkSpeed) out.atkSpeed = out.attackSpeedPct;
     return out;
   }
 
@@ -964,7 +1336,22 @@ export class Inventory {
     const v = {};
     for (const s of SLOTS) {
       const it = this.equipment[s];
-      v[s] = it ? { slot: s, subtype: it.subtype, tier: it.tier, rarity: it.rarity, color: it.color, plus: it.plus || 0, glow: (it.plus || 0) >= 7 || it.rarity === 'unique', gems: (it.gems || []).map((g) => g.element) } : null;
+      v[s] = it ? {
+        slot: s,
+        subtype: it.subtype || it.subType,
+        tier: it.tier,
+        rarity: it.rarity,
+        color: it.color,
+        plus: it.plus || 0,
+        glow: (it.plus || 0) >= 7 || it.rarity === 'unique',
+        gems: (it.gems || []).map((g) => g.element),
+        visualModel: it.visualModel,
+        visualGlb: it.visualGlb,
+        visualSet: it.visualSet,
+        visualPart: it.visualPart,
+        armorFamily: it.armorFamily,
+        icon: it.icon,
+      } : null;
     }
     return v;
   }
@@ -1511,7 +1898,7 @@ export class Inventory {
         for (const [need, mods] of Object.entries(set.bonuses)) lines.push(`  (${need}) ${Object.entries(mods).map(([k, v]) => formatStat(k, v)).join(', ')}`);
       }
     } else if (it.desc) lines.push(it.desc);
-    const cc = it.slot ? canClassUse(this.game?.classId || DEFAULT_CLASS, it) : null;
+    const cc = it.slot ? canClassUse(this.classId, it) : null;
     const typeLine = it.slot ? `${RARITY[it.rarity]?.name || ''} ${SLOT_NAMES[it.slot]}${it.subtype && it.subtype !== it.slot ? ' (' + it.subtype + ')' : ''}` : (it.subtype || it.type);
     return {
       name: it.name + (it.count > 1 ? ` x${it.count}` : ''), color: it.color || RARITY[it.rarity]?.color, rarity: it.rarity, rarityName: RARITY[it.rarity]?.name, seal: it.seal || null, sealName: it.sealName || null, sealColor: it.sealColor || null,

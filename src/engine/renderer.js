@@ -1,4 +1,26 @@
 import * as THREE from 'three';
+import { BERSERK } from '../systems/mechanics.js';
+
+let sroRingTex = null;
+let sroNebulaTex = null;
+
+function getSroFxTextures() {
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return { ring: null, nebula: null };
+  }
+  if (!sroRingTex) {
+    try {
+      const loader = new THREE.TextureLoader();
+      sroRingTex = loader.load('/assets/sro/fx/01ring.png');
+      sroRingTex.colorSpace = THREE.SRGBColorSpace;
+      sroNebulaTex = loader.load('/assets/sro/fx/blade-nebula.jpg');
+      sroNebulaTex.colorSpace = THREE.SRGBColorSpace;
+    } catch {
+      // Fallback if browser loader encounters an error
+    }
+  }
+  return { ring: sroRingTex, nebula: sroNebulaTex };
+}
 
 const THEME_CONFIGS = {
   village: {
@@ -151,8 +173,8 @@ export class Renderer {
     this.dirLight = new THREE.DirectionalLight(0xfffbeb, 2.0);
     this.dirLight.position.set(12, 26, 14);
     this.dirLight.castShadow = true;
-    this.dirLight.shadow.mapSize.width = 2048;
-    this.dirLight.shadow.mapSize.height = 2048;
+    this.dirLight.shadow.mapSize.width = 1024;
+    this.dirLight.shadow.mapSize.height = 1024;
     this.dirLight.shadow.camera.near = 2;
     this.dirLight.shadow.camera.far = 75;
     const d = 22;
@@ -547,6 +569,191 @@ export class Renderer {
   }
 
   /**
+   * Spawn Weapon Mirage Ribbon Trail (sweeping curved blade ribbons + afterimage)
+   */
+  spawnWeaponTrail(origin, yaw = 0, options = {}) {
+    const IMBUE_TRAIL_COLORS = {
+      fire: 0xff5522,
+      ice: 0x38bdf8,
+      lightning: 0xfbbf24,
+      poison: 0x4ade80,
+      bleed: 0xef4444
+    };
+    const elemKey = options.imbueElement ? String(options.imbueElement).toLowerCase() : null;
+    const color = (elemKey && IMBUE_TRAIL_COLORS[elemKey]) ?? (options.color || 0x93c5fd);
+
+    const radius = Number(options.reach || options.radius || 2.4);
+    const arcAngle = Number(options.arcAngle || Math.PI * 0.95);
+    const duration = Number(options.duration || 0.24);
+
+    const { ring, nebula } = getSroFxTextures();
+
+    const trailGroup = new THREE.Group();
+    trailGroup.name = 'WeaponTrailRibbon';
+
+    // Multi-segment sweeping curved blade ribbon / layered glowing arc ribbons
+    const g1 = new THREE.RingGeometry(radius * 0.72, radius * 1.05, 24, 1, -arcAngle * 0.5, arcAngle);
+    const m1 = new THREE.MeshBasicMaterial({
+      color,
+      map: nebula || null,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.9,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+    const ribbon1 = new THREE.Mesh(g1, m1);
+
+    const g2 = new THREE.RingGeometry(radius * 0.45, radius * 0.85, 20, 1, -arcAngle * 0.65, arcAngle * 0.85);
+    const m2 = new THREE.MeshBasicMaterial({
+      color,
+      map: ring || null,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.55,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+    const ribbon2 = new THREE.Mesh(g2, m2);
+
+    const g3 = new THREE.RingGeometry(radius * 0.94, radius * 1.08, 24, 1, -arcAngle * 0.45, arcAngle * 0.7);
+    const m3 = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.75,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+    const ribbon3 = new THREE.Mesh(g3, m3);
+
+    trailGroup.add(ribbon1, ribbon2, ribbon3);
+
+    const ox = origin?.x || 0;
+    const oy = (origin?.y || 0) + (options.height || 0.82);
+    const oz = origin?.z || 0;
+    trailGroup.position.set(ox, oy, oz);
+    trailGroup.rotation.order = 'YXZ';
+    trailGroup.rotation.y = yaw - Math.PI * 0.5;
+    trailGroup.rotation.x = Math.PI * 0.5 + (options.tilt || 0.12);
+
+    this.vfxGroup.add(trailGroup);
+
+    const geos = [g1, g2, g3];
+    const mats = [m1, m2, m3];
+
+    this.vfxList.push({
+      mesh: trailGroup,
+      age: 0,
+      life: duration,
+      update: (p) => {
+        const s = 1.0 + p * 0.28;
+        trailGroup.scale.set(s, s, s);
+        m1.opacity = (1 - p) * 0.9;
+        m2.opacity = (1 - p) * 0.55;
+        m3.opacity = (1 - p) * 0.75;
+      },
+      geo: {
+        dispose: () => geos.forEach((g) => g.dispose())
+      },
+      mat: {
+        dispose: () => mats.forEach((m) => m.dispose())
+      }
+    });
+
+    return trailGroup;
+  }
+
+  /**
+   * Set Berserk Electric Aura (Hwan transformation)
+   */
+  setBerserkAura(heroMesh, active = false) {
+    if (!heroMesh) return;
+    this._berserkHeroMesh = active ? heroMesh : null;
+    const baseScale = heroMesh.userData?.baseScale || 1;
+
+    if (!active) {
+      if (heroMesh.userData?.berserkAura) {
+        heroMesh.userData.berserkAura.visible = false;
+      }
+      heroMesh.scale.setScalar(baseScale);
+      return;
+    }
+
+    let aura = heroMesh.userData?.berserkAura;
+    if (!aura) {
+      const { ring } = getSroFxTextures();
+      aura = new THREE.Group();
+      aura.name = 'BerserkAura';
+
+      // Golden-crimson base ring (0xfbbf24 / 0xef4444)
+      const outerRingGeo = new THREE.RingGeometry(0.72, 1.15, 32);
+      const outerRingMat = new THREE.MeshBasicMaterial({
+        color: 0xef4444, // crimson outer
+        map: ring || null,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.65,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      });
+      const outerRing = new THREE.Mesh(outerRingGeo, outerRingMat);
+      outerRing.rotation.x = -Math.PI / 2;
+      outerRing.position.y = 0.05;
+      aura.add(outerRing);
+
+      const innerRingGeo = new THREE.RingGeometry(0.85, 1.05, 32);
+      const innerRingMat = new THREE.MeshBasicMaterial({
+        color: 0xfbbf24, // golden inner
+        map: ring || null,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.85,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      });
+      const innerRing = new THREE.Mesh(innerRingGeo, innerRingMat);
+      innerRing.rotation.x = -Math.PI / 2;
+      innerRing.position.y = 0.06;
+      aura.add(innerRing);
+
+      // 4 orbiting lightning shards
+      const shardsGroup = new THREE.Group();
+      shardsGroup.name = 'BerserkShards';
+      const shardGeo = new THREE.OctahedronGeometry(0.12, 0);
+      const shardMat = new THREE.MeshBasicMaterial({
+        color: 0xfbbf24,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.95,
+        blending: THREE.AdditiveBlending
+      });
+
+      for (let i = 0; i < 4; i++) {
+        const ang = (i / 4) * Math.PI * 2;
+        const shard = new THREE.Mesh(shardGeo, shardMat);
+        shard.position.set(Math.cos(ang) * 0.95, 0.45, Math.sin(ang) * 0.95);
+        shard.scale.set(0.65, 1.35, 0.65);
+        shardsGroup.add(shard);
+      }
+      aura.add(shardsGroup);
+
+      aura.userData = {
+        outerRing,
+        innerRing,
+        shardsGroup
+      };
+
+      heroMesh.userData.berserkAura = aura;
+      heroMesh.add(aura);
+    }
+
+    aura.visible = true;
+    const scaleMult = (typeof BERSERK !== 'undefined' && BERSERK?.scaleMult) ? BERSERK.scaleMult : 1.12;
+    heroMesh.scale.setScalar(baseScale * scaleMult);
+  }
+
+  /**
    * Spawn 3D particle hit sparks
    */
   spawnHitSparks(pos, color = 0xfacc15, count = 12) {
@@ -570,6 +777,11 @@ export class Renderer {
         Math.sin(angle) * speed
       );
 
+      if (this.particles.length >= 120) {
+        const old = this.particles.shift();
+        this.vfxGroup.remove(old.mesh);
+        if (old.mat) old.mat.dispose();
+      }
       this.vfxGroup.add(mesh);
       this.particles.push({
         mesh,
@@ -624,9 +836,11 @@ export class Renderer {
    * Spawn expanding shockwave ring on the ground
    */
   spawnShockwave(pos, maxRadius = 3.8, color = 0xf97316, duration = 0.45) {
+    const { ring: ringTex } = getSroFxTextures();
     const geo = new THREE.RingGeometry(0.2, 0.55, 28);
     const mat = new THREE.MeshBasicMaterial({
       color,
+      map: ringTex || null,
       side: THREE.DoubleSide,
       transparent: true,
       opacity: 0.9,
@@ -671,6 +885,11 @@ export class Renderer {
       const r = 0.55 + Math.random() * 0.35;
       mesh.position.set((pos.x || 0) + Math.cos(angle) * r, 0.2 + Math.random() * 0.5, (pos.z || 0) + Math.sin(angle) * r);
 
+      if (this.particles.length >= 120) {
+        const old = this.particles.shift();
+        this.vfxGroup.remove(old.mesh);
+        if (old.mat) old.mat.dispose();
+      }
       this.vfxGroup.add(mesh);
       this.particles.push({
         mesh,
@@ -1042,6 +1261,207 @@ export class Renderer {
   }
 
   /**
+   * Spawn a player skill indicator decal on the ground during skill preparation/aiming.
+   * kind: 'arc' | 'cone' | 'circle' | 'aoe' | 'line' | 'rect'
+   * options: { radius, range, angle, width, duration, color }
+   */
+  spawnSkillIndicator(kind = 'arc', origin = { x: 0, z: 0 }, dirOrYaw = 0, options = {}) {
+    const k = String(kind || 'arc').toLowerCase();
+    const duration = Math.max(0.1, Number(options.duration) || 0.45);
+    const color = Number.isFinite(Number(options.color)) ? Number(options.color) : 0x38bdf8;
+    const ox = Number(origin?.x || 0);
+    const oz = Number(origin?.z || 0);
+    const yaw = typeof dirOrYaw === 'number'
+      ? dirOrYaw
+      : Math.atan2(dirOrYaw?.x || 0, dirOrYaw?.z || 1);
+
+    const group = new THREE.Group();
+    group.position.set(ox, 0.045, oz);
+    this.vfxGroup.add(group);
+    const geos = [];
+    const mats = [];
+
+    if (k.includes('circle') || k.includes('aoe') || k.includes('nova') || k.includes('ring')) {
+      const radius = Number(options.radius || options.range) || 3.5;
+      const outerGeo = new THREE.RingGeometry(radius * 0.94, radius, 36);
+      const innerGeo = new THREE.CircleGeometry(radius * 0.93, 32);
+      const runeGeo = new THREE.RingGeometry(radius * 0.65, radius * 0.72, 24);
+
+      const borderMat = new THREE.MeshBasicMaterial({
+        color,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.8,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      });
+      const fillMat = new THREE.MeshBasicMaterial({
+        color,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.2,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      });
+      const runeMat = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.45,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      });
+
+      geos.push(outerGeo, innerGeo, runeGeo);
+      mats.push(borderMat, fillMat, runeMat);
+
+      const border = new THREE.Mesh(outerGeo, borderMat);
+      border.rotation.x = -Math.PI / 2;
+
+      const fill = new THREE.Mesh(innerGeo, fillMat);
+      fill.rotation.x = -Math.PI / 2;
+      fill.position.y = 0.002;
+      fill.scale.setScalar(0.05);
+
+      const rune = new THREE.Mesh(runeGeo, runeMat);
+      rune.rotation.x = -Math.PI / 2;
+      rune.position.y = 0.004;
+
+      group.add(border, fill, rune);
+
+      this.vfxList.push({
+        mesh: group,
+        age: 0,
+        life: duration,
+        update: (p) => {
+          fill.scale.setScalar(Math.max(0.05, p));
+          fillMat.opacity = (0.15 + p * 0.4) * (1 - Math.max(0, p - 0.92) * 12);
+          borderMat.opacity = (0.6 + Math.sin(p * Math.PI * 6) * 0.25) * (1 - Math.max(0, p - 0.92) * 12);
+          rune.rotation.z = p * Math.PI * 2;
+          runeMat.opacity = (0.3 + p * 0.4) * (1 - Math.max(0, p - 0.92) * 12);
+          if (p >= 0.99) {
+            geos.forEach((g) => g.dispose());
+            mats.forEach((m) => m.dispose());
+          }
+        }
+      });
+      return group;
+    }
+
+    if (k.includes('line') || k.includes('rect') || k.includes('charge') || k.includes('dash')) {
+      const len = Number(options.range || options.length) || 5.5;
+      const width = Number(options.width) || 1.6;
+
+      const borderGeo = new THREE.PlaneGeometry(width, len);
+      const fillGeo = new THREE.PlaneGeometry(width * 0.9, len);
+      const borderMat = new THREE.MeshBasicMaterial({
+        color,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.75,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      });
+      const fillMat = new THREE.MeshBasicMaterial({
+        color,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.22,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      });
+
+      geos.push(borderGeo, fillGeo);
+      mats.push(borderMat, fillMat);
+
+      const border = new THREE.Mesh(borderGeo, borderMat);
+      border.rotation.x = -Math.PI / 2;
+      border.rotation.z = -yaw;
+      border.position.set(Math.sin(yaw) * (len * 0.5), 0, Math.cos(yaw) * (len * 0.5));
+
+      const fill = new THREE.Mesh(fillGeo, fillMat);
+      fill.rotation.x = -Math.PI / 2;
+      fill.rotation.z = -yaw;
+      fill.position.copy(border.position);
+      fill.position.y = 0.003;
+
+      group.add(border, fill);
+
+      this.vfxList.push({
+        mesh: group,
+        age: 0,
+        life: duration,
+        update: (p) => {
+          fill.scale.set(1, Math.max(0.05, p), 1);
+          fillMat.opacity = (0.2 + p * 0.4) * (1 - Math.max(0, p - 0.92) * 12);
+          borderMat.opacity = (0.55 + Math.sin(p * Math.PI * 6) * 0.2) * (1 - Math.max(0, p - 0.92) * 12);
+          if (p >= 0.99) {
+            geos.forEach((g) => g.dispose());
+            mats.forEach((m) => m.dispose());
+          }
+        }
+      });
+      return group;
+    }
+
+    // Default: 'arc' / 'cone' / 'slash' / 'melee' sector indicator
+    const range = Number(options.range || options.radius) || 3.2;
+    const arcAngle = Number(options.angle) || Math.PI * 1.1;
+    const segments = 24;
+
+    const arcBorderGeo = new THREE.RingGeometry(range * 0.94, range, segments, 1, -arcAngle * 0.5, arcAngle);
+    const arcFillGeo = new THREE.CircleGeometry(range * 0.93, segments, -arcAngle * 0.5, arcAngle);
+
+    const borderMat = new THREE.MeshBasicMaterial({
+      color,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.8,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+    const fillMat = new THREE.MeshBasicMaterial({
+      color,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.22,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+
+    geos.push(arcBorderGeo, arcFillGeo);
+    mats.push(borderMat, fillMat);
+
+    const border = new THREE.Mesh(arcBorderGeo, borderMat);
+    border.rotation.x = -Math.PI / 2;
+    border.rotation.z = -yaw + Math.PI / 2;
+
+    const fill = new THREE.Mesh(arcFillGeo, fillMat);
+    fill.rotation.x = -Math.PI / 2;
+    fill.rotation.z = -yaw + Math.PI / 2;
+    fill.position.y = 0.003;
+    fill.scale.setScalar(0.05);
+
+    group.add(border, fill);
+
+    this.vfxList.push({
+      mesh: group,
+      age: 0,
+      life: duration,
+      update: (p) => {
+        fill.scale.setScalar(Math.max(0.05, p));
+        fillMat.opacity = (0.18 + p * 0.42) * (1 - Math.max(0, p - 0.92) * 12);
+        borderMat.opacity = (0.6 + Math.sin(p * Math.PI * 6) * 0.2) * (1 - Math.max(0, p - 0.92) * 12);
+        if (p >= 0.99) {
+          geos.forEach((g) => g.dispose());
+          mats.forEach((m) => m.dispose());
+        }
+      }
+    });
+    return group;
+  }
+
+  /**
    * Spawn floating 3D -> 2D combat text (damage numbers, CRITS, EXP, status)
    */
   spawnFloatingText(worldPos, text, options = {}) {
@@ -1187,6 +1607,23 @@ export class Renderer {
       ft.el.style.left = `${screen.x}px`;
       ft.el.style.top = `${screen.y}px`;
       ft.el.style.opacity = String(alpha.toFixed(2));
+    }
+
+    // Dynamic Berserk Aura rotation and pulse
+    const berserkTarget = this._berserkHeroMesh || (heroPos && heroPos.mesh);
+    if (berserkTarget?.userData?.berserkAura?.visible) {
+      const aura = berserkTarget.userData.berserkAura;
+      if (aura.userData?.shardsGroup) {
+        aura.userData.shardsGroup.rotation.y = elapsed * 4.2;
+      }
+      if (aura.userData?.outerRing) {
+        const p1 = 1.0 + Math.sin(elapsed * 6.5) * 0.09;
+        aura.userData.outerRing.scale.set(p1, p1, 1);
+      }
+      if (aura.userData?.innerRing) {
+        const p2 = 1.0 + Math.cos(elapsed * 8.5) * 0.12;
+        aura.userData.innerRing.scale.set(p2, p2, 1);
+      }
     }
   }
 

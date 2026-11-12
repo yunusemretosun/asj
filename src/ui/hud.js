@@ -13,6 +13,8 @@
 // by giving it `{ __host: true, ...functions }`.
 // ============================================================================
 
+import { BERSERK, berserkOrbs } from '../systems/mechanics.js';
+
 export const MENU_BUTTONS = [
   { menu: 'character', key: 'C', icon: '\u{1F9D9}', label: 'Hero' },
   { menu: 'inventory', key: 'B', icon: '\u{1F392}', label: 'Bag' },
@@ -40,6 +42,12 @@ export function h(tag, cls, html) {
 }
 export function esc(s) {
   return String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+export function renderIconHTML(icon, fallback = '📦', cls = 'sro-icon') {
+  if (typeof icon === 'string' && (icon.startsWith('/') || icon.startsWith('http') || icon.endsWith('.png') || icon.endsWith('.webp'))) {
+    return `<img class="${cls}" src="${esc(icon)}" alt="" draggable="false"/>`;
+  }
+  return esc(icon || fallback);
 }
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 const fmt = (n) => (Math.abs(n) >= 10000 ? (n / 1000).toFixed(1) + 'k' : String(Math.round(n)));
@@ -110,7 +118,30 @@ export class HUD {
     this.barHp = new Bar('hp');
     this.barSp = new Bar('sp');
     this.barStam = new Bar('stam');
-    bars.append(this.elName, this.barHp.el, this.barSp.el, this.barStam.el);
+
+    // 5-Orb Berserk (Hwan) Bar
+    const berserk = (this.elBerserk = h('div', 'hud-berserk interactive'));
+    berserk.id = 'hud-berserk';
+    const orbsWrap = h('div', 'hud-berserk-orbs');
+    this.berserkOrbEls = [];
+    for (let i = 0; i < 5; i++) {
+      const orb = h('div', 'hud-berserk-orb');
+      this.berserkOrbEls.push(orb);
+      orbsWrap.appendChild(orb);
+    }
+    this.elBerserkLabel = h('span', 'hud-berserk-label', 'HWAN 0/5');
+    berserk.append(orbsWrap, this.elBerserkLabel);
+    berserk.title = 'Berserk (Hwan) Gauge [TAB]';
+    berserk.addEventListener('click', () => {
+      const c = this.ctx || (this.host && this.host.ctx) || {};
+      if (c.player && typeof c.player.tryActivateBerserk === 'function') {
+        c.player.tryActivateBerserk();
+      } else if (c.gameState && typeof c.gameState.activateBerserk === 'function') {
+        c.gameState.activateBerserk();
+      }
+    });
+
+    bars.append(this.elName, this.barHp.el, this.barSp.el, this.barStam.el, berserk);
     hero.append(por, bars);
     this.elCombo = h('div', 'hud-combo');
     this.elBuffs = h('div', 'hud-buffs');
@@ -129,12 +160,15 @@ export class HUD {
 
     // --- top centre
     const tc = h('div', 'hud-top-center');
+    this.elNemesisWarning = h('div', 'hud-nemesis-warning');
     this.elZone = h('div', 'hud-zone', '');
     this.elBoss = h('div', 'hud-boss arc-frame');
+    this.elBoss.id = 'hud-boss-bar';
     this.elBossName = h('div', 'boss-name', '<span class="bn"></span><span class="bp"></span>');
+    this.elBossBadge = h('div', 'boss-badge');
     this.barBoss = new Bar('boss');
-    this.elBoss.append(this.elBossName, this.barBoss.el);
-    tc.append(this.elZone, this.elBoss);
+    this.elBoss.append(this.elBossName, this.barBoss.el, this.elBossBadge);
+    tc.append(this.elNemesisWarning, this.elZone, this.elBoss);
     R.appendChild(tc);
 
     // banner / prompt / toasts
@@ -145,7 +179,11 @@ export class HUD {
 
     // --- bottom bar
     const bot = h('div', 'hud-bottom');
+    this.elSoaking = h('div', 'hud-soaking-indicator', '\u2668 Soaking in Jade Mist Hot Springs (+HP/MP &amp; Rested EXP)');
+    const expWrap = h('div', 'hud-exp-wrap');
     this.barExp = new Bar('exp');
+    this.elRestedExp = h('div', 'hud-rested-badge');
+    expWrap.append(this.barExp.el, this.elRestedExp);
     const ab = h('div', 'hud-actionbar arc-frame interactive');
     this.skillSlots = [];
     const sg = h('div', 'slot-group');
@@ -170,7 +208,7 @@ export class HUD {
       this.menuBtns[b.menu] = btn; mb.appendChild(btn);
     }
     ab.append(sg, h('div', 'slot-sep'), pg, h('div', 'slot-sep'), mb);
-    bot.append(this.barExp.el, ab);
+    bot.append(this.elSoaking, expWrap, ab);
     R.appendChild(bot);
     this._tipTarget = null;
   }
@@ -244,11 +282,95 @@ export class HUD {
     let p = null;
     try { p = host.getPlayer && host.getPlayer(); } catch (e) { p = null; }
     if (p) this._updateHero(p, dt);
+    try { this._updateBerserk(ctx, p, dt); } catch (e) { /* ignore */ }
+    try { this._updateRestedAndSoaking(ctx, p, dt); } catch (e) { /* ignore */ }
+    try { this._updateNemesis(ctx, p, dt); } catch (e) { /* ignore */ }
     try { this._updateBar(host, p, dt); } catch (e) { /* keep HUD alive on bad data */ }
     try { this._updateMinimap(host, dt); } catch (e) { /* ignore */ }
     try { this._updateBoss(host); } catch (e) { /* ignore */ }
     try { this._updatePrompt(host); } catch (e) { /* ignore */ }
     try { this._updateBadges(host, p); } catch (e) { /* ignore */ }
+  }
+
+  _updateBerserk(ctx, p, dt) {
+    if (!this.elBerserk) return;
+    const c = ctx || this.ctx || (this.host && this.host.ctx) || {};
+    const hero = c.hero || (c.gameState && c.gameState.hero) || p || {};
+    const charge = Number(hero.berserkCharge ?? p?.berserkCharge ?? c.player?.berserkCharge ?? 0);
+    const active = Boolean(hero.berserkActive ?? p?.berserkActive ?? c.player?.berserkActive);
+    const remaining = Number(hero.berserkRemaining ?? p?.berserkRemaining ?? c.player?.berserkRemaining ?? 0);
+
+    const litOrbs = active ? 5 : berserkOrbs(charge);
+    for (let i = 0; i < 5; i++) {
+      const orb = this.berserkOrbEls && this.berserkOrbEls[i];
+      if (!orb) continue;
+      orb.classList.toggle('active', i < litOrbs);
+      orb.classList.toggle('blazing', active);
+    }
+    this.elBerserk.classList.toggle('active', active);
+    const isReady = charge >= BERSERK.maxCharge && !active;
+    this.elBerserk.classList.toggle('ready', isReady);
+
+    if (active) {
+      this.elBerserkLabel.textContent = `⚡ BERSERK ${remaining.toFixed(1)}s`;
+    } else if (isReady) {
+      this.elBerserkLabel.textContent = `[TAB] BERSERK READY!`;
+    } else {
+      this.elBerserkLabel.textContent = `HWAN ${berserkOrbs(charge)}/5`;
+    }
+  }
+
+  _updateRestedAndSoaking(ctx, p, dt) {
+    const c = ctx || this.ctx || (this.host && this.host.ctx) || {};
+    const hero = c.hero || (c.gameState && c.gameState.hero) || p || {};
+    const rested = Math.floor(hero.restedExp ?? p?.restedExp ?? 0);
+    const soaking = Boolean(hero.isSoaking ?? p?.isSoaking ?? c.player?.isSoaking);
+
+    if (this.elRestedExp) {
+      if (rested > 0) {
+        this.elRestedExp.textContent = `♨ Rested: +${rested} EXP`;
+        this.elRestedExp.classList.add('on');
+      } else {
+        this.elRestedExp.classList.remove('on');
+      }
+    }
+
+    if (this.elSoaking) {
+      this.elSoaking.classList.toggle('on', soaking);
+    }
+  }
+
+  _updateNemesis(ctx, p, dt) {
+    const c = ctx || this.ctx || (this.host && this.host.ctx) || {};
+    const em = c.enemyManager || c.enemies || (this.host && this.host.ctx && this.host.ctx.enemyManager);
+    const enemies = (em && (typeof em.getAliveEnemies === 'function' ? em.getAliveEnemies() : em.enemies)) || c.enemies || [];
+    const nemesis = Array.isArray(enemies)
+      ? enemies.find((e) => e && e.isNemesis && (e.hp == null || e.hp > 0) && !e.isDead && e.state !== 'DEAD' && e.state !== 'dead')
+      : null;
+
+    this._activeNemesis = nemesis || null;
+
+    if (!this.elNemesisWarning) return;
+    if (!nemesis) {
+      this.elNemesisWarning.classList.remove('on');
+      return;
+    }
+
+    const nx = Number(nemesis.x ?? nemesis.position?.x ?? (nemesis.mesh && nemesis.mesh.position && nemesis.mesh.position.x) ?? 0);
+    const nz = Number(nemesis.z ?? nemesis.y ?? nemesis.position?.z ?? nemesis.position?.y ?? (nemesis.mesh && nemesis.mesh.position && nemesis.mesh.position.z) ?? 0);
+
+    const pc = c.player || c.playerController;
+    const ppos = pc ? (pc.position || pc.pos || (pc.mesh && pc.mesh.position) || (pc.heroMesh && pc.heroMesh.position) || pc) : null;
+    const px = Number(ppos?.x ?? p?.x ?? 0);
+    const pz = Number(ppos?.z ?? ppos?.y ?? p?.z ?? p?.y ?? 0);
+
+    const dist = Math.hypot(nx - px, nz - pz);
+    if (dist <= 28) {
+      this.elNemesisWarning.textContent = `⚔ NEMESIS NEARBY: ${nemesis.name || 'Nemesis'}`;
+      this.elNemesisWarning.classList.add('on');
+    } else {
+      this.elNemesisWarning.classList.remove('on');
+    }
   }
 
   _updateHero(p, dt) {
@@ -328,13 +450,13 @@ export class HUD {
       if (sk && sk.key) s.key.textContent = sk.key;
       else if (!s.key.textContent) s.key.textContent = DEFAULT_SKILL_KEYS[i];
       if (!sk) {
-        if (s._ico !== null) { s.icon.textContent = '\u2014'; s.el.classList.add('empty'); s._ico = null; s.cost.textContent = ''; s.lv.textContent = ''; s.txt.textContent = ''; s.sweep.style.setProperty('--cd', '0deg'); }
+        if (s._ico !== null) { s.icon.innerHTML = '\u2014'; s.el.classList.add('empty'); s._ico = null; s.cost.textContent = ''; s.lv.textContent = ''; s.txt.textContent = ''; s.sweep.style.setProperty('--cd', '0deg'); }
         continue;
       }
       const ico = sk.icon || '\u2728';
       const sig = `${sk.skillId}|${ico}|${sk.level}|${sk.spCost}`;
       if (s._ico !== sig) {
-        s._ico = sig; s.icon.textContent = ico; s.el.classList.remove('empty');
+        s._ico = sig; s.icon.innerHTML = renderIconHTML(ico, '\u2728'); s.el.classList.remove('empty');
         s.el.title = sk.name || ''; s.cost.textContent = sk.spCost ? sk.spCost : ''; s.lv.textContent = sk.level ? 'L' + sk.level : '';
       }
       const cd = Math.max(0, sk.cooldown || 0), max = sk.cooldownMax || 0;
@@ -353,7 +475,7 @@ export class HUD {
       const it = q && q.item;
       const sig = it ? (it.name + '|' + it.icon) : '';
       if (s._ico !== sig) {
-        s._ico = sig; s.icon.textContent = it ? (it.icon || '\u{1F9EA}') : '\u2014';
+        s._ico = sig; s.icon.innerHTML = it ? renderIconHTML(it.icon, '\u{1F9EA}') : '\u2014';
         s.el.classList.toggle('empty', !it); s.el.title = it ? it.name : 'Empty potion slot';
       }
       const c = it ? (it.count != null ? String(it.count) : '') : '';
@@ -379,15 +501,42 @@ export class HUD {
 
   _updateBoss(host) {
     let b = this._bossManual ? this._boss : (host.getBoss && host.getBoss());
+    if (!b && this.ctx) {
+      const em = this.ctx.enemyManager || this.ctx.enemies;
+      b = (em && typeof em.getActiveBoss === 'function' ? em.getActiveBoss() : null) || this.ctx.boss || (this.ctx.gameState && this.ctx.gameState.boss);
+    }
     const on = !!(b && b.maxHp > 0 && b.hp > 0);
     this.elBoss.classList.toggle('on', on);
-    if (!on) return;
+    if (!on) {
+      if (this.elBossBadge) {
+        this.elBossBadge.className = 'boss-badge';
+        this.elBossBadge.textContent = '';
+      }
+      return;
+    }
     const bn = this.elBossName.firstChild, bp = this.elBossName.lastChild;
     const name = (b.title ? b.name + ' \u2014 ' + b.title : b.name) || 'Boss';
     if (bn.textContent !== name) bn.textContent = name;
     const ph = b.maxPhases > 1 ? `Phase ${b.phase || 1}/${b.maxPhases}` : (b.phase ? `Phase ${b.phase}` : '');
     if (bp.textContent !== ph) bp.textContent = ph;
     this.barBoss.set(b.hp, b.maxHp, `${fmt(b.hp)} / ${fmt(b.maxHp)}`);
+
+    // Milestone 5: Boss Fury & Aegis Barrier Badges
+    if (this.elBossBadge) {
+      if (b.aegisActive) {
+        this.elBossBadge.textContent = '\u{1F6E1}\uFE0F AEGIS BARRIER (-80% DMG \u2014 Destroy Crystals!)';
+        this.elBossBadge.className = 'boss-badge aegis on';
+      } else if (b.isFurious) {
+        this.elBossBadge.textContent = '\u{1F525} FURY MODE (+55% ATK)';
+        this.elBossBadge.className = 'boss-badge fury on';
+      } else if (typeof b.furyTimer === 'number' && b.furyTimer > 0) {
+        this.elBossBadge.textContent = `\u23F1 Fury: ${Math.ceil(b.furyTimer)}s`;
+        this.elBossBadge.className = 'boss-badge timer on';
+      } else {
+        this.elBossBadge.textContent = '';
+        this.elBossBadge.className = 'boss-badge';
+      }
+    }
   }
 
   // --------------------------------------------------------------- minimap
@@ -442,9 +591,34 @@ export class HUD {
       }
     }
     const colors = { enemy: '#ff4444', boss: '#ff2288', chest: '#ffdd44', npc: '#55ff88', portal: '#cc66ff', stairs: '#cc66ff', loot: '#ffffff' };
+    let nemesisDrawn = false;
     for (const e of d.entities || []) {
       const x = X(e.x), y = Y(e.y);
-      if (x < -6 || y < -6 || x > W + 6 || y > H + 6) continue;
+      if (x < -10 || y < -10 || x > W + 10 || y > H + 10) continue;
+      if (e.isNemesis || e.type === 'nemesis') {
+        nemesisDrawn = true;
+        c.save();
+        c.fillStyle = '#ef4444';
+        c.strokeStyle = '#ffe4e6';
+        c.lineWidth = 1.5;
+        c.shadowColor = '#dc2626';
+        c.shadowBlur = 8;
+        c.beginPath();
+        const s = 8;
+        c.moveTo(x, y - s);
+        c.lineTo(x + s, y);
+        c.lineTo(x, y + s);
+        c.lineTo(x - s, y);
+        c.closePath();
+        c.fill();
+        c.stroke();
+        c.fillStyle = '#ffffff';
+        c.fillRect(x - 2, y - 2, 1.5, 1.5);
+        c.fillRect(x + 1, y - 2, 1.5, 1.5);
+        c.fillRect(x - 1, y + 1.5, 2.5, 1.5);
+        c.restore();
+        continue;
+      }
       c.fillStyle = colors[e.type] || '#aaa';
       c.beginPath();
       if (e.type === 'chest') { c.rect(x - 3, y - 3, 6, 6); }
@@ -452,6 +626,34 @@ export class HUD {
       else c.arc(x, y, e.type === 'boss' ? 6 : 3.2, 0, 6.283);
       c.fill();
       if (e.type === 'npc') { c.strokeStyle = '#000'; c.lineWidth = 1; c.stroke(); }
+    }
+    if (!nemesisDrawn && this._activeNemesis) {
+      const ne = this._activeNemesis;
+      const nx = Number(ne.x ?? ne.position?.x ?? (ne.mesh && ne.mesh.position && ne.mesh.position.x) ?? 0);
+      const ny = Number(ne.z ?? ne.y ?? ne.position?.z ?? ne.position?.y ?? (ne.mesh && ne.mesh.position && ne.mesh.position.z) ?? 0);
+      const x = X(nx), y = Y(ny);
+      if (x >= -10 && y >= -10 && x <= W + 10 && y <= H + 10) {
+        c.save();
+        c.fillStyle = '#ef4444';
+        c.strokeStyle = '#ffe4e6';
+        c.lineWidth = 1.5;
+        c.shadowColor = '#dc2626';
+        c.shadowBlur = 8;
+        c.beginPath();
+        const s = 8;
+        c.moveTo(x, y - s);
+        c.lineTo(x + s, y);
+        c.lineTo(x, y + s);
+        c.lineTo(x - s, y);
+        c.closePath();
+        c.fill();
+        c.stroke();
+        c.fillStyle = '#ffffff';
+        c.fillRect(x - 2, y - 2, 1.5, 1.5);
+        c.fillRect(x + 1, y - 2, 1.5, 1.5);
+        c.fillRect(x - 1, y + 1.5, 2.5, 1.5);
+        c.restore();
+      }
     }
     if (d.player) {
       c.save(); c.translate(X(px), Y(py)); c.rotate(d.player.angle || 0);
@@ -636,7 +838,16 @@ export function createHost(ctx = {}) {
       const pc = getPlayerCtrl();
       const ctrlCombo = pc && (pc.comboCount || pc.combo) ? (pc.comboCount || pc.combo) : 0;
       if (snap) {
-        return { ...snap, bonus, combo: Math.max(snap.combo || 0, ctrlCombo) };
+        return {
+          ...snap,
+          berserkCharge: snap.berserkCharge ?? h.berserkCharge ?? g.berserkCharge ?? 0,
+          berserkActive: Boolean(snap.berserkActive ?? h.berserkActive ?? g.berserkActive),
+          berserkRemaining: snap.berserkRemaining ?? h.berserkRemaining ?? g.berserkRemaining ?? 0,
+          restedExp: snap.restedExp ?? h.restedExp ?? g.restedExp ?? 0,
+          isSoaking: Boolean(snap.isSoaking ?? h.isSoaking ?? g.isSoaking),
+          bonus,
+          combo: Math.max(snap.combo || 0, ctrlCombo),
+        };
       }
       return {
         name: h.name || 'Hero',
@@ -649,6 +860,11 @@ export function createHost(ctx = {}) {
         maxSp: s.maxMp ?? h.maxMp ?? h.maxSp ?? 50,
         stamina: Math.floor(h.stamina ?? s.maxStamina ?? 100),
         maxStamina: s.maxStamina ?? h.maxStamina ?? 100,
+        berserkCharge: h.berserkCharge ?? g.berserkCharge ?? 0,
+        berserkActive: Boolean(h.berserkActive ?? g.berserkActive),
+        berserkRemaining: h.berserkRemaining ?? g.berserkRemaining ?? 0,
+        restedExp: h.restedExp ?? g.restedExp ?? 0,
+        isSoaking: Boolean(h.isSoaking ?? g.isSoaking),
         combo: Math.max(h.combo || 0, ctrlCombo),
         exp: h.exp || 0,
         expToNext: g.expToNext || 100,
@@ -835,7 +1051,24 @@ export function createHost(ctx = {}) {
       const em = getEnemies();
       const enemyList = em ? (typeof em.getAliveEnemies === 'function' ? em.getAliveEnemies() : (em.enemies || [])) : [];
       if (typeof d.getMinimapData === 'function') {
-        return d.getMinimapData({ x: pPos.x, y: pPos.y, z: pPos.z }, pPos.angle, enemyList);
+        const mm = d.getMinimapData({ x: pPos.x, y: pPos.y, z: pPos.z }, pPos.angle, enemyList);
+        if (mm && Array.isArray(mm.entities)) {
+          for (const e of enemyList) {
+            if (e && (e.isNemesis || (e.nemesisRank && e.nemesisRank > 0)) && (e.hp == null || e.hp > 0) && !e.isDead && e.state !== 'DEAD' && e.state !== 'dead') {
+              const ex = Number(e.x ?? e.position?.x ?? (e.mesh && e.mesh.position && e.mesh.position.x) ?? 0);
+              const ey = Number(e.z ?? e.y ?? e.position?.z ?? e.position?.y ?? (e.mesh && e.mesh.position && e.mesh.position.z) ?? 0);
+              const found = mm.entities.find((ent) => (ent.type === 'enemy' || ent.type === 'boss') && Math.hypot(ent.x - ex, ent.y - ey) < 1.5);
+              if (found) {
+                found.isNemesis = true;
+                found.type = 'nemesis';
+                found.name = e.name;
+              } else {
+                mm.entities.push({ type: 'nemesis', isNemesis: true, x: ex, y: ey, name: e.name });
+              }
+            }
+          }
+        }
+        return mm;
       }
       return null;
     },
@@ -899,16 +1132,19 @@ export function createHost(ctx = {}) {
       if (g && typeof g.allocate === 'function') return wrapRes(g.allocate(stat, n));
       return { ok: false, msg: 'Unavailable' };
     },
-    equip(uid) {
+    equip(uid, targetSlot = null) {
       let r;
-      if (typeof ctx.equip === 'function') r = wrapRes(ctx.equip(uid), 'Equipped');
+      if (typeof ctx.equip === 'function') r = wrapRes(ctx.equip(uid, targetSlot), 'Equipped');
       else {
         const inv = getInv();
-        r = inv && inv.equip ? wrapRes(inv.equip(uid), 'Equipped') : { ok: false, msg: 'Unavailable' };
+        r = inv && inv.equip ? wrapRes(inv.equip(uid, targetSlot), 'Equipped') : { ok: false, msg: 'Unavailable' };
       }
       const pc = getPlayerCtrl();
       if (pc && typeof pc.syncEquipment === 'function') pc.syncEquipment();
       return r;
+    },
+    equipToSlot(uid, targetSlot) {
+      return this.equip(uid, targetSlot);
     },
     unequip(slot) {
       const inv = getInv();

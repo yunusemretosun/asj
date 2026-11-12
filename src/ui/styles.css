@@ -187,6 +187,103 @@
 .hud-name .gold { color: var(--arc-gold); font-size: 12px; }
 .hud-bars .arc-bar.stam { height: 9px; }
 .hud-bars .arc-bar.stam .label { font-size: 8px; }
+
+/* 5-Orb Berserk (Hwan) Bar (#hud-berserk) */
+.hud-berserk {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 8px;
+  background: rgba(15, 13, 20, 0.85);
+  border: 1px solid var(--arc-metal-lo);
+  border-radius: 4px;
+  box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.8);
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+  margin-top: 1px;
+}
+.hud-berserk:hover {
+  border-color: var(--arc-metal-hi);
+}
+.hud-berserk.ready {
+  border-color: #fbbf24;
+  background: rgba(35, 25, 10, 0.9);
+  box-shadow: 0 0 12px rgba(251, 191, 36, 0.65), inset 0 0 8px rgba(251, 191, 36, 0.3);
+  animation: arc-berserk-ready-pulse 0.8s ease-in-out infinite alternate;
+}
+.hud-berserk.active {
+  border-color: #ea580c;
+  background: rgba(45, 15, 10, 0.95);
+  box-shadow: 0 0 16px rgba(234, 88, 12, 0.85), inset 0 0 10px rgba(239, 68, 68, 0.4);
+}
+@keyframes arc-berserk-ready-pulse {
+  from {
+    box-shadow: 0 0 6px rgba(251, 191, 36, 0.4);
+    transform: scale(0.99);
+  }
+  to {
+    box-shadow: 0 0 16px rgba(251, 191, 36, 0.85);
+    transform: scale(1.02);
+  }
+}
+.hud-berserk-orbs {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.hud-berserk-orb {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 1.5px solid #4a3d20;
+  background: radial-gradient(circle at 40% 40%, #201a2c, #0a0810);
+  box-shadow: inset 0 0 4px #000, 0 1px 2px rgba(0,0,0,0.6);
+  transition: all 0.25s ease;
+}
+.hud-berserk-orb.active {
+  border-color: #fbbf24;
+  background: radial-gradient(circle at 35% 35%, #fffbeb, #f59e0b 60%, #b45309);
+  box-shadow: 0 0 8px rgba(251, 191, 36, 0.85), inset 0 0 2px #fff;
+}
+.hud-berserk-orb.blazing {
+  border-color: #fef08a;
+  background: radial-gradient(circle at 35% 35%, #ffffff, #f97316 45%, #dc2626 90%);
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.9), 0 0 20px rgba(251, 191, 36, 0.7);
+  animation: arc-orb-blaze 0.5s ease-in-out infinite alternate;
+}
+@keyframes arc-orb-blaze {
+  from {
+    transform: scale(0.92);
+    filter: brightness(1);
+  }
+  to {
+    transform: scale(1.15);
+    filter: brightness(1.35);
+  }
+}
+.hud-berserk-label {
+  font-family: var(--arc-font-title);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  color: var(--arc-metal-hi);
+  text-shadow: 0 1px 2px #000;
+  white-space: nowrap;
+}
+.hud-berserk.ready .hud-berserk-label {
+  color: #fde047;
+  text-shadow: 0 0 6px #ea580c, 0 1px 2px #000;
+  animation: arc-ready-text 0.8s ease-in-out infinite alternate;
+}
+@keyframes arc-ready-text {
+  from { opacity: 0.85; }
+  to { opacity: 1; text-shadow: 0 0 10px #f59e0b, 0 0 16px #ef4444; }
+}
+.hud-berserk.active .hud-berserk-label {
+  color: #fff;
+  text-shadow: 0 0 8px #f59e0b, 0 0 14px #dc2626;
+}
 .hud-combo {
   position: absolute; top: 102px; left: 24px;
   font-family: var(--arc-font-title);
@@ -262,6 +359,33 @@
   width: min(560px, 38vw);
   display: flex; flex-direction: column; align-items: center; gap: 8px;
 }
+/* Nemesis Proximity Warning Banner */
+.hud-nemesis-warning {
+  display: none;
+  padding: 5px 18px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, rgba(127, 29, 29, 0.92), rgba(185, 28, 28, 0.95), rgba(127, 29, 29, 0.92));
+  border: 1.5px solid #ef4444;
+  color: #fff;
+  font-family: var(--arc-font-title);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  box-shadow: 0 0 18px rgba(239, 68, 68, 0.75), 0 2px 6px rgba(0,0,0,0.8);
+  text-shadow: 0 0 8px #991b1b, 0 1px 2px #000;
+  animation: arc-nemesis-pulse 0.75s ease-in-out infinite alternate;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.hud-nemesis-warning.on {
+  display: block;
+}
+@keyframes arc-nemesis-pulse {
+  from { transform: scale(0.98); box-shadow: 0 0 10px rgba(239, 68, 68, 0.55); }
+  to { transform: scale(1.02); box-shadow: 0 0 22px rgba(239, 68, 68, 0.95); }
+}
+
 .hud-zone {
   font-family: var(--arc-font-title);
   font-size: 13px; letter-spacing: 2px; text-transform: uppercase;
@@ -285,6 +409,54 @@
   padding-bottom: 3px;
 }
 .hud-boss .arc-bar { height: 20px; }
+
+/* Boss status badge (Aegis barrier, Fury mode, countdown) */
+.boss-badge {
+  display: none;
+  text-align: center;
+  margin-top: 5px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  border-radius: 4px;
+  padding: 3px 10px;
+  transition: all 0.3s ease;
+}
+.boss-badge.on {
+  display: block;
+}
+.boss-badge.aegis {
+  background: rgba(8, 47, 73, 0.88);
+  border: 1px solid #38bdf8;
+  color: #e0f2fe;
+  box-shadow: 0 0 14px rgba(56, 189, 248, 0.75), inset 0 0 8px rgba(56, 189, 248, 0.3);
+  text-shadow: 0 0 6px #0284c7, 0 1px 2px #000;
+  animation: arc-aegis-glow 1.4s ease-in-out infinite alternate;
+}
+@keyframes arc-aegis-glow {
+  from { box-shadow: 0 0 8px rgba(56, 189, 248, 0.5); }
+  to { box-shadow: 0 0 20px rgba(56, 189, 248, 0.95); }
+}
+.boss-badge.fury {
+  background: rgba(69, 10, 10, 0.92);
+  border: 1px solid #ef4444;
+  color: #fef2f2;
+  box-shadow: 0 0 16px rgba(239, 68, 68, 0.85), inset 0 0 8px rgba(220, 38, 38, 0.4);
+  text-shadow: 0 0 8px #dc2626, 0 1px 2px #000;
+  animation: arc-fury-pulse 0.7s ease-in-out infinite alternate;
+}
+@keyframes arc-fury-pulse {
+  from { transform: scale(0.98); filter: brightness(1); }
+  to { transform: scale(1.02); filter: brightness(1.3); }
+}
+.boss-badge.timer {
+  background: rgba(20, 16, 28, 0.85);
+  border: 1px solid #8a7440;
+  color: #fef08a;
+  font-family: monospace;
+  font-size: 11px;
+  text-shadow: 0 1px 2px #000;
+}
 
 /* Zone banner (big announce) */
 .hud-banner {
@@ -362,8 +534,60 @@
   gap: 6px;
   width: min(900px, 96vw);
 }
+.hud-exp-wrap {
+  position: relative;
+  width: 100%;
+}
 .hud-bottom .arc-bar.exp { height: 12px; }
 .hud-bottom .arc-bar.exp .label { font-size: 9px; }
+
+/* Rested EXP Badge */
+.hud-rested-badge {
+  display: none;
+  position: absolute;
+  right: 6px;
+  top: -19px;
+  padding: 1px 8px;
+  background: rgba(30, 15, 45, 0.88);
+  border: 1px solid #c084fc;
+  border-radius: 10px;
+  color: #f3e8ff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  box-shadow: 0 0 8px rgba(192, 132, 252, 0.4);
+  text-shadow: 0 1px 2px #000;
+  z-index: 5;
+}
+.hud-rested-badge.on {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Hot Springs Soaking Indicator */
+.hud-soaking-indicator {
+  display: none;
+  align-self: center;
+  padding: 4px 16px;
+  border-radius: 20px;
+  background: linear-gradient(90deg, rgba(13, 148, 136, 0.85), rgba(20, 184, 166, 0.95), rgba(13, 148, 136, 0.85));
+  border: 1px solid #5eead4;
+  color: #f0fdfa;
+  font-family: var(--arc-font);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  box-shadow: 0 0 14px rgba(45, 212, 191, 0.6), 0 2px 6px rgba(0,0,0,0.6);
+  text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+  animation: arc-soak-float 2.2s ease-in-out infinite alternate;
+}
+.hud-soaking-indicator.on {
+  display: inline-block;
+}
+@keyframes arc-soak-float {
+  0% { transform: translateY(0); filter: brightness(1); }
+  100% { transform: translateY(-2px); filter: brightness(1.15); box-shadow: 0 0 18px rgba(45, 212, 191, 0.8), 0 2px 6px rgba(0,0,0,0.6); }
+}
 .hud-actionbar {
   display: flex; align-items: center; justify-content: center; gap: 14px;
   padding: 8px 14px;
@@ -1078,14 +1302,14 @@ html.asj-creating .arc-overlay, html.asj-creating .arc-tooltip { display: none !
 .alc-up { color: var(--arc-good); }
 .alc-warn { font-size: 11px; color: #ffb27a; text-align: center; }
 .alc-reason { font-size: 12px; color: var(--arc-text-dim); text-align: center; }
-.alc-fuse { display: flex; align-items: center; gap: 8px; width: 100%; font-size: 12px; color: var(--arc-gold); }
+.alc-fuse { display: flex; align-items: center; gap: 8px; width: 100%; font-size: 12px; color: var(--arc-gold); margin-top: 6px; }
 .alc-fuse-bar { flex: 1; height: 14px; background: #0b0910; border: 1px solid var(--arc-metal); border-radius: 7px; overflow: hidden; }
 .alc-fuse-fill { height: 100%; background: linear-gradient(90deg, #ff8a00, #ffe27a, #fff); box-shadow: 0 0 12px #ffb400; animation: arc-fuse-glow .35s ease-in-out infinite alternate; }
 @keyframes arc-fuse-glow { from { filter: brightness(.9); } to { filter: brightness(1.5); } }
 .alc-forge.fusing .alc-main .item-slot { animation: arc-fuse-pulse .5s ease-in-out infinite alternate; }
 @keyframes arc-fuse-pulse { from { box-shadow: 0 0 6px #ff9a00; } to { box-shadow: 0 0 26px 6px #ffd25a; } }
 .alc-forge.fusing .compose-arrow { animation: arc-spin .6s linear infinite; }
-.alc-result { text-align: center; font-size: 12px; }
+.alc-result { text-align: center; font-size: 12px; margin-top: 6px; }
 .alc-result .alc-big { font-size: 26px; font-weight: 900; }
 .alc-result.ok { color: var(--arc-good); text-shadow: 0 0 10px #5fe08a; }
 .alc-result.bad { color: var(--arc-bad); }
@@ -1099,6 +1323,336 @@ html.asj-creating .arc-overlay, html.asj-creating .arc-tooltip { display: none !
 .alc-hist li.ok { border-left-color: var(--arc-good); color: var(--arc-good); }
 .alc-hist li.bad { border-left-color: var(--arc-bad); color: #ffb0b0; }
 .alc-hist li.none { color: var(--arc-text-mute); }
+
+/* --------------------------------------------------------------------------
+   Silkroad Online Icons & Alchemy Workshop Reinforcement
+   -------------------------------------------------------------------------- */
+.sro-icon {
+  width: 100%;
+  height: 100%;
+  max-width: 34px;
+  max-height: 34px;
+  object-fit: contain;
+  image-rendering: auto;
+  pointer-events: none;
+  vertical-align: middle;
+}
+.item-slot .sro-icon {
+  width: 100%;
+  height: 100%;
+  max-width: 34px;
+  max-height: 34px;
+  object-fit: contain;
+  pointer-events: none;
+}
+.hud-slot .sro-icon {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  pointer-events: none;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.8));
+}
+.hud-slot.potion .sro-icon {
+  width: 30px;
+  height: 30px;
+}
+.skill-node .sro-icon {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  pointer-events: none;
+}
+.skill-detail h4 .sro-icon {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  vertical-align: middle;
+  margin-right: 4px;
+}
+.tip-head .sro-icon {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+.shop-icon .sro-icon {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+
+@keyframes alcm-fx-4x4 {
+  0%, 6.24%      { background-position: 0px 0px; }
+  6.25%, 12.49%  { background-position: -128px 0px; }
+  12.5%, 18.74%  { background-position: -256px 0px; }
+  18.75%, 24.99% { background-position: -384px 0px; }
+  25%, 31.24%    { background-position: 0px -128px; }
+  31.25%, 37.49% { background-position: -128px -128px; }
+  37.5%, 43.74%  { background-position: -256px -128px; }
+  43.75%, 49.99% { background-position: -384px -128px; }
+  50%, 56.24%    { background-position: 0px -256px; }
+  56.25%, 62.49% { background-position: -128px -256px; }
+  62.5%, 68.74%  { background-position: -256px -256px; }
+  68.75%, 74.99% { background-position: -384px -256px; }
+  75%, 81.24%    { background-position: 0px -384px; }
+  81.25%, 87.49% { background-position: -128px -384px; }
+  87.5%, 93.74%  { background-position: -256px -384px; }
+  93.75%, 100%   { background-position: -384px -384px; }
+}
+
+.alcm-modal-frame {
+  max-width: 720px;
+}
+.alcm-workshop {
+  display: flex;
+  flex-direction: column;
+}
+.alcm-workshop .alchemy-layout {
+  display: grid;
+  grid-template-columns: 240px 384px;
+  gap: 16px;
+  align-items: start;
+}
+.alcm-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.alcm-sidebar .compose-pool {
+  grid-template-columns: repeat(4, 48px);
+  max-height: 220px;
+  overflow-y: auto;
+}
+.alcm-sidebar .alc-hist {
+  max-height: 120px;
+  overflow-y: auto;
+}
+.alcm-main-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.alcm-info {
+  width: 376px;
+  height: 82px;
+  background: url('/assets/sro/alchemy/alcm_window_1.png') no-repeat 0 -86px;
+  margin: 0 auto 6px;
+  padding: 6px 14px;
+  box-sizing: border-box;
+  color: #3a2210;
+  font-size: 11px;
+  line-height: 1.3;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  border-radius: 4px;
+  box-shadow: inset 0 0 10px rgba(0,0,0,0.15);
+}
+.alcm-info-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.alcm-title {
+  font-family: var(--arc-font-title, serif);
+  font-weight: 800;
+  font-size: 12px;
+  color: #2b1810;
+  text-align: center;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid rgba(120, 53, 15, 0.25);
+  padding-bottom: 2px;
+  margin-bottom: 2px;
+}
+.alcm-target {
+  font-weight: 700;
+  font-size: 12px;
+  color: #451a03;
+  text-align: center;
+}
+.alcm-plus-next {
+  color: #b45309;
+  font-size: 13px;
+  text-shadow: 0 0 1px #78350f;
+}
+.alcm-chance-line {
+  font-size: 11px;
+  color: #573318;
+  text-align: center;
+}
+.alcm-chance-val.hi { color: #15803d; font-weight: 800; }
+.alcm-chance-val.mid { color: #b45309; font-weight: 800; }
+.alcm-chance-val.lo { color: #b91c1c; font-weight: 800; }
+.alcm-warn {
+  font-size: 10px;
+  color: #78350f;
+  text-align: center;
+  font-style: italic;
+}
+
+.alcm-stage {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+.alcm-panel {
+  position: relative;
+  width: 376px;
+  height: 192px;
+  background: url('/assets/sro/alchemy/alcm_window_reinforcement.png') no-repeat;
+  margin: 0 auto;
+  border-radius: 4px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+}
+
+.alcm-sprite-fx {
+  position: absolute;
+  left: 11px;
+  top: 7px;
+  width: 128px;
+  height: 128px;
+  background-size: 512px 512px;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  z-index: 4;
+}
+.alcm-sprite-fx.prepare {
+  background-image: url('/assets/sro/alchemy/alcm_effect_prepare.png');
+  animation: alcm-fx-4x4 0.88s steps(1) infinite;
+}
+.alcm-sprite-fx.success {
+  background-image: url('/assets/sro/alchemy/alcm_effect_success.png');
+  animation: alcm-fx-4x4 0.88s steps(1) forwards;
+}
+.alcm-sprite-fx.fail {
+  background-image: url('/assets/sro/alchemy/alcm_effect_fail_1.png');
+  animation: alcm-fx-4x4 0.88s steps(1) forwards;
+}
+
+.alcm-slot {
+  position: absolute;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.alcm-slot .item-slot {
+  width: 36px;
+  height: 36px;
+  font-size: 20px;
+  border-radius: 4px;
+}
+.alcm-slot-item {
+  left: 57px;
+  top: 55px;
+}
+.alcm-slot-item .item-slot {
+  width: 36px;
+  height: 36px;
+  border-radius: 4px;
+  background: rgba(15, 12, 24, 0.7);
+  border: 1px solid rgba(251, 191, 36, 0.6);
+  box-shadow: 0 0 10px rgba(251, 191, 36, 0.35);
+}
+.alcm-slot-item .item-slot.alcm-ph {
+  width: 36px !important;
+  height: 36px !important;
+}
+
+.alcm-slot-elixir {
+  left: 162px;
+  top: 54px;
+}
+.alcm-slot-powder {
+  left: 210px;
+  top: 54px;
+}
+.alcm-slot-talisman {
+  left: 258px;
+  top: 54px;
+}
+.alcm-slot-closed {
+  left: 312px;
+  top: 56px;
+  width: 32px;
+  height: 32px;
+  pointer-events: none;
+}
+.alcm-slot-closed img {
+  width: 32px;
+  height: 32px;
+  display: block;
+}
+
+.alcm-slot-powder.active .item-slot {
+  border-color: #fbbf24;
+  box-shadow: 0 0 8px #fbbf24;
+}
+.alcm-slot-talisman.active .item-slot {
+  border-color: #38bdf8;
+  box-shadow: 0 0 8px #38bdf8;
+}
+.alcm-slot.empty {
+  opacity: 0.55;
+}
+
+.alcm-badge-on {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  background: #16a34a;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 1px 4px;
+  border-radius: 3px;
+  border: 1px solid #4ade80;
+  box-shadow: 0 0 4px #16a34a;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.alcm-fuse-btn {
+  position: absolute;
+  left: 132px;
+  top: 143px;
+  width: 112px;
+  height: 28px;
+  background: url('/assets/sro/alchemy/alcm_button.png') no-repeat center;
+  border: none;
+  font-family: var(--arc-font-title, sans-serif);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #fff;
+  text-shadow: 0 1px 2px #000, 0 0 4px #000;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  transition: filter .1s;
+}
+.alcm-fuse-btn:hover:not(:disabled) {
+  background-image: url('/assets/sro/alchemy/alcm_button_focus.png');
+}
+.alcm-fuse-btn:active:not(:disabled) {
+  background-image: url('/assets/sro/alchemy/alcm_button_press.png');
+  transform: translateY(1px);
+}
+.alcm-fuse-btn:disabled {
+  background-image: url('/assets/sro/alchemy/alcm_button_disable.png');
+  color: #888;
+  text-shadow: none;
+  cursor: not-allowed;
+}
+.alcm-fuse-btn.fusing {
+  color: #ffb0b0;
+  text-shadow: 0 0 6px #ff4444;
+}
 
 .buff-icon.imbue { border-color: var(--ec, #fff); box-shadow: 0 0 8px var(--ec, #fff); }
 .hud-actionbar.imbued { box-shadow: 0 0 14px var(--ec, #fff), inset 0 0 10px color-mix(in srgb, var(--ec, #fff) 40%, transparent); animation: arc-imbue-pulse 1s ease-in-out infinite alternate; }

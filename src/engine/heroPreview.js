@@ -12,9 +12,12 @@ const PREVIEW_WEAPON_NAMES = {
 
 function previewEquipment(cls) {
   const sub = cls?.weapons?.[0] || 'sword';
+  const isAxeman = cls?.id === 'axeman';
   return {
-    weapon: { slot: 'weapon', subtype: sub, name: PREVIEW_WEAPON_NAMES[sub] || 'Weapon', rarity: 'normal', level: 1, tier: 0 },
-    shield: cls?.shield ? { slot: 'shield', name: 'Wooden Buckler', rarity: 'normal', level: 1 } : null,
+    weapon: { slot: 'weapon', subtype: sub, subType: sub, name: PREVIEW_WEAPON_NAMES[sub] || 'Weapon', rarity: 'normal', level: 1, tier: 0 },
+    shield: isAxeman
+      ? { slot: 'shield', subtype: 'axe', subType: 'axe', name: 'Battle Axe', rarity: 'normal', level: 1, tier: 0 }
+      : (cls?.shield ? { slot: 'shield', name: 'Wooden Buckler', rarity: 'normal', level: 1 } : null),
     armor: { slot: 'armor', name: 'Traveler Garb', rarity: 'normal', level: 1 }
   };
 }

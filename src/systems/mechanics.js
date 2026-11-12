@@ -59,7 +59,7 @@ export const SEAL_ORDER = ['sun', 'moon', 'star']; // rolled rarest first
 
 /** Roll a seal id or null. Boss/elite multiply chances. */
 export function rollSeal(level = 1, { isBoss = false, isElite = false, magicFind = 0 } = {}) {
-  const mult = (isBoss ? 4 : isElite ? 2 : 1) * (1 + Math.max(0, magicFind) / 200);
+  const mult = (isBoss ? 15 : isElite ? 4 : 1) * (1 + Math.max(0, magicFind) / 200);
   for (const id of SEAL_ORDER) {
     const s = SEALS[id];
     if (s.minLevel && level < s.minLevel) continue;
@@ -116,3 +116,107 @@ export function skillTiming(def = {}) {
 // kind:'chain' skills carry `chain: [{ mult, kind, range, angle, radius, hits, delay, vfx, status }]`.
 // Only the head costs MP / starts the cooldown. Segment i+1 starts `delay` s after segment i
 // releases, and only if at least one enemy is still within `range` (else the chain ends early).
+
+// =============================================================================
+// MILESTONE 5 — Silkroad-Inspired Combat Juice, Nemesis, Boss Aegis, Hot Springs & Jobs
+// =============================================================================
+
+// ----------------------------------------------------------------------------- BERSERK (HWAN) GAUGE
+export const BERSERK = {
+  maxOrbs: 5,
+  maxCharge: 100,            // 20 charge per orb (5 orbs = 100)
+  chargePerOrb: 20,
+  gainNormal: 12,            // charge gained on normal monster kill
+  gainElite: 35,             // charge gained on elite monster kill
+  gainBoss: 100,             // boss kill fills all 5 orbs
+  duration: 20,              // seconds of active Berserk transformation
+  damageMult: 2.0,           // 2x physical & magical damage
+  moveSpeedMult: 1.38,       // +38% movement speed
+  atkSpeedMult: 1.3,         // +30% attack speed
+  scaleMult: 1.12,           // hero mesh scale multiplier while Berserk
+  color: 0xfbbf24,           // golden-amber lightning aura
+};
+
+export function berserkOrbs(charge = 0) {
+  return Math.max(0, Math.min(BERSERK.maxOrbs, Math.floor((Number(charge) || 0) / BERSERK.chargePerOrb)));
+}
+
+// ----------------------------------------------------------------------------- RARITY BEAMS & DROP TOSS
+export const RARITY_BEAMS = {
+  tossDuration: 0.45,        // seconds for parabolic drop toss arc
+  tossApex: 0.75,            // peak height (m) of drop toss arc
+  star: {
+    seal: 'star',
+    height: 3.6,
+    radius: 0.28,
+    ringRadius: 0.85,
+    color: 0x38bdf8,
+    orbitCount: 2,
+  },
+  moon: {
+    seal: 'moon',
+    height: 6.0,
+    radius: 0.36,
+    ringRadius: 1.15,
+    color: 0xc084fc,
+    orbitCount: 3,
+  },
+  sun: {
+    seal: 'sun',
+    height: 9.2,
+    radius: 0.48,
+    ringRadius: 1.45,
+    color: 0xfbbf24,
+    orbitCount: 4,
+  },
+};
+
+// ----------------------------------------------------------------------------- NEMESIS SYSTEM
+export const NEMESIS = {
+  maxRank: 5,
+  hpMultBase: 1.85,          // +85% HP at Rank 1 (+25% per extra rank)
+  atkMultBase: 1.4,          // +40% ATK at Rank 1 (+12% per extra rank)
+  scaleBase: 1.42,           // 1.42x mesh scale
+  alertRadius: 28,           // HUD warning & minimap pulse distance
+  refundGoldRatio: 0.5,      // 50% of lost gold refunded + bonus bounty
+  expBonusMult: 2.5,         // 2.5x monster EXP on vengeance kill
+  color: 0xef4444,           // crimson menace aura
+  titlesByClass: {
+    knight: ['the Shield-Breaker', 'the Knight-Bane', 'the Iron-Crusher'],
+    axeman: ['the Berserk-Slayer', 'the Axe-Shatterer', 'the Blood-Reaver'],
+    wizard: ['the Spell-Eater', 'the Mage-Bane', 'the Arcane-Scourge'],
+    archer: ['the Bow-Snapper', 'the Wind-Stalker', 'the Arrow-Bane'],
+    default: ['the Hero-Slayer', 'the Unforgiven', 'the Dread-Stalker'],
+  },
+};
+
+export function createNemesisTitle(monsterName = 'Monster', classId = 'knight', rank = 1) {
+  const list = NEMESIS.titlesByClass[classId] || NEMESIS.titlesByClass.default;
+  const suffix = list[(Math.max(1, rank) - 1) % list.length];
+  const numeral = ['I', 'II', 'III', 'IV', 'V'][Math.max(0, Math.min(4, (rank | 0) - 1))] || 'I';
+  return `${monsterName} ${suffix} (${numeral})`;
+}
+
+// ----------------------------------------------------------------------------- BOSS FURY & AEGIS CRYSTALS
+export const BOSS_MECHANICS = {
+  furyTimerSeconds: 180,     // 3-minute countdown before boss enters Fury Mode
+  enrageHpRatio: 0.25,       // boss also enters Fury when HP drops to <= 25%
+  furyAtkMult: 1.55,         // +55% damage in Fury mode
+  furySpeedMult: 1.35,       // +35% speed in Fury mode
+  aegisTriggerRatio: 0.55,   // at 55% HP, boss summons 3 Elemental Aegis Crystals
+  aegisCrystalCount: 3,
+  aegisDamageReduction: 0.8, // 80% damage reduction while any Aegis crystal stands
+  aegisCrystalHpRatio: 0.12, // each crystal has 12% of boss maxHp
+};
+
+// ----------------------------------------------------------------------------- JADE MIST HOT SPRINGS & RESTED EXP
+export const HOT_SPRINGS = {
+  center: { x: -16, z: -14 },
+  radius: 4.5,
+  hpRegenPctPerSec: 0.12,    // 12% max HP restored per second while soaking
+  mpRegenPctPerSec: 0.15,    // 15% max MP restored per second while soaking
+  restedGainPctPerSec: 0.04, // gains 4% of maxExp as Rested EXP pool per second soaking
+  maxRestedRatio: 0.5,       // Rested EXP pool caps at 50% of current level's maxExp
+  bonusExpMult: 0.5,         // +50% bonus combat EXP drawn from Rested EXP pool
+};
+

@@ -4,10 +4,11 @@ import {
   createMonsterMesh,
   createBossMesh
 } from '../engine/models3d.js';
+import { loadSROProp } from './dungeonDecor.js';
 // rpg-systems: floor -> monster level mapping (see floorMonsterLevel docs in inventory.js)
-import { floorMonsterLevel } from '../systems/inventory.js';
-// Milestone 2 shared contract: status effect definitions (burn/freeze/chill/shock/poison/stun/bleed)
-import { STATUS } from '../systems/mechanics.js';
+import { floorMonsterLevel, generateItem } from '../systems/inventory.js';
+// Milestone 2 & 5 shared contract: status effects, nemesis, boss mechanics
+import { STATUS, NEMESIS, BOSS_MECHANICS, createNemesisTitle } from '../systems/mechanics.js';
 
 const STATUS_FALLBACK = {
   burn: { id: 'burn', name: 'Burn', duration: 4, tick: 1, dotPctOfHit: 0.12, color: 0xff5522 },
@@ -43,9 +44,364 @@ export const AI_STATE = {
 };
 
 export const MONSTER_CATALOG = {
+  // =========================================================================
+  // Authentic Silkroad Online Mob Roster
+  // =========================================================================
+  mangyang: {
+    type: 'mangyang',
+    name: 'Mangyang',
+    glbPath: '/assets/sro/mobs/mangnyang.glb',
+    targetHeight: 1.4,
+    baseHp: 42,
+    baseAtk: 8,
+    baseDef: 3,
+    baseExp: 16,
+    baseGold: 8,
+    moveSpeed: 3.4,
+    attackRange: 1.6,
+    aggroRange: 8.5,
+    attackCooldown: 1.35,
+    telegraphTime: 0.4,
+    element: 'physical',
+    color: 0x93c5fd,
+    scale: 1.0
+  },
+  bigeye_ghost: {
+    type: 'bigeye_ghost',
+    name: 'Big-Eyed Ghost',
+    glbPath: '/assets/sro/mobs/bigeyeghost.glb',
+    targetHeight: 1.45,
+    baseHp: 46,
+    baseAtk: 11,
+    baseDef: 3,
+    baseExp: 20,
+    baseGold: 9,
+    moveSpeed: 4.5,
+    attackRange: 2.2,
+    aggroRange: 9.5,
+    attackCooldown: 1.25,
+    telegraphTime: 0.35,
+    element: 'dark',
+    color: 0x818cf8,
+    scale: 1.0
+  },
+  gyo_weasel: {
+    type: 'gyo_weasel',
+    name: 'Weasel Gyo',
+    glbPath: '/assets/sro/mobs/gyo.glb',
+    targetHeight: 1.35,
+    baseHp: 55,
+    baseAtk: 12,
+    baseDef: 4,
+    baseExp: 22,
+    baseGold: 11,
+    moveSpeed: 4.8,
+    attackRange: 1.7,
+    aggroRange: 10.0,
+    attackCooldown: 1.15,
+    telegraphTime: 0.32,
+    element: 'physical',
+    color: 0xd97706,
+    scale: 1.0
+  },
+  water_ghost: {
+    type: 'water_ghost',
+    name: 'Water Ghost',
+    glbPath: '/assets/sro/mobs/waterghost.glb',
+    targetHeight: 1.5,
+    baseHp: 70,
+    baseAtk: 16,
+    baseDef: 5,
+    baseExp: 30,
+    baseGold: 14,
+    moveSpeed: 4.0,
+    attackRange: 3.8,
+    aggroRange: 10.5,
+    attackCooldown: 1.5,
+    telegraphTime: 0.42,
+    isRanged: true,
+    element: 'ice',
+    color: 0x38bdf8,
+    scale: 1.05
+  },
+  stone_ghost: {
+    type: 'stone_ghost',
+    name: 'Stone Ghost',
+    glbPath: '/assets/sro/mobs/stoneghost.glb',
+    targetHeight: 1.75,
+    baseHp: 150,
+    baseAtk: 24,
+    baseDef: 15,
+    baseExp: 55,
+    baseGold: 26,
+    moveSpeed: 2.9,
+    attackRange: 2.2,
+    aggroRange: 9.0,
+    attackCooldown: 1.75,
+    telegraphTime: 0.55,
+    element: 'earth',
+    color: 0x94a3b8,
+    scale: 1.25
+  },
+  tombstone_ghost: {
+    type: 'tombstone_ghost',
+    name: 'Tomb Stone Ghost',
+    glbPath: '/assets/sro/mobs/tombstone.glb',
+    targetHeight: 1.55,
+    baseHp: 88,
+    baseAtk: 18,
+    baseDef: 8,
+    baseExp: 35,
+    baseGold: 16,
+    moveSpeed: 3.2,
+    attackRange: 1.85,
+    aggroRange: 9.5,
+    attackCooldown: 1.4,
+    telegraphTime: 0.44,
+    element: 'dark',
+    color: 0x64748b,
+    scale: 1.1
+  },
+  yeoha: {
+    type: 'yeoha',
+    name: 'Yeoha Tree Spirit',
+    glbPath: '/assets/sro/mobs/yeoha.glb',
+    targetHeight: 1.65,
+    baseHp: 95,
+    baseAtk: 19,
+    baseDef: 7,
+    baseExp: 38,
+    baseGold: 18,
+    moveSpeed: 3.6,
+    attackRange: 2.4,
+    aggroRange: 10.0,
+    attackCooldown: 1.35,
+    telegraphTime: 0.42,
+    element: 'poison',
+    color: 0x16a34a,
+    scale: 1.1
+  },
+  bandit: {
+    type: 'bandit',
+    name: 'Black Tiger Bandit',
+    glbPath: '/assets/sro/mobs/bandit.glb',
+    targetHeight: 1.8,
+    baseHp: 90,
+    baseAtk: 20,
+    baseDef: 7,
+    baseExp: 40,
+    baseGold: 20,
+    moveSpeed: 4.4,
+    attackRange: 1.85,
+    aggroRange: 10.5,
+    attackCooldown: 1.25,
+    telegraphTime: 0.38,
+    element: 'physical',
+    color: 0xca8a04,
+    scale: 1.05
+  },
+  bandit_archer: {
+    type: 'bandit_archer',
+    name: 'Bandit Bowman',
+    glbPath: '/assets/sro/mobs/banditarcher.glb',
+    targetHeight: 1.8,
+    baseHp: 75,
+    baseAtk: 22,
+    baseDef: 5,
+    baseExp: 38,
+    baseGold: 19,
+    moveSpeed: 4.1,
+    attackRange: 5.2,
+    aggroRange: 12.0,
+    attackCooldown: 1.6,
+    telegraphTime: 0.45,
+    isRanged: true,
+    element: 'physical',
+    color: 0xa16207,
+    scale: 1.05
+  },
+  tiger: {
+    type: 'tiger',
+    name: 'Jangan Tiger',
+    glbPath: '/assets/sro/mobs/tiger.glb',
+    targetHeight: 1.5,
+    baseHp: 110,
+    baseAtk: 23,
+    baseDef: 8,
+    baseExp: 45,
+    baseGold: 22,
+    moveSpeed: 5.2,
+    attackRange: 1.8,
+    aggroRange: 11.0,
+    attackCooldown: 1.1,
+    telegraphTime: 0.32,
+    element: 'physical',
+    color: 0xf97316,
+    scale: 1.15
+  },
+  white_tiger: {
+    type: 'white_tiger',
+    name: 'White Tiger',
+    glbPath: '/assets/sro/mobs/whitetiger.glb',
+    targetHeight: 1.6,
+    baseHp: 135,
+    baseAtk: 27,
+    baseDef: 10,
+    baseExp: 55,
+    baseGold: 26,
+    moveSpeed: 5.4,
+    attackRange: 1.9,
+    aggroRange: 11.5,
+    attackCooldown: 1.1,
+    telegraphTime: 0.34,
+    element: 'ice',
+    color: 0xe2e8f0,
+    scale: 1.2
+  },
+  blue_tiger: {
+    type: 'blue_tiger',
+    name: 'Blue Mountain Tiger',
+    glbPath: '/assets/sro/mobs/bluetiger.glb',
+    targetHeight: 1.7,
+    baseHp: 155,
+    baseAtk: 30,
+    baseDef: 12,
+    baseExp: 65,
+    baseGold: 30,
+    moveSpeed: 5.5,
+    attackRange: 2.0,
+    aggroRange: 12.0,
+    attackCooldown: 1.15,
+    telegraphTime: 0.36,
+    element: 'lightning',
+    color: 0x38bdf8,
+    scale: 1.25
+  },
+  chakji: {
+    type: 'chakji',
+    name: 'Chakji Brute',
+    glbPath: '/assets/sro/mobs/chakji.glb',
+    targetHeight: 1.7,
+    baseHp: 160,
+    baseAtk: 28,
+    baseDef: 13,
+    baseExp: 60,
+    baseGold: 28,
+    moveSpeed: 3.8,
+    attackRange: 2.1,
+    aggroRange: 10.0,
+    attackCooldown: 1.45,
+    telegraphTime: 0.45,
+    element: 'physical',
+    color: 0x854d0e,
+    scale: 1.2
+  },
+  ghost_bug: {
+    type: 'ghost_bug',
+    name: 'Ghost Bug',
+    glbPath: '/assets/sro/mobs/ghostbug.glb',
+    targetHeight: 1.25,
+    baseHp: 65,
+    baseAtk: 16,
+    baseDef: 5,
+    baseExp: 28,
+    baseGold: 13,
+    moveSpeed: 4.6,
+    attackRange: 1.6,
+    aggroRange: 9.5,
+    attackCooldown: 1.2,
+    telegraphTime: 0.32,
+    element: 'poison',
+    color: 0x22c55e,
+    scale: 0.95
+  },
+  devil_bug: {
+    type: 'devil_bug',
+    name: 'Devil Bug',
+    glbPath: '/assets/sro/mobs/devilbug.glb',
+    targetHeight: 1.35,
+    baseHp: 85,
+    baseAtk: 21,
+    baseDef: 7,
+    baseExp: 38,
+    baseGold: 18,
+    moveSpeed: 5.0,
+    attackRange: 1.8,
+    aggroRange: 10.5,
+    attackCooldown: 1.15,
+    telegraphTime: 0.35,
+    element: 'fire',
+    color: 0xdc2626,
+    scale: 1.05
+  },
+  hyungno: {
+    type: 'hyungno',
+    name: 'Hyungno Ghost Soldier',
+    glbPath: '/assets/sro/mobs/hyungno.glb',
+    targetHeight: 1.9,
+    baseHp: 180,
+    baseAtk: 32,
+    baseDef: 16,
+    baseExp: 75,
+    baseGold: 35,
+    moveSpeed: 4.0,
+    attackRange: 2.2,
+    aggroRange: 11.0,
+    attackCooldown: 1.4,
+    telegraphTime: 0.42,
+    element: 'physical',
+    color: 0x475569,
+    scale: 1.22
+  },
+  earth_ghost: {
+    type: 'earth_ghost',
+    name: 'Earth Ghost',
+    glbPath: '/assets/sro/mobs/earthghost.glb',
+    targetHeight: 1.6,
+    baseHp: 125,
+    baseAtk: 26,
+    baseDef: 11,
+    baseExp: 52,
+    baseGold: 25,
+    moveSpeed: 3.5,
+    attackRange: 3.6,
+    aggroRange: 10.5,
+    attackCooldown: 1.6,
+    telegraphTime: 0.48,
+    isRanged: true,
+    element: 'earth',
+    color: 0xa16207,
+    scale: 1.15
+  },
+  gunpowder_ghost: {
+    type: 'gunpowder_ghost',
+    name: 'Gunpowder Ghost',
+    glbPath: '/assets/sro/mobs/gunpowderghost_clon.glb',
+    targetHeight: 1.45,
+    baseHp: 105,
+    baseAtk: 29,
+    baseDef: 7,
+    baseExp: 55,
+    baseGold: 27,
+    moveSpeed: 4.2,
+    attackRange: 4.6,
+    aggroRange: 11.5,
+    attackCooldown: 1.7,
+    telegraphTime: 0.5,
+    isRanged: true,
+    element: 'fire',
+    color: 0xea580c,
+    scale: 1.1
+  },
+
+  // =========================================================================
+  // Mapped Legacy Entries (enhanced with Silkroad GLBs & exact target heights)
+  // =========================================================================
   slime: {
     type: 'slime',
-    name: 'Cavern Slime',
+    name: 'Cavern Slime (Mangyang)',
+    glbPath: '/assets/sro/mobs/mangnyang.glb',
+    targetHeight: 1.4,
     baseHp: 38,
     baseAtk: 7,
     baseDef: 2,
@@ -62,7 +418,9 @@ export const MONSTER_CATALOG = {
   },
   goblin: {
     type: 'goblin',
-    name: 'Goblin Raider',
+    name: 'Goblin Raider (Weasel Gyo)',
+    glbPath: '/assets/sro/mobs/gyo.glb',
+    targetHeight: 1.35,
     baseHp: 52,
     baseAtk: 10,
     baseDef: 3,
@@ -79,7 +437,9 @@ export const MONSTER_CATALOG = {
   },
   bat: {
     type: 'bat',
-    name: 'Dusk Vampire Bat',
+    name: 'Dusk Vampire Bat (Big-Eyed Ghost)',
+    glbPath: '/assets/sro/mobs/bigeyeghost.glb',
+    targetHeight: 1.4,
     baseHp: 34,
     baseAtk: 9,
     baseDef: 2,
@@ -96,7 +456,9 @@ export const MONSTER_CATALOG = {
   },
   wolf: {
     type: 'wolf',
-    name: 'Dire Shadow Wolf',
+    name: 'Dire Shadow Wolf (Jangan Tiger)',
+    glbPath: '/assets/sro/mobs/tiger.glb',
+    targetHeight: 1.5,
     baseHp: 64,
     baseAtk: 13,
     baseDef: 4,
@@ -113,7 +475,9 @@ export const MONSTER_CATALOG = {
   },
   spider: {
     type: 'spider',
-    name: 'Venomfang Spider',
+    name: 'Venomfang Spider (Yeoha)',
+    glbPath: '/assets/sro/mobs/yeoha.glb',
+    targetHeight: 1.65,
     baseHp: 58,
     baseAtk: 12,
     baseDef: 4,
@@ -130,7 +494,9 @@ export const MONSTER_CATALOG = {
   },
   skeleton: {
     type: 'skeleton',
-    name: 'Restless Skeleton',
+    name: 'Restless Skeleton (Bandit)',
+    glbPath: '/assets/sro/mobs/bandit.glb',
+    targetHeight: 1.8,
     baseHp: 78,
     baseAtk: 15,
     baseDef: 6,
@@ -147,7 +513,9 @@ export const MONSTER_CATALOG = {
   },
   mage: {
     type: 'mage',
-    name: 'Abyssal Cultist Mage',
+    name: 'Abyssal Cultist Mage (Earth Ghost)',
+    glbPath: '/assets/sro/mobs/earthghost.glb',
+    targetHeight: 1.6,
     baseHp: 66,
     baseAtk: 19,
     baseDef: 5,
@@ -165,7 +533,9 @@ export const MONSTER_CATALOG = {
   },
   orc: {
     type: 'orc',
-    name: 'Orc Vanguard',
+    name: 'Orc Vanguard (Chakji)',
+    glbPath: '/assets/sro/mobs/chakji.glb',
+    targetHeight: 1.7,
     baseHp: 115,
     baseAtk: 22,
     baseDef: 9,
@@ -182,7 +552,9 @@ export const MONSTER_CATALOG = {
   },
   golem: {
     type: 'golem',
-    name: 'Runestone Golem',
+    name: 'Runestone Golem (Stone Ghost)',
+    glbPath: '/assets/sro/mobs/stoneghost.glb',
+    targetHeight: 1.75,
     baseHp: 165,
     baseAtk: 27,
     baseDef: 15,
@@ -199,8 +571,9 @@ export const MONSTER_CATALOG = {
   },
   mummy: {
     type: 'mummy',
-    meshType: 'skeleton',
-    name: 'Cursed Mummy',
+    name: 'Cursed Mummy (Tomb Stone Ghost)',
+    glbPath: '/assets/sro/mobs/tombstone.glb',
+    targetHeight: 1.55,
     baseHp: 92,
     baseAtk: 17,
     baseDef: 8,
@@ -217,8 +590,9 @@ export const MONSTER_CATALOG = {
   },
   zombie: {
     type: 'zombie',
-    meshType: 'skeleton',
-    name: 'Plague Zombie',
+    name: 'Plague Zombie (Ghost Bug)',
+    glbPath: '/assets/sro/mobs/ghostbug.glb',
+    targetHeight: 1.25,
     baseHp: 98,
     baseAtk: 18,
     baseDef: 7,
@@ -235,8 +609,9 @@ export const MONSTER_CATALOG = {
   },
   lizardman: {
     type: 'lizardman',
-    meshType: 'orc',
-    name: 'Scaleblade Lizardman',
+    name: 'Scaleblade Lizardman (Bandit Archer)',
+    glbPath: '/assets/sro/mobs/banditarcher.glb',
+    targetHeight: 1.8,
     baseHp: 120,
     baseAtk: 23,
     baseDef: 10,
@@ -253,8 +628,9 @@ export const MONSTER_CATALOG = {
   },
   wraith: {
     type: 'wraith',
-    meshType: 'mage',
-    name: 'Phantom Wraith',
+    name: 'Phantom Wraith (Water Ghost)',
+    glbPath: '/assets/sro/mobs/waterghost.glb',
+    targetHeight: 1.5,
     baseHp: 88,
     baseAtk: 24,
     baseDef: 6,
@@ -272,8 +648,9 @@ export const MONSTER_CATALOG = {
   },
   gargoyle: {
     type: 'gargoyle',
-    meshType: 'bat',
-    name: 'Obsidian Gargoyle',
+    name: 'Obsidian Gargoyle (Devil Bug)',
+    glbPath: '/assets/sro/mobs/devilbug.glb',
+    targetHeight: 1.35,
     baseHp: 130,
     baseAtk: 25,
     baseDef: 13,
@@ -290,8 +667,9 @@ export const MONSTER_CATALOG = {
   },
   stoneGolem: {
     type: 'stoneGolem',
-    meshType: 'golem',
-    name: 'Ancient Stone Golem',
+    name: 'Ancient Stone Golem (Stone Ghost)',
+    glbPath: '/assets/sro/mobs/stoneghost.glb',
+    targetHeight: 1.85,
     baseHp: 175,
     baseAtk: 28,
     baseDef: 16,
@@ -308,8 +686,9 @@ export const MONSTER_CATALOG = {
   },
   hellHound: {
     type: 'hellHound',
-    meshType: 'wolf',
-    name: 'Infernal Hell Hound',
+    name: 'Infernal Hell Hound (Jangan Tiger)',
+    glbPath: '/assets/sro/mobs/tiger.glb',
+    targetHeight: 1.6,
     baseHp: 125,
     baseAtk: 26,
     baseDef: 9,
@@ -326,8 +705,9 @@ export const MONSTER_CATALOG = {
   },
   wizard: {
     type: 'wizard',
-    meshType: 'mage',
-    name: 'Archon Chaos Wizard',
+    name: 'Archon Chaos Wizard (Gunpowder Ghost)',
+    glbPath: '/assets/sro/mobs/gunpowderghost_clon.glb',
+    targetHeight: 1.5,
     baseHp: 110,
     baseAtk: 30,
     baseDef: 8,
@@ -345,8 +725,9 @@ export const MONSTER_CATALOG = {
   },
   darkKnight: {
     type: 'darkKnight',
-    meshType: 'orc',
-    name: 'Abyssal Dark Knight',
+    name: 'Abyssal Dark Knight (Hyungno)',
+    glbPath: '/assets/sro/mobs/hyungno.glb',
+    targetHeight: 1.95,
     baseHp: 160,
     baseAtk: 31,
     baseDef: 14,
@@ -363,8 +744,9 @@ export const MONSTER_CATALOG = {
   },
   demon: {
     type: 'demon',
-    meshType: 'orc',
-    name: 'Hellfire Demon',
+    name: 'Hellfire Demon (Hyeongcheon Guard)',
+    glbPath: '/assets/sro/mobs/hyeongcheon.glb',
+    targetHeight: 2.1,
     baseHp: 180,
     baseAtk: 34,
     baseDef: 15,
@@ -380,6 +762,18 @@ export const MONSTER_CATALOG = {
     scale: 1.3
   }
 };
+
+// Aliases for thematic monster names
+MONSTER_CATALOG.dark_mage = MONSTER_CATALOG.mage;
+MONSTER_CATALOG.demon_hound = MONSTER_CATALOG.wolf;
+MONSTER_CATALOG.fire_imp = MONSTER_CATALOG.gunpowder_ghost;
+MONSTER_CATALOG.harpy = MONSTER_CATALOG.devil_bug;
+MONSTER_CATALOG.minotaur = MONSTER_CATALOG.hyungno;
+MONSTER_CATALOG.lich = MONSTER_CATALOG.earth_ghost;
+MONSTER_CATALOG.abyssal_knight = MONSTER_CATALOG.darkKnight;
+MONSTER_CATALOG.void_stalker = MONSTER_CATALOG.white_tiger;
+
+export const MONSTER_DEFS = MONSTER_CATALOG;
 
 export const ELITE_MODIFIERS = [
   {
@@ -456,75 +850,121 @@ export const ELITE_MODIFIERS = [
 
 export const BOSS_CATALOG = {
   3: {
-    id: 'kimura',
-    type: 'spider',
-    name: 'Kimura, Queen of the Cavern',
-    title: 'SWF Boss (__Packages.Kimura)',
+    id: 'tiger_girl',
+    legacyId: 'kimura',
+    type: 'tigerwoman',
+    name: 'Tiger Girl (Bicheon Champion)',
+    title: 'Silkroad Unique Boss (Jangan Steppes)',
+    glbPath: '/assets/sro/mobs/tigerwoman.glb',
+    targetHeight: 2.1,
     hpMult: 5.5,
     atkMult: 1.85,
     defMult: 1.6,
     scale: 1.68,
-    color: 0x15803d,
-    element: 'poison',
-    summonType: 'spider',
+    color: 0xef4444,
+    element: 'fire',
+    summonType: 'whitetiger',
     skills: ['shockwave', 'charge', 'summon']
   },
   6: {
-    id: 'celestine',
-    type: 'mage',
-    name: 'Celestine the Frost Empress',
-    title: 'SWF Boss (__Packages.Celestine)',
+    id: 'bandit_lord',
+    legacyId: 'celestine',
+    type: 'bandit',
+    name: 'Black Tiger Bandit Leader',
+    title: 'Silkroad Unique Boss (Bandit Stronghold)',
+    glbPath: '/assets/sro/mobs/bandit.glb',
+    targetHeight: 2.2,
     hpMult: 6.2,
     atkMult: 2.0,
     defMult: 1.65,
-    scale: 1.62,
-    color: 0x38bdf8,
-    element: 'ice',
-    summonType: 'skeleton',
+    scale: 1.65,
+    color: 0xf97316,
+    element: 'physical',
+    summonType: 'bandit',
     skills: ['nova', 'summon', 'shockwave']
   },
   9: {
-    id: 'onim',
-    type: 'golem',
-    name: 'Onim the Thunder Warlord',
-    title: 'SWF Boss (__Packages.Onim)',
+    id: 'earth_king',
+    legacyId: 'onim',
+    type: 'earthking',
+    name: 'Earth Taoist King',
+    title: 'Silkroad Unique Boss (Qin-Shi Tomb)',
+    glbPath: '/assets/sro/mobs/earthking.glb',
+    targetHeight: 2.3,
     hpMult: 7.0,
     atkMult: 2.15,
     defMult: 2.1,
     scale: 1.8,
     color: 0xfacc15,
-    element: 'lightning',
-    summonType: 'orc',
+    element: 'earth',
+    summonType: 'stone_ghost',
     skills: ['shockwave', 'charge', 'nova']
   },
   12: {
-    id: 'chaos',
-    type: 'orc',
-    name: 'Chaos, Harbinger of the Void',
-    title: 'SWF Boss (__Packages.Chaos)',
+    id: 'blue_tiger_boss',
+    legacyId: 'chaos',
+    type: 'bluetiger',
+    name: 'Blue Tiger Sovereign',
+    title: 'Silkroad Unique Boss (Mount Bicheon Peak)',
+    glbPath: '/assets/sro/mobs/bluetiger.glb',
+    targetHeight: 2.2,
     hpMult: 7.8,
     atkMult: 2.3,
     defMult: 2.0,
     scale: 1.85,
-    color: 0x9333ea,
-    element: 'dark',
-    summonType: 'wraith',
+    color: 0x38bdf8,
+    element: 'ice',
+    summonType: 'tiger',
     skills: ['shockwave', 'nova', 'charge', 'summon']
   },
   15: {
-    id: 'devil',
-    type: 'boss',
-    name: 'The Abyssal Devil',
-    title: 'Final Boss (__Packages.Devil)',
+    id: 'hyeongcheon',
+    legacyId: 'devil',
+    type: 'hyeongcheon',
+    name: 'Hyeongcheon the Immortal',
+    title: 'Silkroad Supreme Boss (Abyssal Tomb)',
+    glbPath: '/assets/sro/mobs/hyeongcheon.glb',
+    targetHeight: 2.4,
     hpMult: 9.0,
     atkMult: 2.5,
     defMult: 2.25,
     scale: 2.0,
     color: 0xdc2626,
     element: 'fire',
-    summonType: 'demon',
+    summonType: 'hyungno',
     skills: ['shockwave', 'charge', 'nova', 'summon']
   }
+};
+
+BOSS_CATALOG.kimura = BOSS_CATALOG[3];
+BOSS_CATALOG.tiger_girl = BOSS_CATALOG[3];
+BOSS_CATALOG.celestine = BOSS_CATALOG[6];
+BOSS_CATALOG.bandit_lord = BOSS_CATALOG[6];
+BOSS_CATALOG.onim = BOSS_CATALOG[9];
+BOSS_CATALOG.earth_king = BOSS_CATALOG[9];
+BOSS_CATALOG.chaos = BOSS_CATALOG[12];
+BOSS_CATALOG.blue_tiger_boss = BOSS_CATALOG[12];
+BOSS_CATALOG.devil = BOSS_CATALOG[15];
+BOSS_CATALOG.hyeongcheon = BOSS_CATALOG[15];
+
+export const FLOOR_BOSSES = BOSS_CATALOG;
+
+export const FLOOR_POOLS = {
+  1: ['mangyang', 'gyo_weasel', 'bigeye_ghost', 'slime'],
+  2: ['mangyang', 'gyo_weasel', 'tiger', 'goblin'],
+  3: ['gyo_weasel', 'tiger', 'white_tiger', 'bigeye_ghost'],
+  4: ['bandit', 'bandit_archer', 'water_ghost', 'tombstone_ghost'],
+  5: ['bandit', 'bandit_archer', 'ghost_bug', 'yeoha'],
+  6: ['bandit_archer', 'water_ghost', 'ghost_bug', 'yeoha'],
+  7: ['stone_ghost', 'earth_ghost', 'chakji', 'gunpowder_ghost'],
+  8: ['stone_ghost', 'earth_ghost', 'chakji', 'tombstone_ghost'],
+  9: ['chakji', 'stone_ghost', 'gunpowder_ghost', 'earth_ghost'],
+  10: ['white_tiger', 'blue_tiger', 'devil_bug', 'hyungno'],
+  11: ['white_tiger', 'blue_tiger', 'devil_bug', 'hyungno'],
+  12: ['blue_tiger', 'devil_bug', 'hyungno', 'chakji'],
+  13: ['hyungno', 'chakji', 'gunpowder_ghost', 'blue_tiger'],
+  14: ['hyungno', 'chakji', 'gunpowder_ghost', 'stone_ghost'],
+  15: ['hyungno', 'gunpowder_ghost', 'blue_tiger', 'earth_ghost']
 };
 
 function attachHealthBarAndTelegraph(enemy) {
@@ -533,6 +973,8 @@ function attachHealthBarAndTelegraph(enemy) {
 
   // Floating 3D health bar above monster
   const barGroup = new THREE.Group();
+  barGroup.name = 'HealthBar';
+  barGroup.userData.keepWithGLB = true;
   const barY = enemy.isBoss ? 2.45 : enemy.isElite ? 1.95 : 1.65;
   barGroup.position.set(0, barY, 0);
 
@@ -571,9 +1013,10 @@ function attachHealthBarAndTelegraph(enemy) {
       opacity: 0.0
     })
   );
-  telegraphMesh.rotation.x = -Math.PI / 2;
+    telegraphMesh.rotation.x = -Math.PI / 2;
   telegraphMesh.position.y = 0.04;
   telegraphMesh.visible = false;
+  telegraphMesh.name = 'TelegraphRing';
   telegraphMesh.userData.noFlash = true;
   root.add(telegraphMesh);
 
@@ -643,6 +1086,21 @@ export class EnemyAI {
     this.skills = config.skills || (this.isBoss ? ['shockwave', 'charge', 'summon'] : []);
     this.summonType = config.summonType || 'goblin';
     this.summonCount = 0;
+
+    this.speed = this.moveSpeed;
+    if (this.isBoss) {
+      this.furyTimer = BOSS_MECHANICS.furyTimerSeconds;
+      this.maxFuryTimer = BOSS_MECHANICS.furyTimerSeconds;
+      this.isFurious = false;
+      this.aegisTriggered = false;
+      this.aegisActive = false;
+    } else {
+      this.furyTimer = 0;
+      this.maxFuryTimer = 0;
+      this.isFurious = false;
+      this.aegisTriggered = false;
+      this.aegisActive = false;
+    }
 
     this.mesh = config.mesh || null;
     if (this.mesh) {
@@ -730,6 +1188,50 @@ export class EnemyManager {
       this.scene.add(this.rootGroup);
     }
     return this;
+  }
+
+  get context() {
+    return this.gameContext;
+  }
+
+  set context(v) {
+    this.gameContext = v;
+  }
+
+  promoteToNemesis(enemy, nem) {
+    if (!enemy) return null;
+    enemy.isNemesis = true;
+    enemy.isElite = true;
+    enemy.name = nem.name || 'Nemesis';
+    enemy.nemesisRank = nem.rank || 1;
+
+    const hpMult = NEMESIS.hpMultBase + (enemy.nemesisRank - 1) * 0.25;
+    const atkMult = NEMESIS.atkMultBase + (enemy.nemesisRank - 1) * 0.12;
+    enemy.maxHp = Math.round(enemy.maxHp * hpMult);
+    enemy.hp = enemy.maxHp;
+    enemy.atk = Math.round(enemy.atk * atkMult);
+
+    if (enemy.mesh) {
+      enemy.mesh.scale.multiplyScalar(NEMESIS.scaleBase);
+      const ringGeo = new THREE.RingGeometry(0.7 * NEMESIS.scaleBase, 0.95 * NEMESIS.scaleBase, 24);
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: NEMESIS.color,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.82
+      });
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = 0.06;
+      enemy.mesh.add(ring);
+      enemy.nemesisRing = ring;
+    }
+
+    if (enemy.healthBarGroup) {
+      enemy.healthBarGroup.visible = true;
+    }
+    enemy.syncHealthBar?.(this.renderer?.camera);
+    return enemy;
   }
 
   _ensureSceneAttached(sceneOverride = null) {
@@ -826,6 +1328,16 @@ export class EnemyManager {
       }
     });
 
+    // Nemesis Promotion
+    const nem = this.context?.gameState?.nemesis || this.gameContext?.gameState?.nemesis;
+    if (nem && Number(nem.floor) === Number(fNum)) {
+      const nonBosses = this.enemies.filter((e) => !e.isBoss && !e.dead);
+      const target = nonBosses.find((e) => e.type === nem.baseType) || nonBosses[0];
+      if (target) {
+        this.promoteToNemesis(target, nem);
+      }
+    }
+
     return this.enemies;
   }
 
@@ -860,11 +1372,14 @@ export class EnemyManager {
   }
 
   _getMonsterPoolForFloor(floorNum) {
-    if (floorNum <= 3) return ['slime', 'goblin', 'bat', 'wolf'];
-    if (floorNum <= 6) return ['skeleton', 'spider', 'bat', 'mage'];
-    if (floorNum <= 9) return ['orc', 'wolf', 'mage', 'golem'];
-    if (floorNum <= 12) return ['orc', 'golem', 'mage', 'skeleton'];
-    return ['orc', 'golem', 'mage', 'skeleton'];
+    if (FLOOR_POOLS && FLOOR_POOLS[floorNum]) {
+      return FLOOR_POOLS[floorNum];
+    }
+    if (floorNum <= 3) return ['mangyang', 'gyo_weasel', 'bigeye_ghost', 'slime'];
+    if (floorNum <= 6) return ['bandit', 'bandit_archer', 'water_ghost', 'tombstone_ghost'];
+    if (floorNum <= 9) return ['chakji', 'stone_ghost', 'gunpowder_ghost', 'earth_ghost'];
+    if (floorNum <= 12) return ['white_tiger', 'blue_tiger', 'devil_bug', 'hyungno'];
+    return ['hyungno', 'gunpowder_ghost', 'blue_tiger', 'earth_ghost'];
   }
 
   spawnMonster({ type = 'goblin', floor = 1, x = 0, z = 0, isElite = false, isBoss = false, packId = null, sleeping = false, customConfig = null }) {
@@ -899,13 +1414,18 @@ export class EnemyManager {
       ? (this.models3d?.createBossMesh || createBossMesh)
       : (this.models3d?.createMonsterMesh || createMonsterMesh);
 
+    const glbUrl = customConfig?.glbPath || base.glbPath || null;
+    const targetHeight = customConfig?.targetHeight || base.targetHeight || (isBoss ? 2.2 : 1.55);
+
     const mesh = meshBuilder(base.meshType || type, {
       isElite,
       isBoss,
       color,
       scale,
       tier: Math.ceil(level / 3),
-      name
+      name,
+      glbPath: glbUrl,
+      targetHeight
     });
 
     this.rootGroup.add(mesh);
@@ -1065,9 +1585,15 @@ export class EnemyManager {
 
     if (!enemy || enemy.dead) return { hit: false, killed: false, damage: 0 };
 
+    let rawDamage = Number(amount) || 1;
+    // Boss Elemental Aegis Barrier damage reduction (80% reduction)
+    if (enemy.isBoss && enemy.aegisActive) {
+      rawDamage *= (1 - BOSS_MECHANICS.aegisDamageReduction);
+    }
+
     // Shock: +dmgTakenPct% damage taken (callers that already scaled pass statusScaled: true)
     const takenMult = options.statusScaled ? 1 : this.getDamageTakenMult(enemy);
-    const dmg = Math.max(1, Math.round((Number(amount) || 1) * takenMult));
+    const dmg = Math.max(1, Math.round(rawDamage * takenMult));
     enemy.hp = Math.max(0, enemy.hp - dmg);
     if (!options.isDot) enemy.mesh?.userData?.triggerHitFlash?.(0.15);
     if (enemy.sleeping || enemy.state === AI_STATE.SLEEP || enemy.packId) {
@@ -1101,6 +1627,11 @@ export class EnemyManager {
       }
     }
 
+    // Boss Elemental Aegis Crystals trigger at aegisTriggerRatio (<= 55% HP)
+    if (enemy.isBoss && enemy.hp > 0 && !enemy.aegisTriggered && (enemy.hp / enemy.maxHp) <= BOSS_MECHANICS.aegisTriggerRatio) {
+      this.spawnBossAegisCrystals(enemy);
+    }
+
     // Light hit-stun on regular monsters if not mid-boss-skill (DoT ticks never re-trigger it)
     if (enemy.hp > 0 && !enemy.isBoss && !options.isDot && !options.noStun && enemy.state !== AI_STATE.TELEGRAPH) {
       const wasStunned = enemy.state === AI_STATE.STUN;
@@ -1119,13 +1650,82 @@ export class EnemyManager {
   }
 
   damageEnemy(enemy, amount, isCrit = false, knockbackDir = null, element = 'physical', callbacks = null) {
-    return this.applyDamageToEnemy(enemy, amount, {
-      isCrit,
-      knockbackDir,
-      element,
-      knockback: isCrit ? 0.95 : 0.5,
-      callbacks
-    });
+    let opts = {};
+    if (typeof isCrit === 'object' && isCrit !== null) {
+      opts = { ...isCrit };
+    } else {
+      opts = {
+        isCrit: Boolean(isCrit),
+        knockbackDir,
+        element,
+        knockback: isCrit ? 0.95 : 0.5,
+        callbacks
+      };
+    }
+    return this.applyDamageToEnemy(enemy, amount, opts);
+  }
+
+  spawnBossAegisCrystals(boss) {
+    if (!boss || boss.aegisTriggered) return;
+    boss.aegisTriggered = true;
+    boss.aegisActive = true;
+
+    const count = BOSS_MECHANICS.aegisCrystalCount;
+    const crystalHp = Math.max(40, Math.round(boss.maxHp * BOSS_MECHANICS.aegisCrystalHpRatio));
+
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2;
+      const cx = boss.x + Math.cos(angle) * 4.5;
+      const cz = boss.z + Math.sin(angle) * 4.5;
+
+      const crystalGeo = new THREE.OctahedronGeometry(0.55, 0);
+      const crystalMat = new THREE.MeshStandardMaterial({
+        color: i % 2 === 0 ? 0x38bdf8 : 0xc084fc,
+        emissive: new THREE.Color(i % 2 === 0 ? 0x0284c7 : 0x7c3aed),
+        emissiveIntensity: 0.9,
+        roughness: 0.2,
+        metalness: 0.8
+      });
+      const crystalMesh = new THREE.Mesh(crystalGeo, crystalMat);
+      crystalMesh.position.set(cx, 1.2, cz);
+      this.rootGroup.add(crystalMesh);
+
+      crystalMesh.userData.animate = (time = 0) => {
+        crystalMesh.rotation.y = time * 2.2;
+        crystalMesh.position.y = 1.2 + Math.sin(time * 3 + i) * 0.15;
+      };
+
+      const crystal = new EnemyAI({
+        id: `aegis_crystal_${boss.id}_${i + 1}`,
+        type: 'aegis_crystal',
+        name: 'Elemental Aegis Crystal',
+        floor: boss.floor,
+        level: boss.level,
+        isElite: false,
+        isBoss: false,
+        maxHp: crystalHp,
+        atk: 0,
+        def: Math.round(boss.def * 0.5),
+        exp: Math.round(boss.exp * 0.08),
+        gold: 0,
+        moveSpeed: 0,
+        x: cx,
+        z: cz,
+        mesh: crystalMesh
+      });
+      crystal.hp = crystalHp;
+      crystal.isAegisCrystal = true;
+      crystal.parentBossId = boss.id;
+      crystal.speed = 0;
+      crystal.moveSpeed = 0;
+
+      this.enemies.push(crystal);
+    }
+
+    const toastMsg = `🛡️ ${boss.name} summoned ${count} Elemental Aegis Crystals! Barrier active!`;
+    const hud = this.context?.hud || this.gameContext?.hud;
+    hud?.toast?.(toastMsg, 'warning');
+    hud?.showToast?.(toastMsg, 'warning');
   }
 
   _triggerBossPhaseTransition(boss, newPhase) {
@@ -1185,6 +1785,48 @@ export class EnemyManager {
       }) || rewards;
     }
 
+    // Nemesis Vengeance Claim
+    if (enemy.isNemesis) {
+      const gs = this.context?.gameState || this.gameContext?.gameState || gameState;
+      const hud = this.context?.hud || this.gameContext?.hud || ctx.hud;
+      const veng = gs?.claimNemesisVengeance?.(enemy);
+      const goldRefund = veng?.goldRefund || 0;
+      const bonusExp = veng?.bonusExp || 0;
+      hud?.toast?.(`⚔ VENGEANCE CLAIMED! +${goldRefund}G, +${bonusExp} EXP`, 'levelup');
+      hud?.showToast?.(`⚔ VENGEANCE CLAIMED! +${goldRefund}G, +${bonusExp} EXP`, 'levelup');
+
+      // Guarantee an equipment drop with a Seal (star / moon / sun)
+      const sealPool = ['star', 'moon', 'sun'];
+      const sealChoice = veng?.seal || sealPool[Math.floor(Math.random() * sealPool.length)];
+      const sealedDrop = generateItem({
+        level: enemy.level || floorMonsterLevel(enemy.floor || this.currentFloor),
+        isElite: true,
+        seal: sealChoice,
+        minRarity: 'rare'
+      });
+      if (sealedDrop) {
+        rewards.drops = rewards.drops || [];
+        rewards.drops.push(sealedDrop);
+      }
+    }
+
+    // Elemental Aegis Crystal death shatter check
+    if (enemy.isAegisCrystal) {
+      const remainingCrystals = this.enemies.filter(
+        (e) => !e.dead && e !== enemy && e.isAegisCrystal && e.parentBossId === enemy.parentBossId
+      );
+      if (remainingCrystals.length === 0) {
+        const parentBoss = this.enemies.find((e) => e.id === enemy.parentBossId && !e.dead);
+        if (parentBoss) {
+          parentBoss.aegisActive = false;
+          const shatterMsg = `💥 ${parentBoss.name}'s Elemental Aegis Barrier shattered!`;
+          const hud = this.context?.hud || this.gameContext?.hud || ctx.hud;
+          hud?.toast?.(shatterMsg, 'levelup');
+          hud?.showToast?.(shatterMsg, 'levelup');
+        }
+      }
+    }
+
     // Spawn 3D ground loot for gold & dropped items
     if (world && typeof world.spawnGroundLoot === 'function') {
       if (rewards.gold > 0) {
@@ -1236,6 +1878,47 @@ export class EnemyManager {
       ctx.hud?.showToast?.(`Floor ${this.currentFloor} Cleared!`, 'quest');
       ctx.hud?.toast?.(`Floor ${this.currentFloor} Cleared!`, 'quest');
     }
+  }
+
+  _killEnemy(enemy, options = {}) {
+    return this._handleEnemyDeath(enemy, options);
+  }
+
+  triggerBossFury(enemy) {
+    if (!enemy || enemy.isFurious) return;
+    enemy.isFurious = true;
+    enemy.atk = Math.round(enemy.atk * BOSS_MECHANICS.furyAtkMult);
+    enemy.speed = (enemy.speed || enemy.moveSpeed || 3.2) * BOSS_MECHANICS.furySpeedMult;
+    enemy.moveSpeed = enemy.speed;
+
+    if (enemy.mesh) {
+      enemy.mesh.traverse((child) => {
+        if (child.isMesh && child.material) {
+          const mat = child.material;
+          if (mat.color && typeof mat.color.setHex === 'function') mat.color.setHex(0xef4444);
+          if (mat.emissive && typeof mat.emissive.setHex === 'function') {
+            mat.emissive.setHex(0xb91c1c);
+            mat.emissiveIntensity = 0.85;
+          }
+        }
+      });
+      const furyRingGeo = new THREE.RingGeometry(1.2, 1.45, 24);
+      const furyRingMat = new THREE.MeshBasicMaterial({
+        color: 0xef4444,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.85
+      });
+      const furyRing = new THREE.Mesh(furyRingGeo, furyRingMat);
+      furyRing.rotation.x = -Math.PI / 2;
+      furyRing.position.y = 0.08;
+      enemy.mesh.add(furyRing);
+    }
+
+    const toastMsg = `🔥 ${enemy.name} has entered FURY MODE!`;
+    const hud = this.context?.hud || this.gameContext?.hud;
+    hud?.toast?.(toastMsg, 'warning');
+    hud?.showToast?.(toastMsg, 'warning');
   }
 
   /**
@@ -1294,6 +1977,24 @@ export class EnemyManager {
 
       e.attackCooldown = Math.max(0, e.attackCooldown - dt);
       e.skillCooldown = Math.max(0, e.skillCooldown - dt);
+
+      // Boss Fury Countdown & Enrage
+      if (e.isBoss) {
+        const inCombat =
+          e.state === AI_STATE.CHASE ||
+          e.state === AI_STATE.ATTACK ||
+          e.state === AI_STATE.TELEGRAPH ||
+          e.state === AI_STATE.SKILL ||
+          e.hp < e.maxHp;
+
+        if (inCombat && e.furyTimer > 0) {
+          e.furyTimer = Math.max(0, e.furyTimer - dt);
+        }
+
+        if (!e.isFurious && (e.furyTimer <= 0 || (e.hp / e.maxHp) <= BOSS_MECHANICS.enrageHpRatio)) {
+          this.triggerBossFury(e);
+        }
+      }
 
       const dx = px - e.x;
       const dz = pz - e.z;
@@ -1834,6 +2535,18 @@ export class EnemyManager {
       const healAmt = Math.max(1, Math.round(result.damage * enemy.modifier.lifesteal));
       enemy.hp = Math.min(enemy.maxHp, enemy.hp + healAmt);
       enemy.syncHealthBar(this.renderer?.camera);
+    }
+
+    // Nemesis registration when enemy kills player
+    const gs = this.context?.gameState || this.gameContext?.gameState || ctx.gameState;
+    const isPlayerDead = Boolean(
+      result?.dead ||
+      (gs && (gs.hero?.hp <= 0 || gs.hero?.dead || gs.isDead))
+    );
+
+    if (isPlayerDead && enemy && !enemy.isBoss) {
+      const currentFloor = this.currentFloor || enemy.floor || 1;
+      gs?.registerNemesisFromKill?.(enemy, currentFloor);
     }
   }
 }

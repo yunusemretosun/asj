@@ -11,10 +11,10 @@
 // =============================================================================
 
 import { Inventory, applyItemData, rollLoot, generateItem, RARITY, SLOTS, getItemBase, floorMonsterLevel } from './inventory.js';
-import { STATUS } from './mechanics.js';
+import { STATUS, BERSERK, berserkOrbs, NEMESIS, createNemesisTitle, HOT_SPRINGS } from './mechanics.js';
 import { SkillSystem, applySkillData, BASIC_COMBO } from './skills.js';
 import { QuestSystem, applyQuestData } from './quests.js';
-import { CLASSES, DEFAULT_CLASS, getClass, isValidClass, sanitizeAppearance } from './classes.js';
+import { CLASSES, DEFAULT_CLASS, getClass, isValidClass, sanitizeAppearance, canClassUse } from './classes.js';
 
 export const SAVE_VERSION = 1;
 export const SAVE_PREFIX = 'asj-save-';
@@ -137,6 +137,9 @@ export class GameState extends Emitter {
     this._statsDirty = true;
     this._stats = null;
     this.activeSlot = 0;
+    this._nemesis = null;
+    this._lastGoldLost = 0;
+    this._soakTimer = 0;
     this._newHero(opts.heroName, opts.classId, opts.appearance);
     this.inventory = new Inventory(this);
     this.skills = new SkillSystem(this);
@@ -155,6 +158,7 @@ export class GameState extends Emitter {
       appearance: sanitizeAppearance(appearance, cls.id),
       level: PROGRESSION.startLevel,
       exp: 0,
+      maxExp: expToNext(PROGRESSION.startLevel),
       gold: PROGRESSION.startGold,
       ap: 0,
       sp: 0,
@@ -163,6 +167,12 @@ export class GameState extends Emitter {
       combo: 0,
       buffs: [],
       dead: false,
+      berserkCharge: 0,
+      berserkActive: false,
+      berserkRemaining: 0,
+      restedExp: 0,
+      isSoaking: false,
+      nemesisKills: 0,
     };
     this.progress = {
       maxFloor: 0,          // deepest floor reached
@@ -182,6 +192,15 @@ export class GameState extends Emitter {
 
   // -------------------------------------------------------------- data access
   markDirty() { this._statsDirty = true; }
+
+  get nemesis() { return this._nemesis; }
+  set nemesis(v) { this._nemesis = v; this.emit('change'); }
+  get berserkCharge() { return this.hero.berserkCharge; }
+  get berserkActive() { return this.hero.berserkActive; }
+  get berserkRemaining() { return this.hero.berserkRemaining; }
+  get restedExp() { return this.hero.restedExp; }
+  get isSoaking() { return this.hero.isSoaking; }
+  get maxExp() { return this.hero.maxExp || expToNext(this.hero.level); }
 
   get classId() { return this.hero.classId || DEFAULT_CLASS; }
   get heroClass() { return getClass(this.classId); }
@@ -291,15 +310,38 @@ export class GameState extends Emitter {
       elemDmg,
     };
     s.fireRes = res.fire; s.iceRes = res.ice; s.lightningRes = res.lightning; s.poisonRes = res.poison;
+
+    if (this.hero?.berserkActive) {
+      s.atkMin = Math.round(s.atkMin * BERSERK.damageMult);
+      s.atkMax = Math.round(s.atkMax * BERSERK.damageMult);
+      s.atk = Math.round((s.atkMin + s.atkMax) / 2);
+      s.matk = Math.round(s.matk * BERSERK.damageMult);
+      s.moveSpeed = Math.round(s.moveSpeed * BERSERK.moveSpeedMult * 100) / 100;
+      s.attackSpeed = Math.round(s.attackSpeed * BERSERK.atkSpeedMult * 100) / 100;
+    }
     return s;
+  }
+
+  recalcStats() {
+    this.markDirty();
+    return this.getStats();
+  }
+  getDerivedStats() {
+    return this.getStats();
   }
 
   // ------------------------------------------------------------ progression
   addExp(amount, { silent = false } = {}) {
     const h = this.hero;
     if (h.level >= PROGRESSION.maxLevel) return 0;
+    let restedBonus = 0;
+    const baseAmt = Math.max(0, Math.round(amount));
+    if (h.restedExp > 0 && baseAmt > 0) {
+      restedBonus = Math.min(h.restedExp, Math.max(1, Math.round(baseAmt * HOT_SPRINGS.bonusExpMult)));
+      h.restedExp -= restedBonus;
+    }
     const bonus = 1 + num(this.getStats().expBonus) / 100;
-    const gained = Math.max(0, Math.round(amount * bonus));
+    const gained = Math.max(0, Math.round(baseAmt * bonus)) + restedBonus;
     h.exp += gained;
     let levels = 0;
     while (h.level < PROGRESSION.maxLevel && h.exp >= expToNext(h.level)) {
@@ -310,6 +352,7 @@ export class GameState extends Emitter {
       levels++;
     }
     if (h.level >= PROGRESSION.maxLevel) h.exp = 0;
+    h.maxExp = expToNext(h.level);
     if (!silent) this.emit('exp', gained, h.exp, expToNext(h.level));
     if (levels > 0) {
       this.markDirty();
@@ -321,6 +364,9 @@ export class GameState extends Emitter {
     }
     this.emit('change');
     return gained;
+  }
+  gainExp(amount, opts) {
+    return this.addExp(amount, opts);
   }
 
   addGold(amount) {
@@ -433,9 +479,25 @@ export class GameState extends Emitter {
    *   opts: { element, raw (skip DEF), canDodge=true, canBlock=true, source }
    * Returns { damage, dodged, blocked, crit, dead }.
    */
-  takeDamage(amountOrAttacker, opts = {}) {
+  takeDamage(amountOrAttacker, optsOrKiller = {}, extraOpts = {}) {
     const h = this.hero;
     if (h.dead) return { damage: 0, dodged: false, blocked: false, crit: false, dead: true };
+    let opts = extraOpts;
+    let killer = null;
+    if (typeof amountOrAttacker === 'object' && amountOrAttacker) {
+      killer = amountOrAttacker;
+      opts = optsOrKiller || {};
+    } else if (typeof optsOrKiller === 'object' && optsOrKiller) {
+      if (optsOrKiller.killer || optsOrKiller.attacker || optsOrKiller.source) {
+        killer = optsOrKiller.killer || optsOrKiller.attacker || optsOrKiller.source;
+        opts = optsOrKiller;
+      } else if (optsOrKiller.type || optsOrKiller.name || optsOrKiller.baseName) {
+        killer = optsOrKiller;
+        opts = { ...optsOrKiller, ...extraOpts };
+      } else {
+        opts = optsOrKiller;
+      }
+    }
     if (this._invuln > 0 && !opts.ignoreInvuln) return { damage: 0, dodged: true, blocked: false, crit: false, dead: false, invulnerable: true };
     const s = this.getStats();
     let damage, crit = false;
@@ -460,11 +522,11 @@ export class GameState extends Emitter {
     this.emit('hp', h.hp, s.maxHp);
     this.emit('damaged', damage, { crit, blocked, element: opts.element || null });
     if (opts.element === 'poison' && !opts.noDot) this.addBuff({ id: 'poisoned', name: 'Poisoned', icon: '☠', debuff: true, duration: 4, dot: { dps: Math.max(1, Math.round(damage * 0.1)), element: 'poison' } });
-    if (h.hp <= 0) this._die();
+    if (h.hp <= 0) this._die(killer);
     return { damage, dodged: false, blocked, crit, dead: h.dead };
   }
 
-  _die() {
+  _die(killer = null) {
     const h = this.hero;
     if (h.dead) return;
     h.dead = true;
@@ -472,7 +534,10 @@ export class GameState extends Emitter {
     h.buffs = [];
     this.progress.deaths++;
     this.markDirty();
-    this.emit('death');
+    if (killer && !killer.isBoss) {
+      this.registerNemesisFromKill(killer);
+    }
+    this.emit('death', killer);
     this.emit('toast', 'You have fallen...', 'death');
   }
 
@@ -483,6 +548,7 @@ export class GameState extends Emitter {
       lost = Math.floor(this.hero.gold * PROGRESSION.deathGoldPenalty);
       this.hero.gold -= lost;
     }
+    this._lastGoldLost = lost;
     this.hero.dead = false;
     this.fullRestore();
     this.setInvulnerable(2);
@@ -491,6 +557,90 @@ export class GameState extends Emitter {
     if (lost) this.emit('toast', `Revived in the village. Lost ${lost} gold.`, 'info');
     this.emit('change');
     return lost;
+  }
+
+  // -------------------------------------------------------------- berserk (hwan)
+  addBerserkCharge(amount) {
+    const h = this.hero;
+    if (h.berserkActive) return h.berserkCharge;
+    const added = num(amount, 0);
+    h.berserkCharge = clamp(h.berserkCharge + added, 0, BERSERK.maxCharge);
+    this.emit('berserkCharge', h.berserkCharge, BERSERK.maxCharge);
+    this.emit('change');
+    return h.berserkCharge;
+  }
+
+  activateBerserk() {
+    const h = this.hero;
+    if (h.berserkCharge < BERSERK.maxCharge || h.berserkActive) {
+      return { ok: false, msg: 'Berserk gauge not full' };
+    }
+    h.berserkActive = true;
+    h.berserkRemaining = BERSERK.duration;
+    h.berserkCharge = 0;
+    this.markDirty();
+    this.getStats();
+    this.emit('berserk', { active: true, duration: BERSERK.duration });
+    this.emit('change');
+    return { ok: true, duration: BERSERK.duration };
+  }
+
+  // -------------------------------------------------------------- nemesis
+  registerNemesisFromKill(killer, floorNum) {
+    if (killer?.isBoss) return null;
+    const hero = this.hero;
+    const currentFloor = this.progress?.currentFloor || 0;
+    const lastGoldLost = this._lastGoldLost || Math.round((hero.gold || 0) * 0.1);
+    const prevRank = (this._nemesis && this._nemesis.baseType === (killer?.type || killer?.id)) ? (this._nemesis.rank || 1) : 0;
+    const rank = Math.min(NEMESIS.maxRank, prevRank + 1);
+    const baseName = killer?.baseName || killer?.name || 'Shadow Stalker';
+    this._nemesis = {
+      baseType: killer?.type || killer?.id || 'wolf',
+      baseName,
+      name: createNemesisTitle(baseName, hero.classId, rank),
+      rank,
+      floor: Math.max(1, Number(floorNum ?? currentFloor) || 1),
+      level: Math.max(1, (killer?.level || hero.level || 1) + 1),
+      lostGold: Math.max(50, lastGoldLost || Math.round((hero.gold || 0) * 0.1) || 100),
+    };
+    this.emit('nemesisCreated', this._nemesis);
+    this.emit('change');
+    return this._nemesis;
+  }
+
+  claimNemesisVengeance(enemy) {
+    if (!this._nemesis) return { ok: false };
+    const n = this._nemesis;
+    const goldRefund = Math.round((n.lostGold || 100) * NEMESIS.refundGoldRatio) + (n.rank || 1) * 80;
+    const bonusExp = Math.round(45 * (n.level || 1) * NEMESIS.expBonusMult);
+    this.addGold(goldRefund);
+    this.addExp(bonusExp);
+    this.hero.nemesisKills = (this.hero.nemesisKills || 0) + 1;
+    this._nemesis = null;
+    this.emit('nemesisSlain', { goldRefund, bonusExp, enemy });
+    this.emit('change');
+    return { ok: true, goldRefund, bonusExp };
+  }
+
+  // -------------------------------------------------------------- jade mist hot springs
+  soakInHotSprings(dt = 0.1) {
+    const h = this.hero;
+    if (h.dead) return;
+    const dtSec = clamp(num(dt, 0.1), 0, 1);
+    const maxHp = this.maxHp;
+    const maxMp = this.maxMp;
+    h.hp = Math.min(maxHp, h.hp + maxHp * HOT_SPRINGS.hpRegenPctPerSec * dtSec);
+    h.mp = Math.min(maxMp, h.mp + maxMp * HOT_SPRINGS.mpRegenPctPerSec * dtSec);
+    const maxExp = h.maxExp || this.expToNext || expToNext(h.level) || 100;
+    const restedGain = Math.max(1, Math.round(maxExp * HOT_SPRINGS.restedGainPctPerSec * dtSec));
+    const restedMax = Math.round(maxExp * HOT_SPRINGS.maxRestedRatio);
+    h.restedExp = Math.min(restedMax, (h.restedExp || 0) + restedGain);
+    h.isSoaking = true;
+    this._soakTimer = 0.4;
+    this.emit('hp', h.hp, maxHp);
+    this.emit('mp', h.mp, maxMp);
+    this.emit('hotSprings', { hp: h.hp, mp: h.mp, restedExp: h.restedExp });
+    this.emit('change');
   }
 
   // -------------------------------------------------------------- buffs
@@ -643,11 +793,17 @@ export class GameState extends Emitter {
       const id = monster.type || monster.id || monster.name || `boss_f${floor}`;
       if (!this.progress.bossesDefeated.includes(id)) this.progress.bossesDefeated.push(id);
     }
+    this.addBerserkCharge(isBoss ? BERSERK.gainBoss : isElite ? BERSERK.gainElite : BERSERK.gainNormal);
+    if (monster.isNemesis) {
+      this.claimNemesisVengeance(monster);
+    }
     this.addExp(exp);
     if (this.quests) this.quests.onKill(monster);
     this.emit('kill', monster, { exp, gold, drops });
     return { exp, gold, drops };
   }
+  onEnemyKill(monster) { return this.onMonsterKilled(monster); }
+  recordKill(monster) { return this.onMonsterKilled(monster); }
 
   /** World notifications (also forwarded to quests). */
   enterFloor(floor) {
@@ -673,6 +829,23 @@ export class GameState extends Emitter {
     this.progress.playTime += dt;
     if (this._invuln > 0) this._invuln -= dt;
     if (this._comboTimer > 0) { this._comboTimer -= dt; if (this._comboTimer <= 0) h.combo = 0; }
+    if (this._soakTimer > 0) {
+      this._soakTimer -= dt;
+      if (this._soakTimer <= 0) h.isSoaking = false;
+    } else {
+      h.isSoaking = false;
+    }
+    if (h.berserkActive) {
+      h.berserkRemaining -= dt;
+      if (h.berserkRemaining <= 0) {
+        h.berserkRemaining = 0;
+        h.berserkActive = false;
+        this.markDirty();
+        this.getStats();
+        this.emit('berserk', { active: false });
+        this.emit('change');
+      }
+    }
     if (this.skills) this.skills.update(dt);
     if (this.inventory) this.inventory.update(dt);
     if (h.dead) return;
@@ -734,6 +907,14 @@ export class GameState extends Emitter {
       gold: h.gold,
       ap: h.ap,
       skillPoints: h.sp,
+      berserkCharge: h.berserkCharge || 0,
+      berserkActive: !!h.berserkActive,
+      berserkRemaining: Math.max(0, h.berserkRemaining || 0),
+      berserkOrbs: berserkOrbs(h.berserkCharge || 0),
+      restedExp: h.restedExp || 0,
+      isSoaking: !!h.isSoaking,
+      nemesis: this._nemesis ? { ...this._nemesis } : null,
+      nemesisKills: h.nemesisKills || 0,
       stats: { str: s.str, dex: s.dex, int: s.int, lck: s.lck },
       baseStats: { ...h.attrs },
       derived: s,
@@ -751,6 +932,7 @@ export class GameState extends Emitter {
       savedAt: Date.now(),
       hero: { ...this.hero, buffs: this.hero.buffs.map((b) => ({ ...b })) },
       progress: JSON.parse(JSON.stringify(this.progress)),
+      nemesis: this._nemesis ? { ...this._nemesis } : null,
       inventory: this.inventory.toJSON(),
       skills: this.skills.toJSON(),
       quests: this.quests.toJSON(),
@@ -767,8 +949,45 @@ export class GameState extends Emitter {
     this.hero.appearance = sanitizeAppearance(d.hero.appearance, savedClass);
     this.hero.attrs = { ...getClass(savedClass).startAttrs, ...(d.hero.attrs || {}) };
     this.hero.buffs = Array.isArray(d.hero.buffs) ? d.hero.buffs : [];
+    this.hero.berserkCharge = Number(d.hero.berserkCharge) || 0;
+    this.hero.berserkActive = Boolean(d.hero.berserkActive);
+    this.hero.berserkRemaining = Number(d.hero.berserkRemaining) || 0;
+    this.hero.restedExp = Number(d.hero.restedExp) || 0;
+    this.hero.isSoaking = false;
+    this.hero.nemesisKills = Number(d.hero.nemesisKills) || 0;
+    this._nemesis = d.nemesis ? { ...d.nemesis } : null;
     Object.assign(this.progress, d.progress || {});
+    this.inventory.classId = savedClass;
     this.inventory.fromJSON(d.inventory || {});
+    this.inventory.classId = savedClass;
+
+    // Repair any mismatched starter weapons/shields from older saves so each class holds its signature gear
+    const eq = this.inventory.equipment;
+    const cls = getClass(savedClass);
+    const starter = cls.starter || {};
+    if (!eq.weapon || !canClassUse(savedClass, eq.weapon).ok) {
+      if (starter.weapon) {
+        eq.weapon = generateItem({ baseId: starter.weapon, rarity: 'normal', level: 1, classId: savedClass });
+      }
+    }
+    if ((savedClass === 'archer' || savedClass === 'wizard' || cls.twoHanded) && eq.shield) {
+      eq.shield = null;
+    } else if (savedClass === 'axeman' && (!eq.shield || eq.shield.baseId === 'shield_1')) {
+      const offhandAxe = generateItem({ baseId: 'axe_1', rarity: 'normal', level: 1, classId: 'axeman' });
+      if (offhandAxe) {
+        offhandAxe.name = 'Twin Bronze Cleaver';
+        offhandAxe.baseName = 'Twin Bronze Cleaver';
+        offhandAxe.type = 'weapon';
+        offhandAxe.subtype = 'axe';
+        offhandAxe.subType = 'axe';
+        offhandAxe.slot = 'shield';
+        offhandAxe.visualModel = 'tblade_01';
+        offhandAxe.visualGlb = '/assets/sro/equipment/tblade_01.glb';
+        offhandAxe.icon = '/assets/sro/icons/weapon/tblade_01.png';
+        eq.shield = offhandAxe;
+      }
+    }
+
     this.skills.fromJSON(d.skills || {});
     this.quests.fromJSON(d.quests || {});
     this.markDirty();
@@ -826,6 +1045,9 @@ export class GameState extends Emitter {
   /** Start a brand new character (does not delete saves unless wipeSave). */
   reset({ wipeSave = false, heroName } = {}) {
     if (wipeSave) this.deleteSave(0);
+    this._nemesis = null;
+    this._soakTimer = 0;
+    this._lastGoldLost = 0;
     this._newHero(heroName || this.hero.name, this.hero.classId, this.hero.appearance);
     this.inventory = new Inventory(this);
     this.skills = new SkillSystem(this);
@@ -843,6 +1065,9 @@ export class GameState extends Emitter {
     const cid = isValidClass(classId) ? String(classId).toLowerCase() : DEFAULT_CLASS;
     const heroName = String(name == null ? '' : name).trim().slice(0, 16) || 'Hero';
     this.activeSlot = slot;
+    this._nemesis = null;
+    this._soakTimer = 0;
+    this._lastGoldLost = 0;
     this._newHero(heroName, cid, appearance);
     this.inventory = new Inventory(this);
     this.skills = new SkillSystem(this);
@@ -897,7 +1122,8 @@ export function applyExtractedData(data) {
 // Factories
 // =============================================================================
 export function createGame(opts = {}) {
-  if (opts && !opts.data && (opts.items || opts.skills || opts.monsters || opts.quests)) opts = { data: opts }; // createGame(data)
+  if (typeof opts === 'string') opts = { classId: opts };
+  else if (opts && !opts.data && (opts.items || opts.skills || opts.monsters || opts.quests)) opts = { data: opts }; // createGame(data)
   return new GameState(opts || {});
 }
 export const createGameState = (dataOrOpts) => createGame(dataOrOpts);
@@ -970,6 +1196,11 @@ export function createUIHost(game, extras = {}) {
     abandonQuest: (id) => game.quests.abandon(id),
     dialogueAction: (action) => game.quests.handleDialogueAction(action),
     teleportToFloor: () => ({ ok: false, msg: 'Teleport unavailable' }),
+    activateBerserk: () => game.activateBerserk(),
+    addBerserkCharge: (amt) => game.addBerserkCharge(amt),
+    getNemesis: () => game.nemesis,
+    claimNemesisVengeance: (enemy) => game.claimNemesisVengeance(enemy),
+    soakInHotSprings: (dt) => game.soakInHotSprings(dt),
     save: () => game.save(game.activeSlot),
     load: () => game.load(game.activeSlot),
     reset: () => { game.reset(); return { ok: true, msg: 'New game started' }; },
@@ -978,4 +1209,4 @@ export function createUIHost(game, extras = {}) {
   return Object.assign(host, extras);
 }
 
-export { RARITY, SLOTS, getItemBase };
+export { RARITY, SLOTS, getItemBase, BERSERK, berserkOrbs, NEMESIS, createNemesisTitle, HOT_SPRINGS };

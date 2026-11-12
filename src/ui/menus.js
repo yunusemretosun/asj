@@ -9,7 +9,7 @@
 // map/floor select (M), dialogue, shop. Also handles F5 (quick save) and Esc.
 // Data/actions go through the normalised host from createHost() in hud.js.
 // ============================================================================
-import { h, esc, createHost } from './hud.js';
+import { h, esc, createHost, renderIconHTML } from './hud.js';
 import { ALCHEMY, SEALS, STATUS, elixirKindForSlot, powderGradeForTier, alchemyChance } from '../systems/mechanics.js';
 
 const SLOT_ORDER = ['helmet', 'necklace', 'weapon', 'armor', 'shield', 'ring', 'boots'];
@@ -36,7 +36,7 @@ const ALIASES = {
   storage: 'storage', stash: 'storage', vault: 'storage',
   dialogue: 'dialogue', dialog: 'dialogue', talk: 'dialogue', shop: 'shop', store: 'shop',
 };
-const TITLES = { character: 'Hero', inventory: 'Inventory & Equipment', skills: 'Skill Tree', compose: 'Composing Station', quests: 'Quest Log', map: 'Dungeon Floors', shop: 'Shop', storage: 'Storage Vault', dialogue: '' };
+const TITLES = { character: 'Hero', inventory: 'Inventory & Equipment', skills: 'Skill Tree', compose: 'Alchemy Workshop', quests: 'Quest Log', map: 'Dungeon Floors', shop: 'Shop', storage: 'Storage Vault', dialogue: '' };
 const KIND_NAME = { weapon: 'Weapon', shield: 'Shield', armor: 'Armor', accessory: 'Accessory' };
 const HOTKEY_TXT = { character: 'C', inventory: 'B / I', skills: 'K', compose: 'O', quests: 'Q', map: 'M' };
 
@@ -280,7 +280,7 @@ export class MenuManager {
     const cls = ['item-slot', it ? 'has r-' + rarityOf(it) : '', it && it.classOk === false ? 'cls-bad' : '', big ? 'big' : '', selected ? 'selected' : '', plusN >= 10 ? 'plus-max' : plusN >= 7 ? 'plus-hi' : '', sealInfo ? 'sealed seal-' + sealInfo.id : ''].join(' ');
     let inner = '';
     if (it) {
-      inner = `<span>${esc(itemIcon(it))}</span>`;
+      inner = `<span>${renderIconHTML(itemIcon(it))}</span>`;
       if (it.count > 1) inner += `<span class="cnt">${it.count}</span>`;
       if (it.level && isEquipItem(it)) inner += `<span class="ilv">${it.level}</span>`;
       if (it.plus) inner += `<span class="plus">+${it.plus}</span>`;
@@ -314,7 +314,7 @@ export class MenuManager {
     const setLine = it.setName ? `<div class="tip-set">Set: ${esc(it.setName)}</div>` : '';
     const onlyLine = it.classOnly ? `<div class="tip-req ${clsBad ? 'bad' : ''}">${esc(Array.isArray(it.classOnly) ? it.classOnly.join(' / ') : it.classOnly)} only</div>` : '';
     return `<div class="tip-card r-${r} ${equipped ? 'equipped-tag' : ''}">
-      <div class="tip-name"${nameStyle}>${esc(it.name)}${it.plus ? ` <small>+${it.plus}</small>` : ''}</div>
+      <div class="tip-name"${nameStyle}>${renderIconHTML(itemIcon(it))} ${esc(it.name)}${it.plus ? ` <small>+${it.plus}</small>` : ''}</div>
       ${sl ? `<div class="tip-seal" style="color:${esc(sl.color)}">${esc(sl.short)} ${esc(sl.name)}</div>` : ''}
       <div class="tip-sub">${esc(typeTxt)}${it.level ? ` · Lv ${it.level}` : ''}</div>${setLine}
       ${stats}${affixes}
@@ -365,8 +365,8 @@ export class MenuManager {
   }
   _smartUse(it) {
     const inv = this.host.getInventory();
-    const eq = Object.values(inv.equipment).some((q) => q && String(q.uid) === String(it.uid));
-    if (eq) this._do(() => this.host.unequip(it.slot));
+    const eqSlot = Object.keys(inv.equipment || {}).find((k) => inv.equipment[k] && String(inv.equipment[k].uid) === String(it.uid));
+    if (eqSlot) this._do(() => this.host.unequip(eqSlot));
     else if (isEquipItem(it)) this._do(() => this.host.equip(it.uid));
     else this._do(() => this.host.useItem(it.uid));
   }
@@ -376,9 +376,9 @@ export class MenuManager {
     e.preventDefault();
     const it = this._items.get(s.dataset.uid); if (!it) return;
     const inv = this.host.getInventory();
-    const eq = Object.values(inv.equipment).some((q) => q && String(q.uid) === String(it.uid));
+    const eqSlot = Object.keys(inv.equipment || {}).find((k) => inv.equipment[k] && String(inv.equipment[k].uid) === String(it.uid));
     const rows = [];
-    if (eq) { rows.push(['Unequip', () => this._do(() => this.host.unequip(it.slot))]); rows.push(['Alchemy', () => this.openAlchemy(it.uid)]); }
+    if (eqSlot) { rows.push(['Unequip', () => this._do(() => this.host.unequip(eqSlot))]); rows.push(['Alchemy', () => this.openAlchemy(it.uid)]); }
     else {
       if (isEquipItem(it)) rows.push(['Equip', () => this._do(() => this.host.equip(it.uid))]);
       else rows.push(['Use', () => this._do(() => this.host.useItem(it.uid))]);
@@ -410,13 +410,18 @@ export class MenuManager {
     e.preventDefault(); t.classList.remove('dragover');
     const { it, from } = this._drag; this._drag = null;
     const d = t.dataset.drop;
-    if (d === 'trash') { if (from === 'equip') this._do(() => this.host.unequip(it.slot)); else this._do(() => this.host.dropItem(it.uid)); }
-    else if (d === 'bag') { if (from === 'equip') this._do(() => this.host.unequip(it.slot)); }
+    const inv = this.host.getInventory() || {};
+    const eqSlot = from === 'equip' ? Object.keys(inv.equipment || {}).find((k) => inv.equipment[k] && String(inv.equipment[k].uid) === String(it.uid)) : null;
+    if (d === 'trash') { if (from === 'equip') this._do(() => this.host.unequip(eqSlot || it.slot)); else this._do(() => this.host.dropItem(it.uid)); }
+    else if (d === 'bag') { if (from === 'equip') this._do(() => this.host.unequip(eqSlot || it.slot)); }
     else if (d.startsWith('equip:')) {
       const slot = d.slice(6);
       if (from === 'equip') return;
-      if (it.slot !== slot) { this._say(`${it.name} cannot be equipped as ${SLOT_LABEL[slot]}.`, false); return; }
-      this._do(() => this.host.equip(it.uid));
+      const p = this.host.getPlayer ? (this.host.getPlayer() || {}) : {};
+      const isAxeman = String(p.classId || '').toLowerCase() === 'axeman';
+      const canShieldAxe = (slot === 'shield' && isAxeman && it.type === 'weapon' && it.subType === 'axe');
+      if (it.slot !== slot && !canShieldAxe) { this._say(`${it.name} cannot be equipped as ${SLOT_LABEL[slot]}.`, false); return; }
+      this._do(() => (canShieldAxe ? this.host.equip(it.uid, 'shield') : this.host.equip(it.uid)));
     } else if (d === 'sell') this._do(() => this.host.sellItem(it.uid));
     else if (d === 'alchemy') { if (isEquipItem(it)) this._alchSelect(it.uid); else this._say('Only equipment can be enhanced.', false); }
   }
@@ -536,16 +541,22 @@ export class MenuManager {
   _rInventory() {
     const inv = this.host.getInventory() || { bag: [], equipment: {}, gold: 0, bagSize: 40 };
     const S = this.state, eqv = inv.equipment || {};
+    const p = this.host.getPlayer ? (this.host.getPlayer() || {}) : {};
+    const isAxeman = String(p.classId || '').toLowerCase() === 'axeman';
     const size = Math.max(inv.bagSize || 0, inv.bag.length, 40);
     const all = [...Object.values(eqv), ...inv.bag];
     const sel = S.sel ? all.find((q) => q && String(q.uid) === S.sel) : null;
     if (!sel) S.sel = null;
-    let equipHTML = SLOT_ORDER.map((s) => `<div class="eq-${s}">${this._slotHTML(eqv[s], { drag: true, drop: 'equip:' + s, ph: SLOT_LABEL[s], big: true, selected: sel && eqv[s] && String(eqv[s].uid) === S.sel })}</div>`).join('');
+    const eqSlotOfSel = sel ? Object.keys(eqv).find((k) => eqv[k] && String(eqv[k].uid) === String(sel.uid)) : null;
+    const isEq = Boolean(eqSlotOfSel);
+    let equipHTML = SLOT_ORDER.map((s) => {
+      const phLabel = (s === 'shield' && isAxeman) ? 'Offhand Axe' : SLOT_LABEL[s];
+      return `<div class="eq-${s}">${this._slotHTML(eqv[s], { drag: true, drop: 'equip:' + s, ph: phLabel, big: true, selected: sel && eqv[s] && String(eqv[s].uid) === S.sel })}</div>`;
+    }).join('');
     let bagHTML = '';
     for (let i = 0; i < size; i++) { const it = inv.bag[i]; bagHTML += this._slotHTML(it, { drag: true, drop: 'bag', selected: sel && it && String(it.uid) === S.sel }); }
-    const isEq = sel && Object.values(eqv).some((q) => q && String(q.uid) === S.sel);
     const infoBtns = sel ? `<div class="inv-actions">
-        ${isEq ? `<button class="arc-btn small" data-act="unequip" data-slot="${esc(sel.slot)}">Unequip</button>`
+        ${isEq ? `<button class="arc-btn small" data-act="unequip" data-slot="${esc(eqSlotOfSel)}">Unequip</button>`
         : `${isEquipItem(sel) ? `<button class="arc-btn small good" data-act="equip" data-uid="${esc(sel.uid)}">Equip</button>` : `<button class="arc-btn small good" data-act="use" data-uid="${esc(sel.uid)}">Use</button>`}
            <button class="arc-btn small" data-act="sell" data-uid="${esc(sel.uid)}">Sell ${sel.value || 0} G</button>
            <button class="arc-btn small danger" data-act="drop" data-uid="${esc(sel.uid)}">Drop</button>`}</div>` : '';
@@ -631,7 +642,7 @@ export class MenuManager {
       const q = pos(s);
       const cls = ['skill-node', s.type === 'passive' ? 'passive' : '', s.level >= s.maxLevel ? 'maxed' : s.level > 0 ? 'learned' : '', s.canLevel ? 'can' : '', s.level <= 0 && !s.canLevel ? 'locked' : '', S.skill === s.id ? 'selected' : ''].join(' ');
       const sl = slotOf(s.id);
-      nodes += `<div class="${cls}" style="left:${q.x - 30}px;top:${q.y - 30}px" data-act="skillsel" data-id="${esc(s.id)}" title="${esc(s.name)}">${esc(s.icon || '✨')}
+      nodes += `<div class="${cls}" style="left:${q.x - 30}px;top:${q.y - 30}px" data-act="skillsel" data-id="${esc(s.id)}" title="${esc(s.name)}">${renderIconHTML(s.icon, '✨')}
         <span class="slv">${s.level}/${s.maxLevel}</span>${sl >= 0 ? `<span class="skey">${esc(bar[sl].key || sl + 1)}</span>` : ''}</div>`;
     }
     const sel = list.find((s) => s.id === S.skill) || list.find((s) => s.canLevel) || list[0];
@@ -647,7 +658,7 @@ export class MenuManager {
       <div class="skill-tree-wrap arc-scroll"><div class="skill-tree-inner" style="width:${W}px;height:${H}px">
         <svg width="${W}" height="${H}">${lines}</svg>${nodes}</div></div>
       <div class="skill-detail"><div>
-        <h4>${esc(sel.icon || '')} ${esc(sel.name)} <small style="color:var(--arc-text-mute)">${esc(sel.type || '')} · Lv ${sel.level}/${sel.maxLevel}</small></h4>
+        <h4>${renderIconHTML(sel.icon, '✨')} ${esc(sel.name)} <small style="color:var(--arc-text-mute)">${esc(sel.type || '')} · Lv ${sel.level}/${sel.maxLevel}</small></h4>
         <p>${esc(sel.desc || '')}</p>
         <p class="sd-meta">${this._skillKindMeta(sel)}${sel.spCost ? 'SP cost ' + sel.spCost + ' · ' : ''}${sel.cooldown ? 'Cooldown ' + sel.cooldown + 's · ' : ''}${sel.reqLevel ? 'Req. Lv ' + sel.reqLevel : ''}${sel.requires && sel.requires.length ? ' · Requires: ' + sel.requires.map((r) => esc((byId.get(typeof r === 'object' ? r.id : r) || {}).name || (typeof r === 'object' ? r.id : r))).join(', ') : ''}</p>
         ${sel.reason && !sel.canLevel && !maxed ? `<p style="color:var(--arc-bad)">${esc(sel.reason)}</p>` : ''}
@@ -657,123 +668,46 @@ export class MenuManager {
     this._frame('skills', el);
   }
 
-  // --------------------------------------------------------------- COMPOSE
+  // --------------------------------------------------------------- ALCHEMY WORKSHOP
   _rCompose() {
-    const S = this.state; if (!S.tab) S.tab = 'alchemy'; if (!S.picks) S.picks = [];
-    if (S.tab === 'alchemy') { this._rAlchemy(); return; }
-    const inv = this.host.getInventory() || { bag: [], equipment: {} };
-    const eqItems = Object.values(inv.equipment).filter(Boolean);
-    const pool = S.tab === 'combine' ? inv.bag : [...eqItems, ...inv.bag.filter((i) => isEquipItem(i) || isMaterial(i) || /charm|stone|crystal/i.test((i.subtype || '') + ' ' + (i.name || '')))];
-    const uidSet = new Set(pool.map((i) => String(i.uid)));
-    S.picks = S.picks.filter((u) => uidSet.has(String(u)));
-    const picked = S.picks.map((u) => pool.find((i) => String(i.uid) === String(u))).filter(Boolean);
-    const max = S.tab === 'combine' ? 4 : 2;
-    const el = h('div');
-    const poolHTML = pool.map((it) => this._slotHTML(it, { selected: S.picks.includes(String(it.uid)) })).join('') || '<div class="arc-empty" style="grid-column:1/-1">Nothing to use.</div>';
-    let inputs = '';
-    for (let i = 0; i < max; i++) inputs += this._slotHTML(picked[i], { ph: S.tab === 'combine' ? `#${i + 1}` : (i === 0 ? 'Gear' : 'Stone/Gem'), big: true });
-    el.innerHTML = `<div class="arc-tabs">${this._composeTabs()}<div class="arc-tab ${S.tab === 'combine' ? 'active' : ''}" data-act="tab" data-tab="combine">Compose / Dismantle</div>
-        <div class="arc-tab ${S.tab === 'upgrade' ? 'active' : ''}" data-act="tab" data-tab="upgrade">Upgrade / Infuse Gear</div></div>
-      <div class="compose-layout"><div><div class="arc-section-title">${S.tab === 'combine' ? 'Choose crystals, materials, or gear' : 'Choose equipment, then a stone or crystal'}</div>
-        <div class="compose-pool arc-scroll">${poolHTML}</div></div>
-      <div class="compose-forge"><div class="compose-inputs">${inputs}</div><div class="compose-arrow">⚒</div>
-        <div class="compose-result" id="cmp-res">Select items…</div><div class="compose-chance" id="cmp-chance"></div>
-        <div style="display:flex;gap:6px"><button class="arc-btn" data-act="composeclear">Clear</button>
-        <button class="arc-btn good" data-act="composego" id="cmp-go" disabled>${S.tab === 'combine' ? 'Compose' : 'Upgrade'}</button></div></div></div>
-      <div class="arc-msg"></div>`;
-    this._frame('compose', el);
-    this._composePreview(picked);
-    if (S.flash) { const f = this.modal.querySelector('.compose-forge'); f.classList.add(S.flash); S.flash = null; }
-  }
-  _composeClick(it) {
-    const S = this.state, u = String(it.uid), max = S.tab === 'combine' ? 4 : 2;
-    const i = S.picks.indexOf(u);
-    if (i >= 0) S.picks.splice(i, 1);
-    else {
-      if (S.tab === 'upgrade') {
-        // one gear + one stone/crystal
-        const inv = this.host.getInventory();
-        const have = S.picks.map((p) => [...Object.values(inv.equipment), ...inv.bag].find((q) => q && String(q.uid) === p)).filter(Boolean);
-        const sameKind = (x) => (isEquipItem(x) === isEquipItem(it));
-        S.picks = have.filter((x) => !sameKind(x)).map((x) => String(x.uid));
-      } else if (S.picks.length >= max) { this._say('Maximum ' + max + ' items.', false); return; }
-      S.picks.push(u);
-    }
-    this._render();
-  }
-  _composePreview(picked) {
-    const S = this.state, res = this.modal.querySelector('#cmp-res'), ch = this.modal.querySelector('#cmp-chance'), go = this.modal.querySelector('#cmp-go');
-    let pv = null;
-    try {
-      if (S.tab === 'combine') {
-        if (picked.length >= 1 && this.host.previewCompose) pv = this.host.previewCompose(picked.map((i) => i.uid));
-        else if (picked.length >= 2) pv = { ok: true, text: 'Combine selected items into something new.' };
-      } else {
-        const g = picked.find(isEquipItem), c = picked.find((i) => !isEquipItem(i));
-        if (g && c) pv = this.host.previewUpgrade ? this.host.previewUpgrade(g.uid, c.uid) : { ok: true, text: `Upgrade ${g.name} using ${c.name}.` };
-      }
-    } catch (e) { pv = { ok: false, msg: String(e.message || e) }; }
-    if (!pv) { res.textContent = S.tab === 'combine' ? 'Select 1–4 items (3x crystals, 3x gear to reforge, or 1x gear to dismantle)…' : 'Select a piece of gear and a composing stone or crystal…'; go.disabled = true; return; }
-    const okp = pv.ok !== false;
-    const titleHtml = pv.title ? `<b style="color:var(--arc-metal-hi)">${esc(pv.title)}</b><br>` : '';
-    const itemHtml = pv.item ? `Result: <b class="rc-text r-${rarityOf(pv.item)}">${esc(pv.item.name)}</b><br>` : '';
-    const descTxt = pv.desc || pv.text || pv.msg || 'Ready.';
-    const errTxt = pv.reason || pv.desc || pv.msg || pv.text || 'Cannot compose these.';
-    res.innerHTML = okp ? titleHtml + itemHtml + esc(descTxt) : `<span style="color:var(--arc-bad)">${esc(errTxt)}</span>`;
-    const bits = [];
-    if (pv.chance != null && pv.chance > 0) bits.push(`Success: <b>${Math.round(pv.chance <= 1 ? pv.chance * 100 : pv.chance)}%</b>`);
-    if (pv.cost) bits.push(`Cost: <b class="arc-gold">${pv.cost} G</b>`);
-    ch.innerHTML = bits.join(' · ');
-    go.disabled = !okp;
-  }
-  _composeGo() {
-    const S = this.state, host = this.host;
-    const forge = this.modal.querySelector('.compose-forge'); if (forge) forge.classList.add('working');
-    const inv = host.getInventory();
-    const find = (u) => [...Object.values(inv.equipment), ...inv.bag].find((q) => q && String(q.uid) === String(u));
-    const picked = S.picks.map(find).filter(Boolean);
-    setTimeout(() => {
-      let r;
-      if (S.tab === 'combine') r = this._do(() => host.compose(picked.map((i) => i.uid)), false);
-      else {
-        const g = picked.find(isEquipItem), c = picked.find((i) => !isEquipItem(i));
-        r = this._do(() => host.upgradeItem(g.uid, [c.uid]), false);
-      }
-      S.picks = []; S.flash = r.ok ? 'success' : 'fail';
-      this._render(); this._say(r.msg || (r.ok ? 'Success!' : 'Failed.'), r.ok);
-      if (r.ok) this._toast(r.msg || 'Composing succeeded!', 'loot');
-    }, 450);
+    this._rAlchemy();
   }
 
-
-  // --------------------------------------------------------------- ALCHEMY
-  _composeTabs() {
-    const S = this.state;
-    return `<div class="arc-tab ${S.tab === 'alchemy' ? 'active' : ''}" data-act="tab" data-tab="alchemy">⚗ Alchemy</div>`;
-  }
   _alchFind(uid) {
     if (uid == null) return null;
     const inv = this.host.getInventory() || { bag: [], equipment: {} };
     return [...Object.values(inv.equipment || {}), ...(inv.bag || [])].find((q) => q && String(q.uid) === String(uid)) || null;
   }
-  _alchCount(id) {
-    if (!id) return 0;
+
+  _alchCount(id, kind) {
+    if (!id && !kind) return 0;
     const inv = this.host.getInventory() || { bag: [] };
     let n = 0;
-    for (const q of inv.bag || []) if (q && (q.id === id || q.baseId === id || q.templateId === id || q.itemId === id)) n += q.count || 1;
+    for (const q of inv.bag || []) {
+      if (!q) continue;
+      if (id && (q.id === id || q.baseId === id || q.templateId === id || q.itemId === id || q.code === id)) {
+        n += q.count || 1;
+      } else if (kind && (q.subtype === 'elixir' || q.type === 'elixir') && (q.elixirKind === kind || q.kind === kind)) {
+        n += q.count || 1;
+      }
+    }
     return n;
   }
+
   _alchSelect(uid) {
     this._alchCancel();
     this.state.alchUid = String(uid); this.state.alchRes = null;
     this._render();
   }
+
   _alchCancel(silent) {
     const f = this._fuse; if (!f) return;
     cancelAnimationFrame(f.raf); this._fuse = null;
     if (!silent) this._say('Enhancement cancelled.', false);
   }
+
   _alchOpts() { return { powder: !!this.state.alchPowder, talisman: !!this.state.alchTalisman }; }
+
   _alchStart() {
     const S = this.state;
     if (this._fuse || !S.alchUid) return;
@@ -794,6 +728,7 @@ export class MenuManager {
     };
     f.raf = requestAnimationFrame(tick);
   }
+
   _alchFinish(uid, opts) {
     const S = this.state;
     const before = this._alchFind(uid);
@@ -813,7 +748,16 @@ export class MenuManager {
       this._alchHist = [{ ok: success, name, from: prev, to: plus, chance: r.chance }, ...(this._alchHist || [])].slice(0, 5);
     } else this._toast(text, 'warn');
     this._render();
+    if (S.flash) {
+      setTimeout(() => {
+        if (this.state && this.state.flash) {
+          this.state.flash = null;
+          this._render();
+        }
+      }, 1200);
+    }
   }
+
   _rAlchemy() {
     const S = this.state, host = this.host;
     const inv = host.getInventory() || { bag: [], equipment: {} };
@@ -829,19 +773,27 @@ export class MenuManager {
       try { pv = host.previewAlchemy ? host.previewAlchemy(it.uid, this._alchOpts()) : null; } catch (e) { pv = { ok: false, reason: String(e.message || e) }; }
       pv = pv || { ok: false, reason: 'Preview unavailable.' };
     }
-    const kind = it ? elixirKindForSlot(it.slot) : '';
+    const kind = it ? elixirKindForSlot(it.slot) : 'weapon';
+    const recipeKind = kind === 'accessory' ? 'accessary' : (kind || 'weapon');
+    const elixirIcon = `/assets/sro/icons/etc/archemy_reinforce_recipe_${recipeKind}_b.png`;
+    const powderIcon = '/assets/sro/icons/etc/archemy_reinforce_prob_up_a.png';
+    const talismanIcon = '/assets/sro/icons/etc/scroll_return_01.png';
+
     const elixirId = (pv && pv.elixirId) || (kind ? 'elixir_' + kind : '');
     const grade = it ? powderGradeForTier(it.tier != null ? it.tier : 0) : 1;
     const powderId = (pv && pv.powderId) || 'powder_' + grade;
     const talId = (pv && pv.talismanId) || 'guardian_talisman';
-    const nOf = (id, have) => { const c = this._alchCount(id); return c || (typeof have === 'number' ? have : have ? 1 : 0); };
-    const nElix = it ? nOf(elixirId, pv && pv.haveElixir) : 0;
-    const nPow = it ? nOf(powderId, pv && pv.havePowder) : 0;
-    const nTal = it ? nOf(talId, pv && pv.haveTalisman) : 0;
-    if (S.alchPowder && !nPow) S.alchPowder = false;
-    if (S.alchTalisman && !nTal) S.alchTalisman = false;
+
+    const nElix = it ? (pv && typeof pv.haveElixir === 'number' ? pv.haveElixir : this._alchCount(elixirId, kind)) : 0;
+    const nPow = it ? (pv && typeof pv.havePowder === 'number' ? pv.havePowder : this._alchCount(powderId)) : 0;
+    const nTal = it ? (pv && typeof pv.haveTalisman === 'number' ? pv.haveTalisman : this._alchCount(talId)) : 0;
+
+    if (S.alchPowder && nPow <= 0) S.alchPowder = false;
+    if (S.alchTalisman && nTal <= 0) S.alchTalisman = false;
+
     const maxed = it && (it.plus | 0) >= ALCHEMY.maxPlus;
     const target = pv && pv.targetPlus != null ? pv.targetPlus : it ? (it.plus | 0) + 1 : 0;
+    const powderBonus = ALCHEMY.powderBonus[Math.max(0, Math.min(ALCHEMY.maxPlus - 1, target - 1))] || 0;
 
     let chance = null;
     if (pv) {
@@ -852,38 +804,94 @@ export class MenuManager {
     const okp = !!it && !maxed && pv && pv.ok !== false && nElix > 0 || !!(pv && pv.legacy && pv.ok);
     const stats = pv && pv.statPreview ? Object.entries(pv.statPreview).filter(([, v]) => Array.isArray(v)) : [];
     const statHTML = stats.map(([k, v]) => `<div class="tip-stat"><span>${esc(labelOf(k))}</span><span>${esc(fmtStat(k, v[0]))} <b class="alc-arrow">→</b> <b class="alc-up">${esc(fmtStat(k, v[1]))}</b></span></div>`).join('');
-    const failTxt = (pv && pv.failText) || (S.alchTalisman ? 'On failure the item loses 1 level (Guardian Talisman).' : 'On failure the item returns to +0.');
-    const reasonTxt = !it ? 'Select an equipment item to enhance.' : maxed ? 'Already at maximum +' + ALCHEMY.maxPlus + '.' : pv && pv.ok === false ? (pv.reason || pv.msg || 'Cannot enhance.') : nElix <= 0 ? `You need ${KIND_NAME[kind] || kind} Elixir.` : '';
+    const failTxt = (pv && pv.failText) || (S.alchTalisman ? 'On failure: Item loses 1 level (Protected by Guardian Talisman).' : 'On failure: Item returns to +0 (Never breaks).');
 
-    const mat = (id, label, n, extra) => `<div class="alc-mat ${n > 0 ? '' : 'none'}"><span class="alc-mat-ico">${extra}</span><span class="alc-mat-name">${esc(label)}</span><b>x${n}</b></div>`;
     const hist = (this._alchHist || []).map((x) => `<li class="${x.ok ? 'ok' : 'bad'}">${x.ok ? '✔' : '✖'} ${esc(x.name)} +${x.from | 0} → +${x.to | 0}${x.chance != null ? ` <small>(${Math.round(x.chance)}%)</small>` : ''}</li>`).join('') || '<li class="none">No attempts yet.</li>';
     const rs = S.alchRes;
     const resHTML = rs ? (rs.ran ? `<div class="alc-result ${rs.success ? 'ok' : 'bad'}">${rs.success ? `<div class="alc-big">+${rs.plus | 0}!</div>` : '<div class="alc-big">✖ Failed</div>'}<div>${esc(rs.text)}</div></div>` : `<div class="alc-result bad">${esc(rs.text)}</div>`) : '';
     const frac = fusing ? Math.min(1, (performance.now() - this._fuse.t0) / this._fuse.dur) : 0;
 
-    const el = h('div');
-    el.innerHTML = `<div class="arc-tabs">${this._composeTabs()}<div class="arc-tab" data-act="tab" data-tab="combine">Compose / Dismantle</div></div>
-      <div class="compose-layout alchemy-layout"><div><div class="arc-section-title">Equipment — click or drag to the slot</div>
-        <div class="compose-pool arc-scroll">${poolHTML}</div>
-        <div class="arc-section-title" style="margin-top:10px">Recent attempts</div><ul class="alc-hist">${hist}</ul></div>
-      <div class="compose-forge alc-forge ${fusing ? 'working fusing' : ''}">
-        <div class="alc-slots"><div class="alc-main" data-drop="alchemy">${this._slotHTML(it, { big: true, ph: 'Item' })}</div></div>
-        ${it ? `<div class="alc-chance ${chCls}">${chance != null ? Math.round(chance) + '%' : '—'}</div><div class="alc-sub">${maxed ? 'Max level' : 'Chance to reach <b>+' + target + '</b>'}${pv && pv.cost != null ? ` · Cost <b class="arc-gold">${pv.cost} G</b>` : ''}</div>` : '<div class="alc-chance">—</div>'}
-        <div class="alc-mats">
-          ${it ? mat(elixirId, (KIND_NAME[kind] || kind) + ' Elixir', nElix, '⚗️') : ''}
-          ${it ? `<label class="alc-opt ${nPow > 0 ? '' : 'dis'}"><input type="checkbox" data-act="alchpowder" ${S.alchPowder ? 'checked' : ''} ${nPow > 0 && !fusing ? '' : 'disabled'}> Luck Powder (Grade ${grade}) <b>x${nPow}</b>${S.alchPowder ? ' <small>+' + (ALCHEMY.powderBonus[Math.max(0, Math.min(ALCHEMY.maxPlus - 1, target - 1))] || 0) + '%</small>' : ''}</label>
-            <label class="alc-opt ${nTal > 0 ? '' : 'dis'}"><input type="checkbox" data-act="alchtalisman" ${S.alchTalisman ? 'checked' : ''} ${nTal > 0 && !fusing ? '' : 'disabled'}> Guardian Talisman <b>x${nTal}</b></label>` : ''}
+    const el = h('div', 'alcm-workshop');
+    el.innerHTML = `
+      <div class="alchemy-layout">
+        <div class="alcm-sidebar">
+          <div class="arc-section-title">Equipment — Click to Select</div>
+          <div class="compose-pool arc-scroll">${poolHTML}</div>
+          <div class="arc-section-title" style="margin-top:10px">Recent Attempts</div>
+          <ul class="alc-hist arc-scroll">${hist}</ul>
         </div>
-        ${statHTML ? `<div class="alc-stats">${statHTML}</div>` : ''}
-        ${it && !maxed ? `<div class="alc-warn">⚠ ${esc(failTxt)}</div>` : ''}
-        ${reasonTxt && it ? `<div class="alc-reason">${esc(reasonTxt)}</div>` : !it ? `<div class="alc-reason">${esc(reasonTxt)}</div>` : ''}
-        ${fusing ? `<div class="alc-fuse"><div class="alc-fuse-bar"><div class="alc-fuse-fill" id="alc-fill" style="width:${(frac * 100).toFixed(1)}%"></div></div><span id="alc-fuse-t">${((1 - frac) * ALCHEMY.fuseSeconds).toFixed(1)}s</span></div>` : ''}
-        ${resHTML}
-        <div style="display:flex;gap:6px"><button class="arc-btn" data-act="${fusing ? 'alchcancel' : 'alchclear'}">${fusing ? 'Cancel' : 'Clear'}</button>
-          <button class="arc-btn good" data-act="composego" id="cmp-go" ${okp && !fusing ? '' : 'disabled'}>${fusing ? 'Fusing…' : 'Enhance'}</button></div>
-      </div></div><div class="arc-msg"></div>`;
-    this._frame('compose', el);
-    if (S.flash) { const f = this.modal.querySelector('.alc-forge'); if (f) f.classList.add(S.flash); const sl = this.modal.querySelector('.alc-main .item-slot'); if (sl) sl.classList.add(S.flash === 'success' ? 'alc-flash' : 'alc-crack'); S.flash = null; }
+        <div class="alcm-main-area">
+          <div class="alcm-info">
+            <div class="alcm-info-lines">
+              <div class="alcm-title">Equipment Reinforcement (+N Enhancement)</div>
+              <div class="alcm-target ${it && it.plus ? 'plus' : ''}">
+                ${it ? `${esc(it.name)} ${it.plus ? `+${it.plus}` : '+0'} → <b class="alcm-plus-next">+${target}</b>` : '<span style="color:#78350f">Select equipment from left to enhance</span>'}
+              </div>
+              <div class="alcm-chance-line">
+                ${it ? (maxed ? '<span style="color:#b45309">Maximum +10 enhancement reached</span>' : `Success Chance: <b class="alcm-chance-val ${chCls}">${chance != null ? Math.round(chance) + '%' : '—'}</b>${pv && pv.cost != null ? ` · Cost: <b class="arc-gold">${pv.cost} G</b>` : ''}`) : 'Place equipment and Elixir in chamber to preview'}
+              </div>
+              <div class="alcm-warn">${failTxt}</div>
+            </div>
+          </div>
+
+          <div class="alcm-stage">
+            <div class="alcm-panel">
+              <!-- Animated 4x4 Sprite Sheet Overlay over rune circle -->
+              ${fusing ? '<div class="alcm-sprite-fx prepare"></div>' :
+                S.flash === 'success' ? '<div class="alcm-sprite-fx success"></div>' :
+                S.flash === 'fail' ? '<div class="alcm-sprite-fx fail"></div>' : ''}
+
+              <!-- Equipment Rune Circle Slot -->
+              <div class="alcm-slot alcm-slot-item" data-drop="alchemy" title="${it ? esc(it.name) : 'Rune Circle: Place Equipment Here'}">
+                ${it ? this._slotHTML(it, { big: true }) : '<div class="item-slot big alcm-ph"><span class="slot-ph">Gear</span></div>'}
+              </div>
+
+              <!-- Elixir Slot -->
+              <div class="alcm-slot alcm-slot-elixir ${nElix > 0 ? '' : 'empty'}" title="${esc(KIND_NAME[kind] || 'Weapon')} Elixir (x${nElix})">
+                <div class="item-slot has">
+                  <span>${renderIconHTML(elixirIcon, '⚗️')}</span>
+                  <span class="cnt">x${nElix}</span>
+                </div>
+              </div>
+
+              <!-- Luck Powder Slot (toggleable) -->
+              <div class="alcm-slot alcm-slot-powder ${S.alchPowder ? 'active' : ''} ${nPow > 0 ? '' : 'empty'}" data-act="alchpowder" title="Luck Powder Grade ${grade} (+${powderBonus}%) [Click to toggle]">
+                <div class="item-slot has ${S.alchPowder ? 'selected' : ''}">
+                  <span>${renderIconHTML(powderIcon, '✨')}</span>
+                  <span class="cnt">x${nPow}</span>
+                  ${S.alchPowder ? '<span class="alcm-badge-on">ON</span>' : ''}
+                </div>
+              </div>
+
+              <!-- Guardian Talisman Slot (toggleable) -->
+              <div class="alcm-slot alcm-slot-talisman ${S.alchTalisman ? 'active' : ''} ${nTal > 0 ? '' : 'empty'}" data-act="alchtalisman" title="Guardian Talisman (Protects from reset to +0) [Click to toggle]">
+                <div class="item-slot has ${S.alchTalisman ? 'selected' : ''}">
+                  <span>${renderIconHTML(talismanIcon, '🧿')}</span>
+                  <span class="cnt">x${nTal}</span>
+                  ${S.alchTalisman ? '<span class="alcm-badge-on">ON</span>' : ''}
+                </div>
+              </div>
+
+              <!-- Closed Frame Slot (4th material slot) -->
+              <div class="alcm-slot alcm-slot-closed" title="Closed Slot">
+                <img src="/assets/sro/alchemy/alcm_slot_closed.png" alt="" draggable="false"/>
+              </div>
+
+              <!-- Fuse / Cancel Button -->
+              <button class="alcm-fuse-btn ${fusing ? 'fusing' : ''}" data-act="${fusing ? 'alchcancel' : 'alchgo'}" ${okp && !fusing ? '' : fusing ? '' : 'disabled'} title="${fusing ? 'Cancel Enhancement' : 'Fuse Materials'}">
+                <span>${fusing ? 'Cancel' : 'Fuse'}</span>
+              </button>
+            </div>
+          </div>
+
+          ${fusing ? `<div class="alc-fuse"><div class="alc-fuse-bar"><div class="alc-fuse-fill" id="alc-fill" style="width:${(frac * 100).toFixed(1)}%"></div></div><span id="alc-fuse-t">${((1 - frac) * ALCHEMY.fuseSeconds).toFixed(1)}s</span></div>` : ''}
+          ${resHTML}
+          ${statHTML ? `<div class="alc-stats">${statHTML}</div>` : ''}
+          <div class="arc-msg"></div>
+        </div>
+      </div>`;
+
+    this._frame('compose', el, 'alcm-modal-frame');
   }
 
   // ---------------------------------------------------------------- QUESTS
@@ -1038,7 +1046,7 @@ export class MenuManager {
     this._title = shop.name || 'Shop';
     const el = h('div');
     const rows = shop.items.map((it, i) => { this._reg({ ...it, uid: 'shop' + i }); return `<div class="shop-item r-${rarityOf(it)} ${inv.gold < (it.price || 0) ? 'poor' : ''}" data-act="buy" data-idx="${i}" data-uid="shop${i}">
-        <div class="item-slot has r-${rarityOf(it)} ${it.classOk === false ? 'cls-bad' : ''}" style="width:40px;height:40px;font-size:22px">${esc(itemIcon(it))}</div>
+        <div class="item-slot has r-${rarityOf(it)} ${it.classOk === false ? 'cls-bad' : ''}" style="width:40px;height:40px;font-size:22px">${renderIconHTML(itemIcon(it))}</div>
         <div><div class="si-name">${esc(it.name)}</div><div class="si-price">${it.price || 0} G</div></div></div>`; }).join('') || '<div class="arc-empty">Nothing for sale.</div>';
     el.innerHTML = `<div class="shop-layout"><div><div class="arc-section-title">For Sale</div><div class="shop-grid arc-scroll">${rows}</div></div>
       <div><div class="arc-section-title">Your Bag — click to sell</div>

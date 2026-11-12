@@ -85,7 +85,6 @@ export function openCharacterCreation(root, opts = {}) {
       if (advance) go('designer'); else render();
     }
     function begin() {
-      if (!S.confirmBegin) { S.confirmBegin = true; renderDesigner(true); return; }
       const name = (S.name || '').trim().slice(0, 16) || 'Hero';
       finish({ mode: 'new', slot: S.slot, name, classId: S.classId, appearance: { ...S.appearance } });
     }

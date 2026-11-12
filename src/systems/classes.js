@@ -36,6 +36,8 @@ export const CLASSES = {
     statMods: { defPct: 12, hpPct: 10, block: 5 },
     starter: { weapon: 'sword_1', shield: 'shield_1', armor: 'armor_1' },
     skillTree: 'Knight',
+    mastery: 'Bicheon (Sword & Shield)',
+    sroMastery: 'Bicheon',
     color: 0x38bdf8,
     css: '#38bdf8',
     difficulty: 'Easy',
@@ -46,17 +48,21 @@ export const CLASSES = {
     name: 'Axeman',
     plural: 'Axemen',
     icon: '🪓',
-    tagline: 'Two-handed berserker',
-    desc: 'A brutal two-handed axe fighter. Slow, wide, devastating cleaves and huge HP, but no shield.',
-    weapons: ['axe'],
-    shield: false,
-    twoHanded: true,
+    tagline: 'Dual-axe berserker',
+    desc: 'A ferocious fighter wielding axes in both hands. Devastating cleaves, high HP and dual-wielding offensive power.',
+    weapons: ['axe', 'dagger'],
+    shield: true,
+    dualWield: true,
+    canOffhandAxe: true,
+    twoHanded: false,
     attackStyle: 'melee_heavy',
     attackRange: 2.9,
     startAttrs: { str: 9, dex: 4, int: 2, lck: 5 },
     statMods: { atkPct: 15, hpPct: 15, critDmg: 20 },
     starter: { weapon: 'axe_1', armor: 'armor_1' },
     skillTree: 'Axeman',
+    mastery: 'Heuksal (Dual-Axe / Spear & Fire)',
+    sroMastery: 'Heuksal',
     color: 0xef4444,
     css: '#ef4444',
     difficulty: 'Easy',
@@ -78,6 +84,8 @@ export const CLASSES = {
     statMods: { matkPct: 20, mpPct: 30, mpRegen: 1.5 },
     starter: { weapon: 'staff_1', armor: 'armor_1' },
     skillTree: 'Wizard',
+    mastery: 'Elemental (Cold / Lightning / Fire)',
+    sroMastery: 'Elemental',
     color: 0xa855f7,
     css: '#a855f7',
     difficulty: 'Hard',
@@ -99,6 +107,8 @@ export const CLASSES = {
     statMods: { critRate: 6, attackSpeedPct: 10, dodge: 4, moveSpeedPct: 5 },
     starter: { weapon: 'bow_1', armor: 'armor_1' },
     skillTree: 'Archer',
+    mastery: 'Pacheon (Bow)',
+    sroMastery: 'Pacheon',
     color: 0x22c55e,
     css: '#22c55e',
     difficulty: 'Normal',
@@ -106,7 +116,7 @@ export const CLASSES = {
 };
 
 /** Weapon subtype -> display noun (for messages like "Only Archers can use bows"). */
-export const WEAPON_NOUNS = { sword: 'swords', mace: 'maces', axe: 'axes', staff: 'staves', bow: 'bows', shield: 'shields' };
+export const WEAPON_NOUNS = { sword: 'swords', mace: 'maces', axe: 'axes', dagger: 'daggers', blade: 'blades', staff: 'staves', bow: 'bows', shield: 'shields' };
 
 // ----------------------------------------------------------------------------- appearance
 export const APPEARANCE_OPTIONS = {
@@ -153,13 +163,35 @@ export function sanitizeAppearance(a, classId) {
   return out;
 }
 
+function normalizeWeaponSubtype(item) {
+  const raw = String(item?.subtype || item?.subType || item?.weaponType || '').toLowerCase().trim();
+  const base = String(item?.baseId || item?.visualModel || item?.id || '').toLowerCase();
+  const name = String(item?.name || '').toLowerCase();
+  const probe = raw || base || name;
+  if (probe.includes('bow') || base.startsWith('bow_') || base.includes('_archer_')) return 'bow';
+  if (probe.includes('staff') || probe.includes('spear') || probe.includes('wand') || probe.includes('rod') || probe.includes('glaive') || base.startsWith('staff_') || base.startsWith('spear_') || base.includes('_wizard_')) return 'staff';
+  if (probe.includes('axe') || probe.includes('tblade') || probe.includes('cleaver') || base.startsWith('axe_') || base.startsWith('tblade_') || base.includes('_axeman_')) return 'axe';
+  if (probe.includes('dagger') || probe.includes('dirk') || base.startsWith('dagger_')) return 'dagger';
+  if (probe.includes('mace') || probe.includes('hammer') || probe.includes('club') || base.startsWith('mace_')) return 'mace';
+  if (probe.includes('sword') || probe.includes('blade') || base.startsWith('sword_') || base.startsWith('blade_') || base.includes('_knight_')) return 'sword';
+  return raw;
+}
+
 /**
  * Can a hero of `classId` equip `item`? Returns { ok, msg, classReq }.
  * classReq = display string of class(es) that may use it, or null when universal.
  */
 export function canClassUse(classId, item) {
-  if (!item || !item.slot) return { ok: true, msg: '', classReq: null };
+  if (!item || (!item.slot && !item.type)) return { ok: true, msg: '', classReq: null };
   const cls = getClass(classId);
+  const slot = String(item.slot || item.type || '').toLowerCase();
+  const sub = normalizeWeaponSubtype(item);
+
+  // Axeman dual-wield & offhand axe / dagger / shield access
+  if (cls.id === 'axeman' && (sub === 'axe' || sub === 'dagger' || sub === 'shield' || slot === 'shield')) {
+    return { ok: true, msg: '', classReq: null };
+  }
+
   // Class-locked gear (class tier sets): item.classOnly = 'wizard' or item.classes = ['knight', ...]
   const only = item.classOnly ? [String(item.classOnly).toLowerCase()] : Array.isArray(item.classes) && item.classes.length ? item.classes.map((c) => String(c).toLowerCase()) : null;
   if (only) {
@@ -170,24 +202,24 @@ export function canClassUse(classId, item) {
         const what = item.setName ? `${item.setName} gear` : 'this gear';
         return { ok: false, msg: `Only ${ids.map((c) => CLASSES[c].plural).join(' / ')} can wear ${what}`, classReq };
       }
-      // class matches: fall through to the weapon / shield rules, but keep the class-locked classReq
-      const inner = canClassUse(classId, { ...item, classOnly: null, classes: null });
-      return { ...inner, classReq };
+      // Class matches explicitly! Allow equipping any piece of this class's set.
+      return { ok: true, msg: '', classReq };
     }
   }
-  if (item.slot === 'shield') {
+  if (slot === 'shield') {
+    if (sub === 'axe' && cls.id === 'axeman') return { ok: true, msg: '', classReq: CLASSES.axeman.name };
     const users = CLASS_IDS.filter((c) => CLASSES[c].shield).map((c) => CLASSES[c].name);
     const plural = cls.plural || cls.name + 's';
     return cls.shield
       ? { ok: true, msg: '', classReq: users.join(' / ') }
       : { ok: false, msg: `${plural} cannot use shields`, classReq: users.join(' / ') };
   }
-  if (item.slot === 'weapon') {
-    const sub = String(item.subtype || 'sword').toLowerCase();
+  if (slot === 'weapon') {
+    if (!sub) return { ok: true, msg: '', classReq: null };
     const userIds = CLASS_IDS.filter((c) => CLASSES[c].weapons.includes(sub));
     const users = userIds.map((c) => CLASSES[c].name);
     const classReq = users.length ? users.join(' / ') : null;
-    if (cls.weapons.includes(sub)) return { ok: true, msg: '', classReq };
+    if (cls.weapons.includes(sub) || !userIds.length) return { ok: true, msg: '', classReq };
     const noun = WEAPON_NOUNS[sub] || sub + 's';
     return { ok: false, msg: userIds.length ? `Only ${userIds.map((c) => CLASSES[c].plural).join(' / ')} can use ${noun}` : `${cls.plural} cannot use ${noun}`, classReq };
   }

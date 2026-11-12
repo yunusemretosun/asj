@@ -3,6 +3,311 @@
 // props are emissive meshes plus an entry in gen._lightSources; the generator keeps a pool of at most 8
 // PointLights that hop between the sources nearest the player (see DungeonGenerator._updateLightBudget).
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
+
+let _gltfLoader = null;
+let _texLoader = null;
+const _gltfCache = new Map();
+const _modelBoundsCache = new Map();
+const _texCache = new Map();
+
+function getGLTFLoader() {
+  if (!_gltfLoader && typeof window !== 'undefined') {
+    _gltfLoader = new GLTFLoader();
+  }
+  return _gltfLoader;
+}
+
+function getTextureLoader() {
+  if (!_texLoader && typeof window !== 'undefined') {
+    _texLoader = new THREE.TextureLoader();
+  }
+  return _texLoader;
+}
+
+function cloneModel(source) {
+  let hasBones = false;
+  source.traverse((child) => {
+    if (child.isSkinnedMesh || child.isBone) hasBones = true;
+  });
+  if (hasBones) {
+    try {
+      return cloneSkeleton(source);
+    } catch {
+      return source.clone(true);
+    }
+  }
+  return source.clone(true);
+}
+
+/**
+ * Loads an authentic Silkroad GLB prop asynchronously in browser with bounding box caching,
+ * exact height scaling, auto-grounding (min.y = 0), and optimized shadow performance.
+ * Safe in Node: returns an empty THREE.Group synchronously without errors.
+ */
+export function loadSROProp(url, {
+  scale = 1,
+  targetHeight = null,
+  rotationY = 0,
+  position = [0, 0, 0],
+  yOffset = 0,
+  autoGround = true,
+  centerXZ = false,
+  castShadow = false,
+  receiveShadow = false,
+  parent = null,
+  onLoad = null
+} = {}) {
+  const holder = new THREE.Group();
+  holder.name = `SRO_${url.split('/').pop().replace('.glb', '')}`;
+  holder.position.set(...position);
+  holder.rotation.y = rotationY;
+  if (parent) parent.add(holder);
+
+  if (typeof window === 'undefined') return holder;
+
+  const loader = getGLTFLoader();
+  if (!loader) return holder;
+
+  const applyInstance = (source, bounds) => {
+    const clone = cloneModel(source);
+    const isPortal = url.includes('cj_portal.glb');
+    const isGate = url.includes('cj_jang_gate');
+    // For cj_portal.glb, visible above-ground height is ~7.9m (min.y=-7.28 is underground pillar shaft)
+    const visibleHeight = isPortal ? 7.9 : (bounds?.size?.y || 1);
+    const effScale = (typeof targetHeight === 'number' && targetHeight > 0 && visibleHeight > 0)
+      ? (targetHeight / visibleHeight)
+      : scale;
+    clone.scale.setScalar(effScale);
+
+    if (isPortal) {
+      // Bury the underground pillar foundation (-7.28..0) below y=0 so CJ_por_floor sits flush on ground
+      clone.position.y = -0.90 * effScale + yOffset;
+    } else if (autoGround && bounds) {
+      const extraY = (Math.abs(yOffset + 2.27) < 0.05 && Math.abs(bounds.min.y - 2.27) < 0.1) ? 0 : yOffset;
+      clone.position.y = -bounds.min.y * effScale + extraY * effScale;
+    } else if (yOffset) {
+      clone.position.y = yOffset * effScale;
+    }
+
+    if ((centerXZ || isPortal || isGate) && bounds?.min && bounds?.max) {
+      const cx = (bounds.min.x + bounds.max.x) * 0.5;
+      const cz = (bounds.min.z + bounds.max.z) * 0.5;
+      clone.position.x = -cx * effScale;
+      clone.position.z = -cz * effScale;
+    }
+
+    clone.traverse((child) => {
+      if (child.isMesh) {
+        child.castShadow = Boolean(castShadow);
+        child.receiveShadow = Boolean(receiveShadow);
+      }
+    });
+
+    holder.add(clone);
+    holder.userData.glbModel = clone;
+    onLoad?.(clone, holder);
+  };
+
+  if (_gltfCache.has(url)) {
+    applyInstance(_gltfCache.get(url), _modelBoundsCache.get(url));
+    return holder;
+  }
+
+  loader.load(
+    url,
+    (gltf) => {
+      const box = new THREE.Box3().setFromObject(gltf.scene);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const bounds = { min: box.min.clone(), max: box.max.clone(), size };
+      _modelBoundsCache.set(url, bounds);
+      _gltfCache.set(url, gltf.scene);
+      applyInstance(gltf.scene, bounds);
+    },
+    undefined,
+    (err) => {
+      console.warn(`[SRO] Failed to load prop ${url}:`, err);
+    }
+  );
+
+  return holder;
+}
+
+/**
+ * Loads an authentic Silkroad billboard or flat water sprite.
+ * Safe in Node: returns an empty THREE.Group synchronously without errors.
+ */
+export function loadSROSprite(url, { width = 1, height = 1, position = [0, 0, 0], parent = null, isFlat = false, opacity = 1.0 } = {}) {
+  const holder = new THREE.Group();
+  holder.name = `SRO_Sprite_${url.split('/').pop().replace(/\.[^.]+$/, '')}`;
+  holder.position.set(...position);
+  if (parent) parent.add(holder);
+
+  if (typeof window === 'undefined') return holder;
+
+  const texLoader = getTextureLoader();
+  if (!texLoader) return holder;
+
+  let texture = _texCache.get(url);
+  if (!texture) {
+    texture = texLoader.load(url);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    _texCache.set(url, texture);
+  }
+
+  if (isFlat) {
+    const geo = new THREE.PlaneGeometry(width, height);
+    const mat = new THREE.MeshStandardMaterial({
+      map: texture,
+      transparent: true,
+      opacity,
+      alphaTest: 0.05,
+      roughness: 0.35,
+      metalness: 0.1,
+      side: THREE.DoubleSide
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.receiveShadow = true;
+    holder.add(mesh);
+  } else {
+    const mat = new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+      opacity,
+      alphaTest: 0.08
+    });
+    const sprite = new THREE.Sprite(mat);
+    sprite.scale.set(width, height, 1);
+    sprite.position.y = height * 0.5;
+    holder.add(sprite);
+  }
+
+  return holder;
+}
+
+/**
+ * Ornate Silkroad coffer styling for treasure chests
+ */
+export function createSilkroadCofferMesh(tier = 'normal', isOpen = false) {
+  const root = new THREE.Group();
+  root.name = `SilkroadCoffer_${tier}`;
+
+  const tierStr = String(tier || 'normal').toLowerCase();
+  const isBoss = tierStr.includes('boss');
+  const isRare = tierStr.includes('rare') || tierStr.includes('epic') || isBoss;
+  const isUnique = tierStr.includes('unique') || tierStr.includes('legend');
+
+  const woodColor = isBoss || isUnique ? 0x221310 : isRare ? 0x6e1b12 : 0x422213;
+  const trimColor = isBoss || isUnique ? 0xfacc15 : isRare ? 0xd4a437 : 0x8a7455;
+  const gemColor = isBoss ? 0xef4444 : isUnique ? 0xa855f7 : isRare ? 0x10b981 : 0x38bdf8;
+
+  const woodMat = new THREE.MeshStandardMaterial({
+    color: woodColor,
+    roughness: 0.42,
+    metalness: 0.25
+  });
+  const trimMat = new THREE.MeshStandardMaterial({
+    color: trimColor,
+    roughness: 0.28,
+    metalness: 0.85
+  });
+  const gemMat = new THREE.MeshStandardMaterial({
+    color: gemColor,
+    emissive: new THREE.Color(gemColor),
+    emissiveIntensity: 0.9,
+    roughness: 0.15,
+    metalness: 0.3
+  });
+  const innerGlowMat = new THREE.MeshBasicMaterial({
+    color: isBoss ? 0xfef08a : isRare ? 0xfde047 : 0x7dd3fc,
+    transparent: true,
+    opacity: 0.95
+  });
+
+  // Base plinth
+  const plinth = new THREE.Mesh(new THREE.BoxGeometry(0.88, 0.08, 0.62), trimMat);
+  plinth.position.y = 0.04;
+  root.add(plinth);
+
+  // Main coffer body
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.38, 0.56), woodMat);
+  body.position.y = 0.27;
+  root.add(body);
+
+  // Gilded metal corner brackets & bands
+  for (const sx of [-0.41, 0.41]) {
+    for (const sz of [-0.28, 0.28]) {
+      const corner = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.4, 0.08), trimMat);
+      corner.position.set(sx, 0.27, sz);
+      root.add(corner);
+    }
+  }
+  const bandFront = new THREE.Mesh(new THREE.BoxGeometry(0.83, 0.06, 0.57), trimMat);
+  bandFront.position.y = 0.27;
+  root.add(bandFront);
+
+  // Inner treasure chamber glow
+  const innerGlow = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.08, 0.46), innerGlowMat);
+  innerGlow.position.y = 0.44;
+  innerGlow.visible = Boolean(isOpen);
+  root.add(innerGlow);
+
+  // Hinged arched coffer lid
+  const lidPivot = new THREE.Group();
+  lidPivot.position.set(0, 0.46, -0.28);
+  root.add(lidPivot);
+
+  const lidBase = new THREE.Mesh(new THREE.BoxGeometry(0.84, 0.12, 0.58), woodMat);
+  lidBase.position.set(0, 0.06, 0.28);
+  lidPivot.add(lidBase);
+
+  const archCyl = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.28, 0.28, 0.84, 16, 1, false, 0, Math.PI),
+    woodMat
+  );
+  archCyl.rotation.z = Math.PI / 2;
+  archCyl.position.set(0, 0.12, 0.28);
+  lidPivot.add(archCyl);
+
+  for (const lx of [-0.3, 0, 0.3]) {
+    const archTrim = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.285, 0.285, 0.05, 16, 1, false, 0, Math.PI),
+      trimMat
+    );
+    archTrim.rotation.z = Math.PI / 2;
+    archTrim.position.set(lx, 0.12, 0.28);
+    lidPivot.add(archTrim);
+  }
+
+  const lockHasp = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.18, 0.06), trimMat);
+  lockHasp.position.set(0, 0.02, 0.57);
+  lidPivot.add(lockHasp);
+
+  const lockJewel = new THREE.Mesh(new THREE.OctahedronGeometry(0.06, 0), gemMat);
+  lockJewel.position.set(0, 0.02, 0.60);
+  lidPivot.add(lockJewel);
+
+  root.userData.isOpen = Boolean(isOpen);
+  root.userData.lid = lidPivot;
+  lidPivot.rotation.x = root.userData.isOpen ? -1.25 : 0;
+
+  root.userData.setOpen = (open = true) => {
+    root.userData.isOpen = Boolean(open);
+    lidPivot.rotation.x = root.userData.isOpen ? -1.25 : 0;
+    innerGlow.visible = root.userData.isOpen;
+  };
+
+  root.userData.animate = (time = 0) => {
+    if (root.userData.isOpen && innerGlow.visible) {
+      innerGlow.material.opacity = 0.8 + Math.sin(time * 5.0) * 0.2;
+    }
+  };
+
+  return root;
+}
 
 // ---------------------------------------------------------------------------------------------
 // Shared geometry / material kinds
@@ -511,6 +816,39 @@ export function dressSpecialRoom(gen, b, room, kind, rand) {
       const a = (i / 6) * Math.PI * 2 + 0.3;
       candleCluster(b, gen, room.centerX + Math.cos(a) * 2.5, room.centerZ + Math.sin(a) * 2.5, st, rand, i % 3 === 0);
     }
+    // Authentic Silkroad shrine props when in browser
+    if (typeof window !== 'undefined' && gen?.rootGroup) {
+      loadSROProp('/assets/sro/props/cj_table01.glb', {
+        position: [room.centerX, 0, room.centerZ + 2.0],
+        scale: 0.72,
+        rotationY: Math.PI,
+        parent: gen.rootGroup
+      });
+      loadSROProp('/assets/sro/props/cj3_lion01.glb', {
+        position: [room.centerX - 2.8, 0, room.centerZ],
+        targetHeight: 1.88,
+        autoGround: true,
+        rotationY: Math.PI * 0.45,
+        parent: gen.rootGroup
+      });
+      loadSROProp('/assets/sro/props/cj3_lion01.glb', {
+        position: [room.centerX + 2.8, 0, room.centerZ],
+        targetHeight: 1.88,
+        autoGround: true,
+        rotationY: -Math.PI * 0.45,
+        parent: gen.rootGroup
+      });
+      loadSROProp('/assets/sro/props/cj_pal_lamp.glb', {
+        position: [room.centerX - 2.2, 0, room.centerZ - 2.2],
+        targetHeight: 2.14,
+        parent: gen.rootGroup
+      });
+      loadSROProp('/assets/sro/props/cj_pal_lamp.glb', {
+        position: [room.centerX + 2.2, 0, room.centerZ - 2.2],
+        targetHeight: 2.14,
+        parent: gen.rootGroup
+      });
+    }
   }
 }
 
@@ -544,6 +882,29 @@ export function buildVaultAlcove(gen, b, room, corner) {
   for (let t = 0.5; t <= D + 0.01; t += 1.0) post(ex - sx * t, fz); // fence B, solid
   post(fx, fz); // inner corner post
   b.add('box', (ex + fx) * 0.5, 0.02, (ez + fz) * 0.5, D - 0.4, 0.04, D - 0.4, 0, tint(gold, 0.7));
+
+  // Authentic Silkroad vault guardian lion statues and palace lamp when in browser
+  if (typeof window !== 'undefined' && gen?.rootGroup) {
+    loadSROProp('/assets/sro/props/cj3_lion01.glb', {
+      position: [fx - sx * 0.8, 0, gateZ - 1.2],
+      targetHeight: 1.88,
+      autoGround: true,
+      rotationY: sx > 0 ? -Math.PI * 0.4 : Math.PI * 0.4,
+      parent: gen.rootGroup
+    });
+    loadSROProp('/assets/sro/props/cj3_lion01.glb', {
+      position: [fx - sx * 0.8, 0, gateZ + 1.2],
+      targetHeight: 1.88,
+      autoGround: true,
+      rotationY: sx > 0 ? -Math.PI * 0.6 : Math.PI * 0.6,
+      parent: gen.rootGroup
+    });
+    loadSROProp('/assets/sro/props/cj_pal_lamp.glb', {
+      position: [fx + sx * 0.6, 0, gateZ + (sz > 0 ? -1.8 : 1.8)],
+      targetHeight: 2.14,
+      parent: gen.rootGroup
+    });
+  }
   return {
     center: at(D * 0.5, D * 0.5),
     gate: { x: fx, z: gateZ },
@@ -577,6 +938,33 @@ export function decorateBossArenaProps(gen, b, room, rand) {
   for (let i = 0; i < 4; i++) {
     const a = Math.PI / 4 + (i / 4) * Math.PI * 2;
     brazier(b, gen, cx + Math.cos(a) * 6.2, cz + Math.sin(a) * 6.2, flame, bowl, 1.2);
+  }
+
+  // Authentic Silkroad Dragon Gate arch at boss arena entrance (centered & scaled to room height)
+  if (typeof window !== 'undefined' && gen?.rootGroup) {
+    loadSROProp('/assets/sro/env/cj_jang_gate_dragon.glb', {
+      position: [cx, 0, cz + R * 0.92],
+      targetHeight: 3.4,
+      centerXZ: true,
+      autoGround: true,
+      rotationY: Math.PI,
+      parent: gen.rootGroup
+    });
+    // Flanking guardian lions at boss arena gateway
+    loadSROProp('/assets/sro/props/cj3_lion01.glb', {
+      position: [cx - 3.2, 0, cz + R * 0.95],
+      targetHeight: 1.88,
+      autoGround: true,
+      rotationY: Math.PI * 0.8,
+      parent: gen.rootGroup
+    });
+    loadSROProp('/assets/sro/props/cj3_lion01.glb', {
+      position: [cx + 3.2, 0, cz + R * 0.95],
+      targetHeight: 1.88,
+      autoGround: true,
+      rotationY: -Math.PI * 0.8,
+      parent: gen.rootGroup
+    });
   }
   return { center: { x: cx, z: cz }, radius: R + 1.2 };
 }

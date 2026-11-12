@@ -1,8 +1,188 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { getClass, defaultAppearance, sanitizeAppearance } from '../systems/classes.js';
-import { glowLevel, SEALS, STATUS } from '../systems/mechanics.js';
+import { glowLevel, SEALS, STATUS, RARITY_BEAMS } from '../systems/mechanics.js';
 // Namespace import: optional exports (CLASS_SET_STYLE, tierForLevel) may be missing without breaking module linking
 import * as inventoryModule from '../systems/inventory.js';
+
+const glbCache = new Map();
+let gltfLoader = null;
+
+function getGLTFLoader() {
+  if (!gltfLoader && typeof window !== 'undefined' && typeof document !== 'undefined') {
+    gltfLoader = new GLTFLoader();
+  }
+  return gltfLoader;
+}
+
+/**
+ * Load, parse, cache GLB scene, animations, and precomputed bounds.
+ * Browser-only helper; in Node returns null immediately.
+ */
+export function loadGLB(url) {
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return Promise.resolve(null);
+  }
+  if (!url) return Promise.resolve(null);
+  if (glbCache.has(url)) return glbCache.get(url);
+
+  const loader = getGLTFLoader();
+  if (!loader) return Promise.resolve(null);
+
+  const p = new Promise((resolve) => {
+    loader.load(
+      url,
+      (gltf) => {
+        const scene = gltf.scene || gltf.scenes?.[0] || null;
+        if (!scene) {
+          resolve(null);
+          return;
+        }
+        scene.updateMatrixWorld(true);
+        scene.traverse((child) => {
+          if (child.geometry) {
+            child.geometry.userData = child.geometry.userData || {};
+            child.geometry.userData.isCachedGLB = true;
+          }
+          const mats = Array.isArray(child.material) ? child.material : child.material ? [child.material] : [];
+          for (const m of mats) {
+            if (m) {
+              m.userData = m.userData || {};
+              m.userData.isCachedGLB = true;
+            }
+          }
+        });
+        const box = new THREE.Box3().setFromObject(scene);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        const center = new THREE.Vector3();
+        box.getCenter(center);
+        const bounds = {
+          box,
+          min: box.min.clone(),
+          max: box.max.clone(),
+          size,
+          center
+        };
+        const animations = gltf.animations || [];
+        resolve({ scene, animations, bounds });
+      },
+      undefined,
+      (err) => {
+        console.warn(`[models3d] Failed to load GLB: ${url}`, err);
+        resolve(null);
+      }
+    );
+  });
+  glbCache.set(url, p);
+  return p;
+}
+
+/**
+ * Safe browser-only helper to load, cache, clone (using SkeletonUtils.clone), and attach GLB models.
+ * In headless Node, returns immediately so tests remain 100% synchronous.
+ */
+export function attachGLBModel(targetGroup, url, {
+  scale = 1,
+  targetHeight = null,
+  targetSpan = null,
+  yOffset = 0,
+  rotationY = 0,
+  groundAtZero = false,
+  centerXZ = false,
+  hideFallback = true,
+  excludeMeshNames = null,
+  castShadow = false,
+  receiveShadow = false,
+  onLoaded = null
+} = {}) {
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return;
+  }
+  if (!targetGroup || !url) return;
+
+  loadGLB(url).then((entry) => {
+    if (!entry || !entry.scene || !targetGroup) return;
+    const { scene, animations, bounds } = entry;
+
+    // Use SkeletonUtils.clone to properly clone SkinnedMesh and bones
+    const clone = SkeletonUtils.clone(scene);
+
+    let s = scale;
+    if (targetHeight != null && bounds && bounds.size.y > 0.0001) {
+      s = targetHeight / bounds.size.y;
+    } else if (targetSpan != null && bounds) {
+      const maxSpan = Math.max(bounds.size.x, bounds.size.y, bounds.size.z);
+      if (maxSpan > 0.0001) s = targetSpan / maxSpan;
+    }
+    clone.scale.setScalar(s);
+
+    let computedY = yOffset;
+    if (bounds) {
+      if (groundAtZero) {
+        computedY = -bounds.min.y * s + yOffset;
+      } else if (bounds.min.y < -0.001) {
+        computedY = -bounds.min.y * s + yOffset;
+      }
+    }
+    clone.position.y = computedY;
+    if (centerXZ && bounds && bounds.center) {
+      clone.position.x = -bounds.center.x * s;
+      clone.position.z = -bounds.center.z * s;
+    }
+    if (rotationY) clone.rotation.y = rotationY;
+
+    const excludeSet = excludeMeshNames
+      ? new Set(Array.isArray(excludeMeshNames) ? excludeMeshNames : [excludeMeshNames])
+      : null;
+
+    clone.traverse((child) => {
+      if (excludeSet && excludeSet.has(child.name)) {
+        child.visible = false;
+      }
+      if (child.isMesh) {
+        child.castShadow = castShadow;
+        child.receiveShadow = receiveShadow;
+        // Do NOT clone materials! Share materials across clones for high performance.
+        if (child.material && child.material.map) {
+          child.material.map.colorSpace = THREE.SRGBColorSpace;
+        }
+        child.userData._origMat = child.material;
+        if (targetGroup.userData?.flashMeshes && !targetGroup.userData.flashMeshes.includes(child)) {
+          targetGroup.userData.flashMeshes.push(child);
+        }
+      }
+    });
+
+    if (hideFallback) {
+      for (const child of targetGroup.children) {
+        if (child === clone) continue;
+        if (
+          child.userData?.keepWithGLB ||
+          child.userData?.isOrbitRing ||
+          child.userData?.isRarityBeam ||
+          child.name === 'OrbitRing' ||
+          child.name === 'LootBeam' ||
+          child.name === 'RarityRing' ||
+          child.name === 'AuraRing' ||
+          child.userData?.isQuestMarker
+        ) {
+          continue;
+        }
+        child.visible = false;
+      }
+    }
+
+    targetGroup.add(clone);
+    targetGroup.userData.glbModel = clone;
+    targetGroup.userData.animations = animations;
+
+    if (typeof onLoaded === 'function') {
+      onLoaded(clone, { animations, bounds });
+    }
+  });
+}
 
 const FALLBACK_SET_STYLE = {
   knight: { primary: 0x38bdf8, accent: 0xfacc15 },
@@ -108,33 +288,38 @@ function enableShadows(root, cast = true, receive = true) {
   return root;
 }
 
+const HIT_FLASH_MATERIAL = new THREE.MeshStandardMaterial({
+  color: 0xffffff,
+  emissive: new THREE.Color(0xff4444),
+  emissiveIntensity: 0.95,
+  roughness: 0.2
+});
+HIT_FLASH_MATERIAL.userData = { noFlash: true };
+
 function attachHitFlashSupport(group) {
-  const materials = [];
+  const meshes = [];
   group.traverse((child) => {
     if (child.isMesh && child.material && !child.userData.noFlash) {
-      const mat = child.material.clone();
-      child.material = mat;
-      materials.push({
-        mat,
-        baseEmissive: mat.emissive ? mat.emissive.clone() : new THREE.Color(0x000000),
-        baseIntensity: mat.emissiveIntensity ?? 0
-      });
+      child.userData._origMat = child.material;
+      meshes.push(child);
     }
   });
 
-  group.userData.flashMaterials = materials;
+  group.userData.flashMeshes = meshes;
   group.userData.hitFlashTimer = 0;
+  group.userData.isFlashing = false;
 
   group.userData.setHitFlash = (intensity = 1.0) => {
-    group.userData.hitFlashTimer = Math.max(0, Math.min(1, Number(intensity) || 0));
-    for (const entry of group.userData.flashMaterials) {
-      if (!entry.mat.emissive) continue;
-      if (group.userData.hitFlashTimer > 0.02) {
-        entry.mat.emissive.setHex(0xffffff);
-        entry.mat.emissiveIntensity = 0.85 * group.userData.hitFlashTimer;
-      } else {
-        entry.mat.emissive.copy(entry.baseEmissive);
-        entry.mat.emissiveIntensity = entry.baseIntensity;
+    const amount = Math.max(0, Math.min(1, Number(intensity) || 0));
+    group.userData.hitFlashTimer = amount;
+    const shouldFlash = amount > 0.05;
+    if (shouldFlash !== group.userData.isFlashing) {
+      group.userData.isFlashing = shouldFlash;
+      const list = group.userData.flashMeshes || [];
+      for (let i = 0; i < list.length; i++) {
+        const mesh = list[i];
+        if (!mesh.userData._origMat) mesh.userData._origMat = mesh.material;
+        mesh.material = shouldFlash ? HIT_FLASH_MATERIAL : mesh.userData._origMat;
       }
     }
   };
@@ -151,10 +336,14 @@ function attachHitFlashSupport(group) {
 export function disposeObject3D(obj, keepMaterials = null) {
   if (!obj) return;
   obj.traverse((child) => {
-    if (child.geometry && typeof child.geometry.dispose === 'function') child.geometry.dispose();
+    if (child.geometry && !child.geometry.userData?.isCachedGLB && typeof child.geometry.dispose === 'function') {
+      child.geometry.dispose();
+    }
     const mats = Array.isArray(child.material) ? child.material : child.material ? [child.material] : [];
     for (const m of mats) {
-      if (m && (!keepMaterials || !keepMaterials.has(m)) && typeof m.dispose === 'function') m.dispose();
+      if (m && !m.userData?.isCachedGLB && (!keepMaterials || !keepMaterials.has(m)) && typeof m.dispose === 'function') {
+        m.dispose();
+      }
     }
   });
 }
@@ -613,6 +802,205 @@ function buildHair(style, hairMat) {
       break;
     }
   }
+  return g;
+}
+
+export const SRO_CHAR_GLB_MAP = {
+  knight: '/assets/sro/char/chinaman_warrior.glb',
+  axeman: '/assets/sro/char/europeman_adventurer.glb',
+  wizard: '/assets/sro/char/chinaman_scholar.glb',
+  archer: '/assets/sro/char/chinaman_adventurer.glb'
+};
+
+export const SRO_STARTER_SETS = {
+  knight: 'heavy_01',
+  axeman: 'light_01',
+  wizard: 'clothes_01',
+  archer: 'light_01'
+};
+
+export function getEquipmentGlbTier(item) {
+  if (!item) return '01';
+  const m = String(item.visualModel || item.visualGlb || item.icon || item.id || '').match(/(?:sword|blade|tblade|spear|bow|axe|shield|heavy|light|clothes)_0([1-4])/i);
+  if (m) return '0' + m[1];
+  const t = Number(item.tier ?? itemVisualTier(item) ?? 0);
+  if (t >= 3) return '04';
+  if (t === 2) return '03';
+  if (t === 1) return '02';
+  const lvl = Number(item.levelReq || item.reqLevel || item.level || 1);
+  if (lvl >= 16) return '04';
+  if (lvl >= 10) return '03';
+  if (lvl >= 5) return '02';
+  return '01';
+}
+
+export function getArmorVisualSet(item, defaultType = 'heavy') {
+  if (!item) return null;
+  if (item.visualSet) return item.visualSet;
+  const m = String(item.icon || item.visualGlb || item.id || '').match(/(heavy|light|clothes)_0[1-4]/i);
+  if (m) return m[0].toLowerCase();
+
+  let type = defaultType;
+  const sub = String(item.armorFamily || item.subType || item.subtype || item.type || item.armorType || '').toLowerCase();
+  if (sub.includes('plate') || sub.includes('heavy')) type = 'heavy';
+  else if (sub.includes('leather') || sub.includes('light') || sub.includes('mail')) type = 'light';
+  else if (sub.includes('cloth') || sub.includes('robe') || sub.includes('clothes')) type = 'clothes';
+
+  const tier = getEquipmentGlbTier(item);
+  return `${type}_${tier}`;
+}
+
+export function getWeaponGlbInfo(weapon, classId) {
+  const cls = getClass(classId);
+  const defaultSub = cls?.weapons?.[0] || 'sword';
+  const rawSub = String(weapon?.subType || weapon?.subtype || '').toLowerCase();
+  const probe = `${rawSub} ${weapon?.baseId || ''} ${weapon?.visualModel || ''} ${weapon?.name || ''}`.toLowerCase().trim() || defaultSub;
+  const tier = getEquipmentGlbTier(weapon);
+
+  const m = String(weapon?.visualModel || weapon?.visualGlb || weapon?.icon || weapon?.id || '').match(/(sword|blade|tblade|spear|bow|axe|shield)_0([1-4])/i);
+  if (m) {
+    const matchedType = m[1].toLowerCase();
+    return { file: `${matchedType}_0${m[2]}.glb`, type: matchedType, tier: '0' + m[2] };
+  }
+
+  let glbBase = 'sword';
+  if (probe.includes('bow') || classId === 'archer') glbBase = 'bow';
+  else if (probe.includes('axe') || probe.includes('cleaver') || classId === 'axeman') glbBase = 'axe';
+  else if (probe.includes('tblade') || probe.includes('glaive')) glbBase = 'tblade';
+  else if (probe.includes('spear') || probe.includes('staff') || probe.includes('pole') || probe.includes('wand') || probe.includes('rod') || classId === 'wizard') glbBase = 'spear';
+  else if (probe.includes('dagger') || probe.includes('blade') || probe.includes('mace')) glbBase = 'blade';
+  else glbBase = 'sword';
+
+  return { file: `${glbBase}_${tier}.glb`, type: glbBase, tier };
+}
+
+/**
+ * Create a high-detail 3D European Battle Axe mesh oriented for Silkroad hand sockets (+Z shaft, X blade edge).
+ */
+export function createEuropeanAxeMesh(weaponItem = null, tierStr = '01', isOffhand = false) {
+  const g = new THREE.Group();
+  g.name = isOffhand ? `EuropeanAxeOffhand_${tierStr}` : `EuropeanAxeMain_${tierStr}`;
+  const degNum = Math.max(1, Math.min(4, parseInt(tierStr, 10) || 1));
+  const itemTier = Number(weaponItem?.tier ?? (degNum - 1));
+
+  const styles = [
+    { shaftCol: 0x5c3a21, metalCol: 0xb8c2cc, edgeCol: 0xe2e8f0, gemCol: 0xd97706, len: 0.72, bladeW: 0.21, bladeH: 0.23, double: false },
+    { shaftCol: 0x4a2c18, metalCol: 0x94a3b8, edgeCol: 0xf1f5f9, gemCol: 0x38bdf8, len: 0.78, bladeW: 0.24, bladeH: 0.26, double: true },
+    { shaftCol: 0x451a1c, metalCol: 0xd97706, edgeCol: 0xfef08a, gemCol: 0xef4444, len: 0.84, bladeW: 0.27, bladeH: 0.30, double: true },
+    { shaftCol: 0x31102f, metalCol: 0xf59e0b, edgeCol: 0xfef9c3, gemCol: 0xc084fc, len: 0.90, bladeW: 0.31, bladeH: 0.34, double: true }
+  ];
+  const st = styles[degNum - 1] || styles[0];
+  const scaleMult = 1 + Math.max(0, itemTier - (degNum - 1)) * 0.03;
+
+  const shaftMat = new THREE.MeshStandardMaterial({ color: st.shaftCol, roughness: 0.55, metalness: 0.25, side: THREE.DoubleSide });
+  const metalMat = new THREE.MeshStandardMaterial({ color: st.metalCol, roughness: 0.25, metalness: 0.85, side: THREE.DoubleSide });
+  const edgeMat = new THREE.MeshStandardMaterial({
+    color: st.edgeCol,
+    roughness: 0.18,
+    metalness: 0.92,
+    emissive: new THREE.Color(st.gemCol),
+    emissiveIntensity: degNum >= 3 ? 0.18 : 0.06,
+    side: THREE.DoubleSide
+  });
+  const gemMat = new THREE.MeshStandardMaterial({
+    color: st.gemCol,
+    emissive: new THREE.Color(st.gemCol),
+    emissiveIntensity: 0.75,
+    roughness: 0.15,
+    metalness: 0.5,
+    side: THREE.DoubleSide
+  });
+
+  // Main shaft along +Z (grip at z=0, pommel at z=-0.16, head at z=headZ)
+  const shaftLen = st.len * scaleMult;
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.019, shaftLen, 10), shaftMat);
+  shaft.rotation.x = Math.PI / 2;
+  shaft.position.z = shaftLen * 0.5 - 0.16;
+  g.add(shaft);
+
+  // Grip leather rings near hand (z = -0.08 .. +0.10)
+  for (let i = -2; i <= 2; i++) {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.024, 0.005, 6, 12), metalMat);
+    ring.position.z = i * 0.045;
+    g.add(ring);
+  }
+
+  // Pommel cap & spike at z = -0.17
+  const pommel = new THREE.Mesh(new THREE.OctahedronGeometry(0.036, 0), metalMat);
+  pommel.position.z = -0.17;
+  g.add(pommel);
+
+  const headZ = shaftLen - 0.30;
+  // Heavy metallic axe collar
+  const collar = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.055, 0.15), metalMat);
+  collar.position.z = headZ;
+  g.add(collar);
+
+  // Top spear spike
+  const topSpike = new THREE.Mesh(new THREE.ConeGeometry(0.028, 0.17, 6), edgeMat);
+  topSpike.rotation.x = Math.PI / 2;
+  topSpike.position.z = headZ + 0.14;
+  g.add(topSpike);
+
+  // Core jewel on both sides of the collar
+  const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.034, 0), gemMat);
+  gem.scale.set(1.1, 1.35, 1.1);
+  gem.position.z = headZ;
+  g.add(gem);
+
+  // Sculpted crescent battle-axe blade helper (side = -1 for front edge, +1 for back blade)
+  const addCrescentBlade = (side, widthScale = 1.0) => {
+    const w = st.bladeW * widthScale * scaleMult;
+    const h = st.bladeH * scaleMult;
+    const shape = new THREE.Shape();
+    shape.moveTo(0, -h * 0.32);
+    shape.quadraticCurveTo(w * 0.55, -h * 0.42, w * 0.92, -h * 0.58);
+    shape.quadraticCurveTo(w * 1.18, 0, w * 0.92, h * 0.58);
+    shape.quadraticCurveTo(w * 0.55, h * 0.42, 0, h * 0.32);
+    shape.closePath();
+
+    const extrude = new THREE.ExtrudeGeometry(shape, {
+      depth: 0.018,
+      bevelEnabled: true,
+      bevelSegments: 2,
+      steps: 1,
+      bevelSize: 0.008,
+      bevelThickness: 0.008
+    });
+    // Orient shape X -> side * X, shape Y -> Z (along shaft), depth -> Y (thin thickness)
+    const bladeMesh = new THREE.Mesh(extrude, edgeMat);
+    bladeMesh.rotation.x = Math.PI / 2;
+    if (side < 0) {
+      bladeMesh.scale.x = -1;
+    }
+    bladeMesh.position.set(side * 0.025, 0.009, headZ);
+    g.add(bladeMesh);
+
+    // Inner armour plate backing the blade
+    const innerPlate = new THREE.Mesh(new THREE.BoxGeometry(w * 0.58, 0.028, h * 0.56), metalMat);
+    innerPlate.position.set(side * (0.03 + w * 0.28), 0, headZ);
+    g.add(innerPlate);
+  };
+
+  addCrescentBlade(-1, 1.0);
+  if (st.double) {
+    addCrescentBlade(1, 0.94);
+  } else {
+    // Degree 01 back tactical spike
+    const backSpike = new THREE.Mesh(new THREE.ConeGeometry(0.026, 0.14, 5), metalMat);
+    backSpike.rotation.z = -Math.PI / 2;
+    backSpike.position.set(0.09, 0, headZ);
+    g.add(backSpike);
+  }
+
+  g.traverse((c) => {
+    if (c.isMesh) {
+      c.frustumCulled = false;
+      c.castShadow = true;
+      c.receiveShadow = true;
+      c.userData._origMat = c.material;
+    }
+  });
   return g;
 }
 
@@ -1671,6 +2059,505 @@ export function createHeroMesh(equipment = {}, look = {}) {
     fx.parts = [];
   };
 
+  let glbLoadVer = 0;
+  let glbEquipVer = 0;
+
+  function applyGLBWeaponGlow(modelClone, item) {
+    if (!modelClone || !item) return;
+    const plus = Number(item.plus ?? item.enhance ?? 0) || 0;
+    const seal = item.seal ? String(item.seal).toLowerCase() : null;
+    if (!seal && plus < 3) return;
+
+    let glowHex = 0x38bdf8;
+    if (seal === 'sun') glowHex = 0xffb800;
+    else if (seal === 'moon') glowHex = 0xc084fc;
+    else if (seal === 'star') glowHex = 0x38bdf8;
+    else if (plus >= 9) glowHex = 0xfacc15;
+    else if (plus >= 7) glowHex = 0xc084fc;
+    else if (plus >= 5) glowHex = 0x38bdf8;
+    else glowHex = 0x60a5fa;
+
+    const isSeal = Boolean(seal);
+    const meshes = [];
+    modelClone.traverse((child) => {
+      if (child.isMesh && !child.userData.isGlowShell) {
+        meshes.push(child);
+      }
+    });
+
+    for (const m of meshes) {
+      if (m.material) {
+        const clonedMat = Array.isArray(m.material) ? m.material.map((mt) => mt.clone()) : m.material.clone();
+        const applyEmissive = (mt) => {
+          if (mt.emissive) {
+            mt.emissive.setHex(glowHex);
+            mt.emissiveIntensity = isSeal ? 0.65 : 0.4;
+          }
+        };
+        if (Array.isArray(clonedMat)) clonedMat.forEach(applyEmissive);
+        else applyEmissive(clonedMat);
+        m.material = clonedMat;
+        m.userData._origMat = clonedMat;
+      }
+      if (m.geometry) {
+        const shellMat = new THREE.MeshBasicMaterial({
+          color: glowHex,
+          transparent: true,
+          opacity: isSeal ? 0.34 : 0.22,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          side: THREE.DoubleSide
+        });
+        const shell = new THREE.Mesh(m.geometry, shellMat);
+        shell.userData.isGlowShell = true;
+        shell.scale.setScalar(1.06);
+        shell.frustumCulled = false;
+        m.add(shell);
+      }
+    }
+
+    if (isSeal || plus >= 7) {
+      const box = new THREE.Box3().setFromObject(modelClone);
+      if (!box.isEmpty()) {
+        const center = new THREE.Vector3();
+        const size = new THREE.Vector3();
+        box.getCenter(center);
+        box.getSize(size);
+        modelClone.worldToLocal(center);
+        const orbGeo = new THREE.OctahedronGeometry(0.055, 1);
+        const orbMat = new THREE.MeshBasicMaterial({
+          color: isSeal && seal === 'star' ? 0xe0f2fe : glowHex,
+          transparent: true,
+          opacity: 0.85,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false
+        });
+        const maxAxis = size.y >= size.x && size.y >= size.z ? 'y' : size.z >= size.x ? 'z' : 'x';
+        const span = Math.max(0.25, size[maxAxis] * 0.7);
+        for (let i = -1; i <= 1; i++) {
+          const orb = new THREE.Mesh(orbGeo, orbMat);
+          orb.userData.isGlowShell = true;
+          orb.position.copy(center);
+          orb.position[maxAxis] += i * (span * 0.35);
+          orb.frustumCulled = false;
+          modelClone.add(orb);
+        }
+      }
+    }
+  }
+
+  function applyGLBArmorLook(clonedArmor, item) {
+    if (!clonedArmor || !item) return;
+    const plus = Number(item.plus ?? item.enhance ?? 0) || 0;
+    const seal = item.seal ? String(item.seal).toLowerCase() : null;
+    const rarity = String(item.rarity || 'normal').toLowerCase();
+    const tier = Number(item.tier ?? 0);
+
+    let tintHex = null;
+    let tintStrength = 0;
+    if (seal === 'sun') { tintHex = 0xfef08a; tintStrength = 0.24; }
+    else if (seal === 'moon') { tintHex = 0xd8b4fe; tintStrength = 0.22; }
+    else if (seal === 'star') { tintHex = 0xbae6fd; tintStrength = 0.20; }
+    else if (rarity === 'unique') { tintHex = 0xfdba74; tintStrength = 0.18; }
+    else if (rarity === 'epic') { tintHex = 0xd8b4fe; tintStrength = 0.15; }
+    else if (rarity === 'rare') { tintHex = 0xfef08a; tintStrength = 0.12; }
+    else if (tier >= 5) { tintHex = 0xfde68a; tintStrength = 0.12; }
+    else if (tier === 4) { tintHex = 0xc7d2fe; tintStrength = 0.10; }
+
+    let glowHex = null;
+    if (seal === 'sun') glowHex = 0xffb800;
+    else if (seal === 'moon') glowHex = 0xc084fc;
+    else if (seal === 'star') glowHex = 0x38bdf8;
+    else if (plus >= 7) glowHex = 0xfacc15;
+    else if (plus >= 5) glowHex = 0x60a5fa;
+
+    clonedArmor.traverse((child) => {
+      if (!child.isMesh || child.userData.isGlowShell) return;
+      if (child.material) {
+        const cloneMat = (mt) => {
+          const c = mt.clone();
+          c.transparent = false;
+          c.alphaTest = 0;
+          c.depthWrite = true;
+          c.side = THREE.DoubleSide;
+          if (c.map) c.map.colorSpace = THREE.SRGBColorSpace;
+          if (tintHex && c.color) {
+            c.color.lerp(new THREE.Color(tintHex), tintStrength);
+          }
+          if (glowHex && c.emissive) {
+            c.emissive.setHex(glowHex);
+            c.emissiveIntensity = seal ? 0.35 : 0.2;
+          }
+          return c;
+        };
+        const newMat = Array.isArray(child.material)
+          ? child.material.map(cloneMat)
+          : cloneMat(child.material);
+        child.material = newMat;
+        child.userData._origMat = newMat;
+      }
+      if ((seal || plus >= 7) && child.geometry && glowHex) {
+        const shell = new THREE.Mesh(
+          child.geometry,
+          new THREE.MeshBasicMaterial({
+            color: glowHex,
+            transparent: true,
+            opacity: seal ? 0.22 : 0.15,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            side: THREE.DoubleSide
+          })
+        );
+        shell.userData.isGlowShell = true;
+        shell.scale.setScalar(1.03);
+        shell.frustumCulled = false;
+        child.add(shell);
+      }
+    });
+  }
+
+  function applyGLBEquipment(equipped = {}) {
+    if (!root.userData.isGLBHero || !root.userData.heroBonesByName) return;
+    const version = ++glbEquipVer;
+    const heroBonesByName = root.userData.heroBonesByName;
+    const bodyMeshes = root.userData.bodyMeshes;
+    const armorGroup = root.userData.glbArmorGroup;
+    const neckMount = root.userData.glbNeckMount;
+    const rWeaponMount = root.userData.glbRightWeaponMount;
+    const lWeaponMount = root.userData.glbLeftWeaponMount;
+    const shieldMount = root.userData.glbShieldMount;
+    const classId = lookState.classId || 'knight';
+    const starterSet = SRO_STARTER_SETS[classId] || 'heavy_01';
+
+    // Clear previous GLB gear
+    for (const grp of [armorGroup, neckMount, rWeaponMount, lWeaponMount, shieldMount]) {
+      if (!grp) continue;
+      while (grp.children.length > 0) {
+        const c = grp.children[0];
+        grp.remove(c);
+        disposeObject3D(c);
+      }
+    }
+
+    // 1. Sets (only bind armor pieces that are actually equipped in `equipped`)
+    const armorItem = equipped?.armor || null;
+    const bootsItem = equipped?.boots || null;
+    const glovesItem = equipped?.gloves || armorItem || null;
+    const helmItem = equipped?.helmet || equipped?.helm || null;
+
+    const defaultType = starterSet.split('_')[0];
+    const chestSet = armorItem ? (getArmorVisualSet(armorItem, defaultType) || starterSet) : null;
+    const bootsSet = bootsItem ? (getArmorVisualSet(bootsItem, defaultType) || starterSet) : null;
+    const glovesSet = glovesItem ? (getArmorVisualSet(glovesItem, defaultType) || starterSet) : null;
+    const helmSet = helmItem ? (getArmorVisualSet(helmItem, defaultType) || starterSet) : null;
+
+    root.userData.helmetEquipped = Boolean(helmSet);
+
+    // Start with all base body parts visible; hide only covered body slices once each armor GLB binds
+    const allBodyParts = ['man_torso_upper', 'man_torso_lower', 'man_arm_upper', 'man_pelvis', 'man_thigh', 'man_calf', 'man_arm_lower'];
+    if (bodyMeshes) {
+      for (const name of allBodyParts) {
+        const mesh = bodyMeshes.get(name);
+        if (mesh) {
+          mesh.visible = true;
+          mesh.frustumCulled = false;
+        }
+      }
+      if (root.userData.naturalHairMesh) {
+        root.userData.naturalHairMesh.visible = !helmSet;
+      }
+    }
+
+    const hideBodySlice = (name) => {
+      const m = bodyMeshes?.get(name);
+      if (m) m.visible = false;
+    };
+
+    const bindArmor = (url, itemForLook = null, onBound = null, socketTarget = null) => {
+      loadGLB(url).then((entry) => {
+        if (!entry || !entry.scene || version !== glbEquipVer || !armorGroup || !armorGroup.parent) return;
+        const clonedArmor = SkeletonUtils.clone(entry.scene);
+        let hasSkinned = false;
+        clonedArmor.traverse((child) => {
+          if (child.isMesh) {
+            child.frustumCulled = false;
+            child.castShadow = true;
+            child.receiveShadow = true;
+            if (child.material) {
+              if (child.material.map) child.material.map.colorSpace = THREE.SRGBColorSpace;
+              child.material.transparent = false;
+              child.material.alphaTest = 0;
+              child.material.depthWrite = true;
+              child.material.side = THREE.DoubleSide;
+            }
+            child.userData._origMat = child.material;
+            if (root.userData.flashMeshes && !root.userData.flashMeshes.includes(child)) {
+              root.userData.flashMeshes.push(child);
+            }
+          }
+          if (child.isSkinnedMesh) {
+            hasSkinned = true;
+            const armorSkeleton = child.skeleton;
+            const newBones = armorSkeleton.bones.map(
+              (b) => heroBonesByName.get(b.name) || heroBonesByName.get(b.name.replace(/_/g, ' ')) || b
+            );
+            const newSkeleton = new THREE.Skeleton(newBones, armorSkeleton.boneInverses);
+            child.bind(newSkeleton, child.bindMatrix);
+          }
+        });
+        applyGLBArmorLook(clonedArmor, itemForLook);
+        if (!hasSkinned && socketTarget) {
+          socketTarget.add(clonedArmor);
+        } else {
+          armorGroup.add(clonedArmor);
+        }
+        if (typeof onBound === 'function') onBound();
+      });
+    };
+
+    // Bind chest, shoulders, legs when armorItem is equipped
+    if (chestSet) {
+      bindArmor(`/assets/sro/equipment/${chestSet}_ba.glb`, armorItem, () => {
+        hideBodySlice('man_torso_lower');
+        if (chestSet !== 'light_02') hideBodySlice('man_torso_upper');
+        if (chestSet.startsWith('heavy_')) hideBodySlice('man_arm_upper');
+      });
+
+      bindArmor(`/assets/sro/equipment/${chestSet}_sa.glb`, armorItem, null, neckMount);
+
+      bindArmor(`/assets/sro/equipment/${chestSet}_la.glb`, armorItem, () => {
+        hideBodySlice('man_pelvis');
+        hideBodySlice('man_thigh');
+      });
+    }
+
+    // Bind gauntlets/bracers when glovesSet is present
+    if (glovesSet) {
+      bindArmor(`/assets/sro/equipment/${glovesSet}_aa.glb`, glovesItem, () => {
+        if (glovesSet.startsWith('heavy_') || glovesSet === 'clothes_04') {
+          hideBodySlice('man_arm_lower');
+        }
+      });
+    }
+
+    // Bind boots when bootsItem is equipped
+    if (bootsSet) {
+      bindArmor(`/assets/sro/equipment/${bootsSet}_fa.glb`, bootsItem, () => {
+        hideBodySlice('man_calf');
+      });
+    }
+
+    // Bind helm when helmItem is equipped
+    if (helmSet) {
+      bindArmor(`/assets/sro/equipment/${helmSet}_ha.glb`, helmItem, () => {
+        if (root.userData.naturalHairMesh) root.userData.naturalHairMesh.visible = false;
+      });
+    }
+
+    // 2. Weapons & Shields (only render weapons/shields that are actually equipped)
+    const weaponItem = equipped?.weapon || null;
+    const shieldItem = equipped?.shield || equipped?.offhand || null;
+    const isAxeman = classId === 'axeman';
+
+    const prepWeaponMaterials = (obj) => {
+      obj.traverse((child) => {
+        if (child.isMesh && !child.userData.isGlowShell) {
+          child.frustumCulled = false;
+          child.castShadow = true;
+          child.receiveShadow = true;
+          const mats = Array.isArray(child.material) ? child.material : child.material ? [child.material] : [];
+          for (const mt of mats) {
+            if (mt) {
+              if (mt.map) mt.map.colorSpace = THREE.SRGBColorSpace;
+              mt.transparent = false;
+              mt.alphaTest = 0;
+              mt.depthWrite = true;
+              mt.side = THREE.DoubleSide;
+            }
+          }
+        }
+      });
+    };
+
+    let isBow = false;
+    if (weaponItem) {
+      const weaponInfo = getWeaponGlbInfo(weaponItem, classId);
+      isBow = weaponInfo.type === 'bow';
+
+      if (weaponInfo.type === 'axe') {
+        const axeMesh = createEuropeanAxeMesh(weaponItem, weaponInfo.tier || '01', false);
+        applyGLBWeaponGlow(axeMesh, weaponItem);
+        if (rWeaponMount) rWeaponMount.add(axeMesh);
+      } else {
+        const mainWeaponUrl = `/assets/sro/equipment/${weaponInfo.file}`;
+        loadGLB(mainWeaponUrl).then((entry) => {
+          if (!entry || !entry.scene || version !== glbEquipVer) return;
+          const wClone = SkeletonUtils.clone(entry.scene);
+          prepWeaponMaterials(wClone);
+          applyGLBWeaponGlow(wClone, weaponItem);
+          if (isBow) {
+            if (lWeaponMount) lWeaponMount.add(wClone);
+          } else {
+            if (rWeaponMount) rWeaponMount.add(wClone);
+          }
+        });
+      }
+    }
+
+    // Offhand: Dual-Wield European Axe or Shield
+    if (shieldItem && !isBow) {
+      const shieldSubType = String(shieldItem?.subType || shieldItem?.subtype || shieldItem?.visualModel || '').toLowerCase();
+      const shieldIsAxe = isAxeman || shieldSubType.includes('axe') || shieldSubType.includes('tblade') || shieldItem.type === 'weapon';
+
+      if (shieldIsAxe) {
+        const offhandAxeTier = getEquipmentGlbTier(shieldItem);
+        const offAxeMesh = createEuropeanAxeMesh(shieldItem, offhandAxeTier, true);
+        applyGLBWeaponGlow(offAxeMesh, shieldItem);
+        if (lWeaponMount) lWeaponMount.add(offAxeMesh);
+      } else {
+        const shieldTier = getEquipmentGlbTier(shieldItem);
+        const shieldUrl = `/assets/sro/equipment/shield_${shieldTier}.glb`;
+        loadGLB(shieldUrl).then((entry) => {
+          if (!entry || !entry.scene || version !== glbEquipVer) return;
+          const shClone = SkeletonUtils.clone(entry.scene);
+          prepWeaponMaterials(shClone);
+          applyGLBWeaponGlow(shClone, shieldItem);
+          if (shieldMount) shieldMount.add(shClone);
+        });
+      }
+    }
+  }
+
+  function loadGLBCharacter(classId) {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+    const version = ++glbLoadVer;
+    const url = SRO_CHAR_GLB_MAP[classId] || SRO_CHAR_GLB_MAP.knight;
+
+    loadGLB(url).then((entry) => {
+      if (!entry || !entry.scene || version !== glbLoadVer) return;
+      if (root.userData.glbHero) {
+        root.remove(root.userData.glbHero);
+        disposeObject3D(root.userData.glbHero);
+        root.userData.glbHero = null;
+      }
+
+      const charClone = SkeletonUtils.clone(entry.scene);
+      charClone.name = 'GLBHero_' + classId;
+      charClone.scale.setScalar(1.0);
+      charClone.position.set(0, 0, 0);
+
+      const heroBonesByName = new Map();
+      charClone.traverse((b) => {
+        if (b.isBone) {
+          heroBonesByName.set(b.name, b);
+          heroBonesByName.set(b.name.replace(/_/g, ' '), b);
+        }
+        if (b.isMesh) {
+          b.frustumCulled = false;
+          b.castShadow = true;
+          b.receiveShadow = true;
+          b.userData._origMat = b.material;
+          if (b.material && b.material.map) b.material.map.colorSpace = THREE.SRGBColorSpace;
+        }
+      });
+      root.userData.heroBonesByName = heroBonesByName;
+
+      const bodyMeshes = new Map();
+      charClone.traverse((m) => {
+        if (m.isMesh) {
+          bodyMeshes.set(m.name, m);
+          if (m.name.includes('_hair') && !m.name.includes('hwan')) {
+            root.userData.naturalHairMesh = m;
+          }
+        }
+      });
+      root.userData.bodyMeshes = bodyMeshes;
+
+      // SRO socket attach rule: compute bind-pose world rotation BEFORE starting any animation
+      // and cancel the bone's bind-pose world rotation on each socket mount.
+      charClone.updateMatrixWorld(true);
+      const createSocketMount = (bone, mountName) => {
+        const mount = new THREE.Group();
+        mount.name = mountName;
+        if (bone) {
+          const bindQuat = new THREE.Quaternion();
+          bone.getWorldQuaternion(bindQuat);
+          mount.quaternion.copy(bindQuat).invert();
+          bone.add(mount);
+        }
+        return mount;
+      };
+
+      const rHandMid = heroBonesByName.get('Bip01 R HandMid') || heroBonesByName.get('Bip01 R Hand');
+      const lHand = heroBonesByName.get('Bip01 L Hand') || heroBonesByName.get('Bip01 L HandMid');
+      const lForearm = heroBonesByName.get('Bip01 L Forearm') || lHand;
+      const neckBone = heroBonesByName.get('Bip01 Neck1') || heroBonesByName.get('Bip01 Neck');
+      const headBone = heroBonesByName.get('Bip01 Head');
+
+      root.userData.glbRightWeaponMount = createSocketMount(rHandMid, 'GLBRightWeaponMount');
+      root.userData.glbLeftWeaponMount = createSocketMount(lHand, 'GLBLeftWeaponMount');
+      root.userData.glbShieldMount = createSocketMount(lHand || lForearm, 'GLBShieldMount');
+      root.userData.glbNeckMount = createSocketMount(neckBone, 'GLBNeckMount');
+      const glbHeadMount = createSocketMount(headBone, 'GLBHeadMount');
+      root.userData.glbHeadMount = glbHeadMount;
+
+      const glbArmorGroup = new THREE.Group();
+      glbArmorGroup.name = 'GLBArmorGroup';
+      charClone.add(glbArmorGroup);
+      root.userData.glbArmorGroup = glbArmorGroup;
+
+      const mixer = new THREE.AnimationMixer(charClone);
+      const actions = {};
+      for (const clip of entry.animations || []) {
+        actions[clip.name] = mixer.clipAction(clip);
+      }
+      root.userData.mixer = mixer;
+      root.userData.actions = actions;
+      root.userData.currentAction = null;
+      root.userData.currentActionName = '';
+
+      // Load European Dual-Axe combat animations for Axeman
+      if (classId === 'axeman') {
+        loadGLB('/assets/sro/char/dual_axe_anims.glb').then((daEntry) => {
+          if (!daEntry || !daEntry.animations || version !== glbLoadVer) return;
+          for (const clip of daEntry.animations) {
+            actions[clip.name] = mixer.clipAction(clip);
+          }
+          if (actions['skill_eu_warrior_duala_attack01']) actions['ATTACK1'] = actions['skill_eu_warrior_duala_attack01'];
+          if (actions['skill_eu_warrior_duala_attack02']) actions['ATTACK2'] = actions['skill_eu_warrior_duala_attack02'];
+          if (actions['skill_eu_warrior_duala_whirlwind_a']) actions['ATTACK3'] = actions['skill_eu_warrior_duala_whirlwind_a'];
+          if (actions['skill_eu_warrior_duala_cross_a']) actions['ATTACK4'] = actions['skill_eu_warrior_duala_cross_a'];
+        });
+      }
+
+      // Spiky Hwan Hair for Berserk
+      loadGLB('/assets/sro/char/chinaman_hwan_hair.glb').then((hwanEntry) => {
+        if (!hwanEntry || !hwanEntry.scene || version !== glbLoadVer) return;
+        const hwanClone = SkeletonUtils.clone(hwanEntry.scene);
+        hwanClone.name = 'HwanHair';
+        hwanClone.visible = false;
+        if (glbHeadMount) {
+          glbHeadMount.add(hwanClone);
+          root.userData.hwanHair = hwanClone;
+        }
+      });
+
+      bodyPivot.visible = false;
+      root.userData.isGLBHero = true;
+      root.add(charClone);
+      root.userData.glbHero = charClone;
+
+      if (actions['STAND1']) {
+        actions['STAND1'].play();
+        mixer.update(0.001);
+        root.userData.currentAction = actions['STAND1'];
+        root.userData.currentActionName = 'STAND1';
+      }
+
+      applyGLBEquipment(lookState.equipped);
+    });
+  }
+
   root.userData.updateEquipment = (equipped = {}) => {
     if (root.userData.hitFlashTimer > 0) root.userData.setHitFlash(0);
     lookState.equipped = equipped || {};
@@ -1727,6 +2614,9 @@ export function createHeroMesh(equipment = {}, look = {}) {
     enableShadows(bowMount, true, false);
     enableShadows(gear.body, true, false);
     refreshFlashMaterials();
+
+    // Update GLB Hero equipment
+    applyGLBEquipment(equipped);
   };
 
   /**
@@ -1736,6 +2626,7 @@ export function createHeroMesh(equipment = {}, look = {}) {
     if (root.userData.hitFlashTimer > 0) root.userData.setHitFlash(0);
     const cls = getClass(classId || lookState.classId);
     const app = sanitizeAppearance(appearance || (cls.id === lookState.classId ? lookState.appearance : null), cls.id);
+    const prevClassId = lookState.classId;
     lookState.classId = cls.id;
     lookState.cls = cls;
     lookState.appearance = app;
@@ -1760,6 +2651,11 @@ export function createHeroMesh(equipment = {}, look = {}) {
     rebuildHair();
     enableShadows(bodyPivot, true, true);
     root.userData.updateEquipment(lookState.equipped);
+
+    // Load or reload GLB base model if class changed or not loaded yet
+    if (!root.userData.isGLBHero || prevClassId !== cls.id) {
+      loadGLBCharacter(cls.id);
+    }
   };
 
   root.userData.getLook = () => ({ classId: lookState.classId, appearance: { ...lookState.appearance } });
@@ -1774,6 +2670,92 @@ export function createHeroMesh(equipment = {}, look = {}) {
     if (root.userData.hitFlashTimer > 0) {
       root.userData.hitFlashTimer = Math.max(0, root.userData.hitFlashTimer - dt * 6);
       root.userData.setHitFlash(root.userData.hitFlashTimer);
+    }
+
+    // AnimationMixer for Authentic Silkroad GLB Character
+    if (root.userData.mixer) {
+      const isBerserk = Boolean(root.userData.isBerserk);
+
+      // Spiky hair visibility in Berserk
+      if (root.userData.hwanHair) {
+        const showHwan = isBerserk && !root.userData.helmetEquipped;
+        root.userData.hwanHair.visible = showHwan;
+        if (root.userData.naturalHairMesh) {
+          root.userData.naturalHairMesh.visible = !showHwan && !root.userData.helmetEquipped;
+        }
+      }
+
+      let targetActionName = 'STAND1';
+      let targetTimeScale = 1.0;
+      let targetLoop = THREE.LoopRepeat;
+      let clamp = false;
+
+      const st = String(state || 'idle').toLowerCase();
+
+      if (st === 'dead' || st === 'die' || st === 'death') {
+        targetActionName = 'DIE1';
+        targetLoop = THREE.LoopOnce;
+        clamp = true;
+      } else if (st === 'damage' || st === 'hurt' || st === 'hit') {
+        targetActionName = 'DAMAGE1';
+        targetLoop = THREE.LoopOnce;
+      } else if (st === 'stroll' || st === 'patrol') {
+        targetActionName = root.userData.actions?.['WALK'] ? 'WALK' : 'RUN';
+        targetTimeScale = 0.88;
+      } else if (st === 'walk') {
+        targetActionName = 'RUN';
+        targetTimeScale = isBerserk ? 1.25 : 0.95;
+      } else if (st === 'run' || st === 'chase') {
+        targetActionName = 'RUN';
+        targetTimeScale = isBerserk ? 1.35 : 1.05;
+      } else if (st === 'dash') {
+        targetActionName = 'RUN';
+        targetTimeScale = 1.6;
+      } else if (st === 'attack' || st === 'shoot' || st === 'melee' || st === 'slash') {
+        const stage = (comboStep % 3) || 1;
+        targetActionName = stage === 2 ? 'ATTACK2' : stage === 3 ? 'ATTACK3' : 'ATTACK1';
+        targetTimeScale = isBerserk ? 1.4 : 1.15;
+        targetLoop = THREE.LoopOnce;
+      } else if (st === 'cast' || st === 'skill') {
+        targetActionName = (comboStep % 2 === 0) ? 'ATTACK3' : 'ATTACK2';
+        targetTimeScale = isBerserk ? 1.3 : 1.1;
+        targetLoop = THREE.LoopOnce;
+      } else if (st === 'defend' || st === 'block') {
+        targetActionName = 'DEFENCE';
+      } else {
+        targetActionName = 'STAND1';
+      }
+
+      const actions = root.userData.actions;
+      if (actions) {
+        const targetAction = actions[targetActionName] || actions['STAND1'];
+        if (targetAction) {
+          if (root.userData.currentAction !== targetAction) {
+            const prev = root.userData.currentAction;
+            targetAction.reset();
+            targetAction.timeScale = targetTimeScale;
+            targetAction.setLoop(targetLoop, targetLoop === THREE.LoopOnce ? 1 : Infinity);
+            targetAction.clampWhenFinished = clamp;
+            targetAction.fadeIn(0.12);
+            if (prev) prev.fadeOut(0.12);
+            targetAction.play();
+            root.userData.currentAction = targetAction;
+            root.userData.currentActionName = targetActionName;
+          } else {
+            targetAction.timeScale = targetTimeScale;
+            if (targetLoop === THREE.LoopOnce && (st === 'attack' || st === 'cast')) {
+              if (root.userData.lastComboStep !== comboStep) {
+                targetAction.reset();
+                targetAction.play();
+              }
+            }
+          }
+        }
+      }
+      root.userData.lastComboStep = comboStep;
+      root.userData.mixer.update(dt);
+      fxUpdate(dt);
+      return;
     }
 
     const style = root.userData.attackStyle || 'melee';
@@ -1898,6 +2880,140 @@ export function createHeroMesh(equipment = {}, look = {}) {
       leftArmPivot.rotation.y = 0.25 * thrust;
       staffLift = (big ? 1.9 : 0.85) * thrust;
       capePivot.rotation.x = 0.25 + 0.35 * thrust;
+    } else if (state === 'knight_prep' || state === 'bicheon_prep' || (state === 'windup' && (lookState.classId === 'knight' || style === 'melee'))) {
+      // Knight (Bicheon): Shield-brace crouch during prep
+      bodyPivot.position.y = 0.58;
+      bodyPivot.rotation.x = 0.15;
+      bodyPivot.rotation.y = 0.25;
+      leftLegPivot.rotation.x = -0.55;
+      rightLegPivot.rotation.x = 0.35;
+      leftArmPivot.rotation.x = -1.2;
+      leftArmPivot.rotation.y = -0.65;
+      leftArmPivot.rotation.z = 0.25;
+      rightArmPivot.rotation.x = -0.25;
+      rightArmPivot.rotation.y = 0.45;
+      rightArmPivot.rotation.z = -0.2;
+      capePivot.rotation.x = 0.45;
+    } else if (state === 'knight_release' || state === 'bicheon_release') {
+      // Knight (Bicheon): Rapid lunging sword slash / shield bash spin during release
+      const p = clamp01(attackProgress);
+      bodyPivot.position.y = 0.65;
+      bodyPivot.rotation.y = (p - 0.5) * 2.2;
+      bodyPivot.rotation.x = 0.2;
+      leftLegPivot.rotation.x = -0.5;
+      rightLegPivot.rotation.x = 0.5;
+      rightArmPivot.rotation.x = -1.5;
+      rightArmPivot.rotation.z = -1.0 + p * 2.4;
+      leftArmPivot.rotation.x = -0.8 - Math.sin(p * Math.PI) * 0.8;
+      leftArmPivot.rotation.y = -0.4;
+      capePivot.rotation.x = 0.75;
+    } else if (state === 'knight_recover' || state === 'bicheon_recover') {
+      // Knight (Bicheon): Grounded stance in recover
+      bodyPivot.position.y = 0.68;
+      bodyPivot.rotation.x = 0.05;
+      bodyPivot.rotation.y = 0.1;
+      leftLegPivot.rotation.x = -0.2;
+      rightLegPivot.rotation.x = 0.2;
+      leftArmPivot.rotation.x = -0.8;
+      leftArmPivot.rotation.y = -0.4;
+      rightArmPivot.rotation.x = -0.5;
+      rightArmPivot.rotation.z = -0.2;
+      capePivot.rotation.x = 0.25;
+    } else if (state === 'axeman_prep' || state === 'heuksal_prep' || (state === 'windup' && (lookState.classId === 'axeman' || style === 'melee_heavy'))) {
+      // Axeman (Heuksal): High overhead polearm/greataxe raise during prep
+      bodyPivot.position.y = 0.74;
+      bodyPivot.rotation.x = -0.35;
+      leftLegPivot.rotation.x = -0.3;
+      rightLegPivot.rotation.x = 0.3;
+      rightArmPivot.rotation.x = -2.85;
+      rightArmPivot.rotation.y = 0.2;
+      leftArmPivot.rotation.x = -2.75;
+      leftArmPivot.rotation.y = -0.45;
+      capePivot.rotation.x = 0.55;
+    } else if (state === 'axeman_release' || state === 'heuksal_release') {
+      // Axeman (Heuksal): Full 360° body spin cleave on whirlwind/chain release
+      const p = clamp01(attackProgress || (time * 3) % 1);
+      bodyPivot.rotation.y = p * Math.PI * 2;
+      bodyPivot.position.y = 0.68;
+      rightArmPivot.rotation.x = -Math.PI / 2;
+      rightArmPivot.rotation.z = -0.85;
+      leftArmPivot.rotation.x = -Math.PI / 2;
+      leftArmPivot.rotation.z = 0.85;
+      capePivot.rotation.x = 0.9;
+    } else if (state === 'axeman_recover' || state === 'heuksal_recover') {
+      // Axeman (Heuksal): Grounded polearm stance in recover
+      bodyPivot.position.y = 0.70;
+      rightArmPivot.rotation.x = -0.9;
+      leftArmPivot.rotation.x = -1.0;
+      leftArmPivot.rotation.y = -0.5;
+      capePivot.rotation.x = 0.3;
+    } else if (state === 'wizard_prep' || state === 'force_prep' || (state === 'windup' && (lookState.classId === 'wizard' || style === 'magic_bolt'))) {
+      // Wizard (Force): Floating/levitating cast pose during prep
+      bodyPivot.position.y = 0.78 + Math.sin(time * 6) * 0.03;
+      bodyPivot.rotation.x = -0.15;
+      leftLegPivot.rotation.x = 0.25;
+      rightLegPivot.rotation.x = -0.2;
+      rightArmPivot.rotation.x = -2.4;
+      rightArmPivot.rotation.z = -0.35;
+      leftArmPivot.rotation.x = -2.4;
+      leftArmPivot.rotation.z = 0.35;
+      staffLift = 2.0;
+      capePivot.rotation.x = 0.6;
+    } else if (state === 'wizard_release' || state === 'force_release') {
+      // Wizard (Force): Forward staff thrust burst on release
+      const p = clamp01(attackProgress);
+      const thrust = p < 0.4 ? Math.sin((p / 0.4) * Math.PI * 0.5) : 1 - ((p - 0.4) / 0.6) * 0.5;
+      bodyPivot.position.y = 0.70;
+      bodyPivot.rotation.x = 0.25 * thrust;
+      leftLegPivot.rotation.x = -0.4 * thrust;
+      rightLegPivot.rotation.x = 0.4 * thrust;
+      rightArmPivot.rotation.x = -0.3 - 2.2 * thrust;
+      rightArmPivot.rotation.z = -0.1 * thrust;
+      leftArmPivot.rotation.x = -0.2 - 1.4 * thrust;
+      leftArmPivot.rotation.y = 0.4 * thrust;
+      staffLift = 1.2 * thrust;
+      capePivot.rotation.x = 0.75 * thrust;
+    } else if (state === 'wizard_recover' || state === 'force_recover') {
+      // Wizard (Force): Hover recover
+      bodyPivot.position.y = 0.71;
+      rightArmPivot.rotation.x = -0.6;
+      leftArmPivot.rotation.x = -0.3;
+      capePivot.rotation.x = 0.3;
+    } else if (state === 'archer_prep' || state === 'pachon_prep' || (state === 'windup' && (lookState.classId === 'archer' || isBow))) {
+      // Archer (Pachon): Sideways bow-draw stance with torso twist during prep
+      const p = clamp01(attackProgress);
+      bowAim = 1;
+      bowDraw = p;
+      const twist = -0.7;
+      bodyPivot.rotation.y = twist;
+      bodyPivot.position.y = 0.68;
+      leftLegPivot.rotation.x = -0.35;
+      rightLegPivot.rotation.x = 0.35;
+      leftArmPivot.rotation.x = -Math.PI / 2;
+      leftArmPivot.rotation.y = -twist;
+      rightArmPivot.rotation.x = -Math.PI / 2 + 0.1;
+      rightArmPivot.rotation.y = -twist + 0.3 + p * 1.0;
+      headGroup.rotation.y = -twist * 0.9;
+      capePivot.rotation.x = 0.35;
+    } else if (state === 'archer_release' || state === 'pachon_release') {
+      // Archer (Pachon): Crisp recoil snap on release
+      const p = clamp01(attackProgress);
+      bowAim = 1;
+      bowDraw = 0;
+      const recoil = 1 - p;
+      const twist = -0.7;
+      bodyPivot.rotation.y = twist + recoil * 0.25;
+      bodyPivot.position.y = 0.70;
+      leftArmPivot.rotation.x = -Math.PI / 2 - recoil * 0.3;
+      leftArmPivot.rotation.y = -twist;
+      rightArmPivot.rotation.x = -Math.PI / 2;
+      rightArmPivot.rotation.y = -twist - recoil * 0.3;
+      capePivot.rotation.x = 0.5;
+    } else if (state === 'archer_recover' || state === 'pachon_recover') {
+      bodyPivot.position.y = 0.71;
+      leftArmPivot.rotation.x = -0.4;
+      rightArmPivot.rotation.x = -0.2;
+      capePivot.rotation.x = 0.25;
     } else if (state === 'skill' || state === 'whirlwind') {
       bodyPivot.rotation.y = time * 22;
       rightArmPivot.rotation.x = -Math.PI / 2;
@@ -2089,6 +3205,74 @@ export function createProjectileMesh(kind = 'bolt', color = 0xa855f7, scale = 1)
   root.traverse((c) => { c.userData.noFlash = true; });
   root.userData.dispose = () => disposeObject3D(root);
   return root;
+}
+
+export const SRO_MOB_GLB_MAP = {
+  mangnyang: { url: '/assets/sro/mobs/mangnyang.glb', height: 1.45, yOffset: 0 },
+  mangyang: { url: '/assets/sro/mobs/mangnyang.glb', height: 1.45, yOffset: 0 },
+  bigeyeghost: { url: '/assets/sro/mobs/bigeyeghost.glb', height: 1.52, yOffset: 0 },
+  gyo: { url: '/assets/sro/mobs/gyo.glb', height: 1.40, yOffset: 0 },
+  waterghost: { url: '/assets/sro/mobs/waterghost.glb', height: 1.55, yOffset: 0 },
+  stoneghost: { url: '/assets/sro/mobs/stoneghost.glb', height: 1.75, yOffset: 0 },
+  tombstone: { url: '/assets/sro/mobs/tombstone.glb', height: 2.10, yOffset: 0 },
+  yeoha: { url: '/assets/sro/mobs/yeoha.glb', height: 1.85, yOffset: 0 },
+  bandit: { url: '/assets/sro/mobs/bandit.glb', height: 1.75, yOffset: 0 },
+  banditarcher: { url: '/assets/sro/mobs/banditarcher.glb', height: 1.75, yOffset: 0 },
+  tiger: { url: '/assets/sro/mobs/tiger.glb', height: 1.45, yOffset: 0 },
+  whitetiger: { url: '/assets/sro/mobs/whitetiger.glb', height: 1.55, yOffset: 0 },
+  bluetiger: { url: '/assets/sro/mobs/bluetiger.glb', height: 1.75, yOffset: 0 },
+  chakji: { url: '/assets/sro/mobs/chakji.glb', height: 1.85, yOffset: 0 },
+  ghostbug: { url: '/assets/sro/mobs/ghostbug.glb', height: 1.30, yOffset: 0 },
+  devilbug: { url: '/assets/sro/mobs/devilbug.glb', height: 1.40, yOffset: 0 },
+  hyungno: { url: '/assets/sro/mobs/hyungno.glb', height: 1.95, yOffset: 0 },
+  earthghost: { url: '/assets/sro/mobs/earthghost.glb', height: 1.60, yOffset: 0 },
+  gunpowderghost_clon: { url: '/assets/sro/mobs/gunpowderghost_clon.glb', height: 1.50, yOffset: 0 }
+};
+
+export const SRO_BOSS_GLB_MAP = {
+  tigerwoman: { url: '/assets/sro/mobs/tigerwoman.glb', height: 2.25, yOffset: 0 },
+  tigergirl: { url: '/assets/sro/mobs/tigerwoman.glb', height: 2.25, yOffset: 0 },
+  earthking: { url: '/assets/sro/mobs/earthking.glb', height: 2.15, yOffset: 0 },
+  bluetiger: { url: '/assets/sro/mobs/bluetiger.glb', height: 2.35, yOffset: 0 },
+  banditlord: { url: '/assets/sro/mobs/hyungno.glb', height: 2.25, yOffset: 0 },
+  hyeongcheon: { url: '/assets/sro/mobs/hyeongcheon.glb', height: 2.65, yOffset: 0 }
+};
+
+export function resolveMonsterGlb(rawType, isBoss, customGlbPath = null, customTargetHeight = null) {
+  if (customGlbPath) {
+    return { url: customGlbPath, height: customTargetHeight || (isBoss ? 2.25 : 1.65), yOffset: 0 };
+  }
+  const t = String(rawType || '').toLowerCase().replace(/[\s_-]+/g, '');
+  if (isBoss) {
+    if (t.includes('tigerwoman') || t.includes('tigergirl') || t.includes('queen')) return SRO_BOSS_GLB_MAP.tigerwoman;
+    if (t.includes('bluetiger')) return SRO_BOSS_GLB_MAP.bluetiger;
+    if (t.includes('bandit')) return SRO_BOSS_GLB_MAP.banditlord;
+    if (t.includes('earthking') || t.includes('king') || t.includes('gargoyle')) return SRO_BOSS_GLB_MAP.earthking;
+    if (t.includes('hyeongcheon') || t.includes('general') || t.includes('devil') || t.includes('chaos') || t.includes('boss')) return SRO_BOSS_GLB_MAP.hyeongcheon;
+    return SRO_BOSS_GLB_MAP.hyeongcheon;
+  }
+
+  if (t.includes('mangnyang') || t.includes('mangyang')) return SRO_MOB_GLB_MAP.mangnyang;
+  if (t.includes('bigeye') || t.includes('eye')) return SRO_MOB_GLB_MAP.bigeyeghost;
+  if (t.includes('gyo') || t.includes('fish')) return SRO_MOB_GLB_MAP.gyo;
+  if (t.includes('waterghost') || t.includes('water')) return SRO_MOB_GLB_MAP.waterghost;
+  if (t.includes('stoneghost') || t.includes('stonegolem') || t.includes('golem') || t.includes('ancient')) return SRO_MOB_GLB_MAP.stoneghost;
+  if (t.includes('tombstone') || t.includes('tomb') || t.includes('mummy')) return SRO_MOB_GLB_MAP.tombstone;
+  if (t.includes('yeoha') || t.includes('wraith') || t.includes('phantom') || t.includes('ghost')) return SRO_MOB_GLB_MAP.yeoha;
+  if (t.includes('banditarcher')) return SRO_MOB_GLB_MAP.banditarcher;
+  if (t.includes('bandit') || t.includes('thief') || t.includes('raider') || t.includes('goblin') || t.includes('orc')) return SRO_MOB_GLB_MAP.bandit;
+  if (t.includes('bluetiger')) return SRO_MOB_GLB_MAP.bluetiger;
+  if (t.includes('whitetiger')) return SRO_MOB_GLB_MAP.whitetiger;
+  if (t.includes('tiger') || t.includes('wolf') || t.includes('hound')) return SRO_MOB_GLB_MAP.tiger;
+  if (t.includes('chakji') || t.includes('lizardman') || t.includes('scaleblade')) return SRO_MOB_GLB_MAP.chakji;
+  if (t.includes('ghostbug') || t.includes('spider') || t.includes('bat')) return SRO_MOB_GLB_MAP.ghostbug;
+  if (t.includes('devilbug') || t.includes('demon')) return SRO_MOB_GLB_MAP.devilbug;
+  if (t.includes('hyungno') || t.includes('darkknight') || t.includes('knight')) return SRO_MOB_GLB_MAP.hyungno;
+  if (t.includes('earthghost') || t.includes('zombie') || t.includes('plague')) return SRO_MOB_GLB_MAP.earthghost;
+  if (t.includes('gunpowder') || t.includes('slime') || t.includes('blob') || t.includes('ooze')) return SRO_MOB_GLB_MAP.gunpowderghost_clon;
+
+  if (SRO_MOB_GLB_MAP[t]) return SRO_MOB_GLB_MAP[t];
+  return null;
 }
 
 /**
@@ -2444,11 +3628,59 @@ export function createMonsterMesh(typeOrConfig = 'slime', options = {}) {
         opacity: 0.65
       })
     );
+    auraRing.name = 'AuraRing';
+    auraRing.userData.keepWithGLB = true;
     auraRing.userData.noFlash = true;
     auraRing.rotation.x = -Math.PI / 2;
     auraRing.position.y = 0.03;
     root.add(auraRing);
     root.userData.auraRing = auraRing;
+  }
+
+  // SRO Monster / Boss GLB Models
+  const mobSpec = resolveMonsterGlb(rawType, isBoss, cfg.glbPath, cfg.targetHeight);
+  if (mobSpec) {
+    attachGLBModel(root, mobSpec.url, {
+      targetHeight: mobSpec.height,
+      yOffset: mobSpec.yOffset,
+      hideFallback: true,
+      castShadow: isBoss,
+      receiveShadow: true,
+      onLoaded: (clone, { animations }) => {
+        let rootBone = null;
+        clone.traverse((b) => {
+          if (!rootBone && b.isBone && /^(Bip0[123]|Bone01)$/i.test(b.name)) {
+            rootBone = b;
+          }
+          if (b.isMesh) b.frustumCulled = false;
+        });
+        const bindRootY = rootBone ? rootBone.position.y : 0;
+
+        if (animations && animations.length > 0) {
+          const mixer = new THREE.AnimationMixer(clone);
+          const actions = {};
+          for (const clip of animations) {
+            actions[clip.name] = mixer.clipAction(clip);
+          }
+          root.userData.mixer = mixer;
+          root.userData.actions = actions;
+          root.userData.currentAction = null;
+          const stand = actions['STAND1'] || Object.values(actions)[0];
+          if (stand) {
+            stand.play();
+            mixer.update(0.001);
+            root.userData.currentAction = stand;
+            root.userData.currentActionName = 'STAND1';
+            // Compensate if the monster/boss STAND1 animation drops its root bone below bind pose (e.g., tigerwoman, bluetiger, hyungno, tiger, devilbug, stoneghost)
+            if (rootBone && rootBone.position.y < bindRootY - 0.02) {
+              const drop = (bindRootY - rootBone.position.y) * clone.scale.y;
+              clone.position.y += drop;
+            }
+          }
+        }
+        clone.userData.baseY = clone.position.y;
+      }
+    });
   }
 
   root.scale.setScalar(baseScale);
@@ -2466,6 +3698,52 @@ export function createMonsterMesh(typeOrConfig = 'slime', options = {}) {
 
     if (root.userData.auraRing) {
       root.userData.auraRing.rotation.z = time * 1.8;
+    }
+
+    // AnimationMixer for SRO GLB Monster
+    if (root.userData.mixer) {
+      root.userData.mixer.update(dt);
+      const actions = root.userData.actions;
+      if (actions) {
+        let targetName = 'STAND1';
+        let targetLoop = THREE.LoopRepeat;
+        let clamp = false;
+        if (state === 'dead' || state === 'death') {
+          targetName = actions['DIE1'] ? 'DIE1' : 'STAND1';
+          targetLoop = THREE.LoopOnce;
+          clamp = true;
+        } else if (state === 'hurt' || state === 'damage' || state === 'hit') {
+          targetName = actions['DAMAGE1'] ? 'DAMAGE1' : (actions['DAMAGE2'] ? 'DAMAGE2' : 'STAND1');
+          targetLoop = THREE.LoopOnce;
+        } else if (state === 'attack' || state === 'skill') {
+          targetName = actions['ATTACK1'] ? 'ATTACK1' : (actions['ATTACK2'] ? 'ATTACK2' : 'STAND1');
+          targetLoop = THREE.LoopOnce;
+        } else if (state === 'chase' || state === 'walk' || state === 'run') {
+          targetName = actions['RUN'] ? 'RUN' : (actions['WALK'] ? 'WALK' : 'STAND1');
+        }
+
+        const nextAction = actions[targetName] || actions['STAND1'];
+        if (nextAction && nextAction !== root.userData.currentAction) {
+          if (root.userData.currentAction) {
+            root.userData.currentAction.fadeOut(0.18);
+          }
+          nextAction.reset();
+          nextAction.setLoop(targetLoop, targetLoop === THREE.LoopOnce ? 1 : Infinity);
+          nextAction.clampWhenFinished = clamp;
+          nextAction.fadeIn(0.18).play();
+          root.userData.currentAction = nextAction;
+          root.userData.currentActionName = targetName;
+        }
+      }
+      return;
+    }
+
+    if (root.userData.glbModel) {
+      if (state === 'dead' || state === 'death') {
+        root.userData.glbModel.rotation.x = THREE.MathUtils.lerp(root.userData.glbModel.rotation.x, -Math.PI / 2.2, dt * 8);
+        return;
+      }
+      root.userData.glbModel.position.y = (state === 'chase' || state === 'walk') ? Math.sin(time * 8) * 0.04 : 0;
     }
 
     if (state === 'dead' || state === 'death') {
@@ -2605,6 +3883,9 @@ export function createNPCMesh(npcOrRole = 'chief') {
   // Floating role/quest indicator crystal above head
   const marker = new THREE.Mesh(new THREE.OctahedronGeometry(0.12, 0), accentMat);
   marker.position.y = 1.75;
+  marker.name = 'QuestMarker';
+  marker.userData.keepWithGLB = true;
+  marker.userData.isQuestMarker = true;
   root.add(marker);
 
   // Base circle
@@ -2614,7 +3895,146 @@ export function createNPCMesh(npcOrRole = 'chief') {
   );
   ring.rotation.x = -Math.PI / 2;
   ring.position.y = 0.02;
+  ring.name = 'NpcRing';
+  ring.userData.keepWithGLB = true;
   root.add(ring);
+
+  // SRO NPC Character Models with Silkroad animations & SOS glowing weapons
+  const rLow = roleStr.toLowerCase();
+  let npcGlbUrl = '/assets/sro/town/m01.glb';
+  let npcTargetH = 1.84;
+  let npcSosWeapon = 'sword_04.glb';
+  if (rLow.includes('smith') || rLow.includes('blacksmith') || rLow.includes('weapon') || rLow.includes('forge')) {
+    npcGlbUrl = '/assets/sro/town/m03.glb';
+    npcTargetH = 1.85;
+    npcSosWeapon = 'tblade_04.glb';
+  } else if (rLow.includes('chief') || rLow.includes('headman') || rLow.includes('mayor') || rLow.includes('elder')) {
+    npcGlbUrl = '/assets/sro/town/elder_m.glb';
+    npcTargetH = 1.75;
+    npcSosWeapon = 'spear_04.glb';
+  } else if (rLow.includes('guard_bow') || rLow.includes('archer')) {
+    npcGlbUrl = '/assets/sro/town/guard_bow.glb';
+    npcTargetH = 1.85;
+    npcSosWeapon = 'bow_04.glb';
+  } else if (rLow.includes('guard')) {
+    npcGlbUrl = '/assets/sro/town/guard_spear.glb';
+    npcTargetH = 1.85;
+    npcSosWeapon = 'spear_04.glb';
+  } else if (rLow.includes('alchem') || rLow.includes('compos') || rLow.includes('synth') || rLow.includes('gem')) {
+    npcGlbUrl = '/assets/sro/town/w01.glb';
+    npcTargetH = 1.78;
+    npcSosWeapon = 'spear_04.glb';
+  } else if (rLow.includes('merchant') || rLow.includes('potion') || rLow.includes('shop') || rLow.includes('item')) {
+    npcGlbUrl = '/assets/sro/town/w02.glb';
+    npcTargetH = 1.76;
+    npcSosWeapon = 'blade_04.glb';
+  } else if (rLow.includes('skill') || rLow.includes('master') || rLow.includes('trainer')) {
+    npcGlbUrl = '/assets/sro/town/m03.glb';
+    npcTargetH = 1.85;
+    npcSosWeapon = 'sword_04.glb';
+  } else if (rLow.includes('woman') || rLow.includes('f1') || rLow.includes('f2')) {
+    npcGlbUrl = '/assets/sro/town/w01.glb';
+    npcTargetH = 1.76;
+    npcSosWeapon = 'bow_04.glb';
+  }
+
+  attachGLBModel(root, npcGlbUrl, {
+    targetHeight: npcTargetH,
+    yOffset: 0,
+    onLoaded: (clone) => {
+      const bonesByName = new Map();
+      let rootBone = null;
+      clone.traverse((c) => {
+        if (c.isBone) {
+          bonesByName.set(c.name, c);
+          bonesByName.set(c.name.replace(/_/g, ' '), c);
+          if (!rootBone && /^(Bip0[123]|Bone01)$/i.test(c.name)) rootBone = c;
+        }
+        if (c.isMesh) c.frustumCulled = false;
+      });
+      const bindRootY = rootBone ? rootBone.position.y : 0;
+
+      // Equip glowing SOS (Seal of Star) weapon in hand using bind-pose socket rotation cancellation
+      clone.updateMatrixWorld(true);
+      const isBow = npcSosWeapon.startsWith('bow');
+      const handBone = isBow
+        ? (bonesByName.get('Bip01 L Hand') || bonesByName.get('Bip01 L HandMid') || bonesByName.get('Bip01 R Hand'))
+        : (bonesByName.get('Bip01 R HandMid') || bonesByName.get('Bip01 R Hand') || bonesByName.get('Bip01 L Hand'));
+      let weaponSocket = null;
+      if (handBone) {
+        weaponSocket = new THREE.Group();
+        const bindQuat = new THREE.Quaternion();
+        handBone.getWorldQuaternion(bindQuat);
+        weaponSocket.quaternion.copy(bindQuat).invert();
+        handBone.add(weaponSocket);
+      }
+
+      // Bind shared Silkroad STAND1 / WALK / RUN animations from chinaman_warrior.glb so town NPCs never stay in T-pose
+      loadGLB('/assets/sro/char/chinaman_warrior.glb').then((animEntry) => {
+        if (!animEntry || !animEntry.animations || !animEntry.animations.length) return;
+        const mixer = new THREE.AnimationMixer(clone);
+        const actions = {};
+        for (const clip of animEntry.animations) {
+          if (clip.name === 'STAND1' || clip.name === 'WALK' || clip.name === 'RUN') {
+            actions[clip.name] = mixer.clipAction(clip);
+          }
+        }
+        root.userData.npcMixer = mixer;
+        root.userData.npcActions = actions;
+        const startAct = actions['STAND1'] || actions['WALK'];
+        if (startAct) {
+          startAct.play();
+          mixer.update(0.001);
+          root.userData.npcCurrentAction = startAct;
+          root.userData.npcCurrentActionName = 'STAND1';
+          if (rootBone && rootBone.position.y < bindRootY - 0.02) {
+            clone.position.y += (bindRootY - rootBone.position.y) * clone.scale.y;
+          }
+        }
+      });
+
+      if (weaponSocket) {
+        loadGLB(`/assets/sro/equipment/${npcSosWeapon}`).then((wEntry) => {
+          if (!wEntry || !wEntry.scene) return;
+          const wClone = SkeletonUtils.clone(wEntry.scene);
+          wClone.traverse((m) => {
+            if (m.isMesh) {
+              m.frustumCulled = false;
+              if (m.material) {
+                const cMat = m.material.clone();
+                cMat.transparent = false;
+                cMat.alphaTest = 0;
+                cMat.depthWrite = true;
+                cMat.side = THREE.DoubleSide;
+                if (cMat.emissive) {
+                  cMat.emissive.setHex(0x38bdf8);
+                  cMat.emissiveIntensity = 0.65;
+                }
+                m.material = cMat;
+              }
+              if (m.geometry) {
+                const shell = new THREE.Mesh(
+                  m.geometry,
+                  new THREE.MeshBasicMaterial({
+                    color: 0x38bdf8,
+                    transparent: true,
+                    opacity: 0.35,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false,
+                    side: THREE.DoubleSide
+                  })
+                );
+                shell.scale.setScalar(1.06);
+                shell.frustumCulled = false;
+                m.add(shell);
+              }
+            }
+          });
+          weaponSocket.add(wClone);
+        });
+      }
+    }
+  });
 
   root.userData.marker = marker;
   root.userData.setQuestMarker = (markerType = null) => {
@@ -2632,10 +4052,34 @@ export function createNPCMesh(npcOrRole = 'chief') {
     }
   };
 
-  root.userData.animate = (time = 0) => {
-    const t = typeof time === 'number' ? time : 0;
+  root.userData.animate = (stateOrTime = 0, timeOrDt = 0.016, maybeDt = 0.016) => {
+    let st = 'idle';
+    let t = 0;
+    let dt = 0.016;
+    if (typeof stateOrTime === 'string') {
+      st = stateOrTime.toLowerCase();
+      t = typeof timeOrDt === 'number' ? timeOrDt : 0;
+      dt = typeof maybeDt === 'number' ? maybeDt : 0.016;
+    } else {
+      t = typeof stateOrTime === 'number' ? stateOrTime : 0;
+      dt = typeof timeOrDt === 'number' ? timeOrDt : 0.016;
+    }
     marker.position.y = 1.75 + Math.sin(t * 3.5) * 0.08;
     marker.rotation.y = t * 2.2;
+    if (root.userData.npcMixer && root.userData.npcActions) {
+      const wantWalk = st === 'walk' || st === 'run';
+      const wantName = wantWalk
+        ? (root.userData.npcActions['WALK'] ? 'WALK' : 'RUN')
+        : 'STAND1';
+      const nextAct = root.userData.npcActions[wantName];
+      if (nextAct && root.userData.npcCurrentActionName !== wantName) {
+        if (root.userData.npcCurrentAction) root.userData.npcCurrentAction.fadeOut(0.18);
+        nextAct.reset().fadeIn(0.18).play();
+        root.userData.npcCurrentAction = nextAct;
+        root.userData.npcCurrentActionName = wantName;
+      }
+      root.userData.npcMixer.update(Math.min(0.05, Math.max(0.001, dt)));
+    }
   };
 
   enableShadows(root, true, true);
@@ -2643,7 +4087,7 @@ export function createNPCMesh(npcOrRole = 'chief') {
 }
 
 /**
- * Create interactive 3D Treasure Chest with hinged lid
+ * Create interactive 3D Treasure Chest with hinged lid (Silkroad iron-bound wooden/golden treasure coffer)
  */
 export function createChestMesh(tier = 'normal', isOpen = false) {
   const root = new THREE.Group();
@@ -2651,23 +4095,48 @@ export function createChestMesh(tier = 'normal', isOpen = false) {
 
   const tierStr = String(tier || 'normal').toLowerCase();
   const isGold = tierStr.includes('boss') || tierStr.includes('gold') || tierStr.includes('epic') || tierStr.includes('rare');
-  const boxColor = isGold ? 0x7c2d12 : 0x5c3a21;
+  const boxColor = isGold ? 0x78350f : 0x451a03;
   const trimColor = isGold ? 0xfacc15 : 0x94a3b8;
 
-  const woodMat = new THREE.MeshStandardMaterial({ color: boxColor, roughness: 0.65, metalness: 0.2 });
-  const trimMat = new THREE.MeshStandardMaterial({ color: trimColor, roughness: 0.3, metalness: 0.85 });
+  const woodMat = new THREE.MeshStandardMaterial({ color: boxColor, roughness: 0.65, metalness: 0.15 });
+  const trimMat = new THREE.MeshStandardMaterial({ color: trimColor, roughness: 0.25, metalness: 0.85 });
+  const studMat = new THREE.MeshStandardMaterial({ color: isGold ? 0xfef08a : 0xcbd5e1, roughness: 0.2, metalness: 0.9 });
   const glowMat = new THREE.MeshBasicMaterial({ color: isGold ? 0xfef08a : 0x38bdf8 });
 
-  // Chest base
-  const base = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.42, 0.52), woodMat);
+  // Chest base coffer box
+  const base = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.42, 0.52), woodMat);
   base.position.y = 0.21;
   root.add(base);
 
-  const bandL = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.44, 0.55), trimMat);
+  // Vertical iron/gold reinforcement bands
+  const bandL = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.43, 0.53), trimMat);
   bandL.position.set(-0.24, 0.21, 0);
   const bandR = bandL.clone();
   bandR.position.x = 0.24;
-  root.add(bandL, bandR);
+  // Horizontal reinforcing rim band
+  const waistBand = new THREE.Mesh(new THREE.BoxGeometry(0.79, 0.05, 0.53), trimMat);
+  waistBand.position.y = 0.40;
+  root.add(bandL, bandR, waistBand);
+
+  // Corner brackets & studs on base
+  const studGeo = new THREE.BoxGeometry(0.05, 0.05, 0.05);
+  for (const sx of [-0.38, 0.38]) {
+    for (const sz of [-0.25, 0.25]) {
+      const studBottom = new THREE.Mesh(studGeo, studMat);
+      studBottom.position.set(sx, 0.03, sz);
+      const studTop = new THREE.Mesh(studGeo, studMat);
+      studTop.position.set(sx, 0.39, sz);
+      root.add(studBottom, studTop);
+    }
+  }
+
+  // Front ornate lock plate with keyhole
+  const lockPlate = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.16, 0.04), trimMat);
+  lockPlate.position.set(0, 0.28, 0.27);
+  const keyhole = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.02, 0.045, 8), new THREE.MeshBasicMaterial({ color: 0x0f172a }));
+  keyhole.rotation.x = Math.PI / 2;
+  keyhole.position.set(0, 0.27, 0.285);
+  root.add(lockPlate, keyhole);
 
   // Inner treasure glow
   const innerGlow = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.06, 0.42), glowMat);
@@ -2675,18 +4144,33 @@ export function createChestMesh(tier = 'normal', isOpen = false) {
   innerGlow.visible = Boolean(isOpen);
   root.add(innerGlow);
 
-  // Hinged Lid
+  // Hinged Coffer Lid with curved barrel-vaulted top
   const lidPivot = new THREE.Group();
+  lidPivot.name = 'ChestLid';
   lidPivot.position.set(0, 0.42, -0.26);
   root.add(lidPivot);
+  root.userData.lid = lidPivot;
 
-  const lid = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.22, 0.54), woodMat);
-  lid.position.set(0, 0.11, 0.26);
-  lidPivot.add(lid);
+  // Lid coffer body: arched barrel vault (half-cylinder)
+  const vaultGeo = new THREE.CylinderGeometry(0.26, 0.26, 0.78, 16, 1, false, 0, Math.PI);
+  const lidVault = new THREE.Mesh(vaultGeo, woodMat);
+  lidVault.position.set(0, 0.02, 0.26);
+  lidVault.rotation.z = Math.PI / 2;
+  lidPivot.add(lidVault);
 
-  const lock = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.16, 0.06), trimMat);
-  lock.position.set(0, 0.04, 0.53);
-  lidPivot.add(lock);
+  // Lid curved iron bands
+  const lidBandGeo = new THREE.CylinderGeometry(0.266, 0.266, 0.06, 16, 1, false, 0, Math.PI);
+  const lidBandL = new THREE.Mesh(lidBandGeo, trimMat);
+  lidBandL.position.set(-0.24, 0.02, 0.26);
+  lidBandL.rotation.z = Math.PI / 2;
+  const lidBandR = lidBandL.clone();
+  lidBandR.position.x = 0.24;
+  lidPivot.add(lidBandL, lidBandR);
+
+  // Lid latch hasp overlapping the lock plate
+  const latch = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.12, 0.05), trimMat);
+  latch.position.set(0, 0.02, 0.525);
+  lidPivot.add(latch);
 
   root.userData.isOpen = Boolean(isOpen);
   lidPivot.rotation.x = root.userData.isOpen ? -1.15 : 0;
@@ -2750,11 +4234,21 @@ export function createPortalMesh(colorOrOptions = 0x38bdf8, type = 'dungeon') {
   });
   const vortex = new THREE.Mesh(new THREE.CircleGeometry(0.84, 24), vortexMat);
   vortex.position.y = 1.05;
+  vortex.userData.keepWithGLB = true;
   root.add(vortex);
 
   const innerRing = new THREE.Mesh(new THREE.TorusGeometry(0.68, 0.035, 8, 20), runeMat);
   innerRing.position.y = 1.05;
+  innerRing.userData.keepWithGLB = true;
   root.add(innerRing);
+
+  // SRO Portal GLB (scaled compactly and grounded at native floor y=0 so underground foundation stays buried)
+  attachGLBModel(root, '/assets/sro/props/cj_portal.glb', {
+    scale: 0.22,
+    yOffset: -0.20,
+    groundAtZero: true,
+    centerXZ: true
+  });
 
   root.userData.animate = (time = 0) => {
     const t = typeof time === 'number' ? time : 0;
@@ -2817,43 +4311,235 @@ export function createBreakableMesh(type = 'barrel') {
 }
 
 /**
- * Create Ground Loot Mesh (Gold coins, Equipment bag/crystal, Potion)
+ * Create Ground Loot Mesh (Celestial Rarity Drop Beams & Distinct Ground Loot Meshes)
  */
 export function createLootMesh(itemOrType = 'bag', rarity = 'normal') {
-  const root = new THREE.Group();
-  const isObj = typeof itemOrType === 'object' && itemOrType !== null;
-  const kind = String(isObj ? (itemOrType.type || itemOrType.slot || 'item') : itemOrType).toLowerCase();
-  const rar = isObj ? (itemOrType.rarity || rarity) : rarity;
-  const col = kind.includes('gold') || kind.includes('coin') ? 0xfacc15 : getRarityColor(rar);
+  let item = {};
+  if (typeof itemOrType === 'string') {
+    item = { type: itemOrType, rarity };
+  } else if (itemOrType && typeof itemOrType === 'object') {
+    item = { ...itemOrType };
+    if (!item.rarity && rarity) item.rarity = rarity;
+  }
 
-  const mat = new THREE.MeshStandardMaterial({
-    color: col,
-    emissive: new THREE.Color(col),
-    emissiveIntensity: 0.55,
-    roughness: 0.25,
-    metalness: 0.5
-  });
+  const group = new THREE.Group();
+  group.userData = { type: 'loot', item };
 
-  const mesh = kind.includes('gold')
-    ? new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.2, 0.08, 12), mat)
-    : new THREE.Mesh(new THREE.OctahedronGeometry(0.2, 0), mat);
-  mesh.position.y = 0.28;
-  root.add(mesh);
+  const itemType = String(item.type || item.slot || '').toLowerCase();
+  const itemId = String(item.id || '').toLowerCase();
+  const isGold = itemType === 'gold' || itemType === 'coin' || itemType === 'coins';
 
-  const beam = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.04, 0.14, 0.9, 8),
-    new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.32 })
-  );
-  beam.position.y = 0.45;
-  root.add(beam);
+  const coreGroup = new THREE.Group();
+  coreGroup.name = 'LootCore';
 
-  root.userData.animate = (time = 0) => {
+  if (isGold) {
+    // Pile of 3-5 golden coins/ingots (0xfacc15)
+    const coinMat = new THREE.MeshStandardMaterial({
+      color: 0xfacc15,
+      emissive: new THREE.Color(0xfacc15),
+      emissiveIntensity: 0.45,
+      roughness: 0.25,
+      metalness: 0.85
+    });
+    const coinGeo = new THREE.CylinderGeometry(0.14, 0.14, 0.045, 12);
+
+    const c1 = new THREE.Mesh(coinGeo, coinMat);
+    c1.position.set(-0.06, 0.025, 0.04);
+    c1.rotation.y = 0.2;
+
+    const c2 = new THREE.Mesh(coinGeo, coinMat);
+    c2.position.set(0.07, 0.03, -0.03);
+    c2.rotation.y = -0.4;
+
+    const c3 = new THREE.Mesh(coinGeo, coinMat);
+    c3.position.set(0.01, 0.07, 0.02);
+    c3.rotation.x = 0.12;
+    c3.rotation.z = -0.15;
+
+    const ingotGeo = new THREE.BoxGeometry(0.2, 0.05, 0.1);
+    const c4 = new THREE.Mesh(ingotGeo, coinMat);
+    c4.position.set(-0.02, 0.10, -0.02);
+    c4.rotation.y = 0.55;
+    c4.rotation.x = 0.1;
+
+    coreGroup.add(c1, c2, c3, c4);
+  } else {
+    // Silkroad Treasure Chest / Coffer geometry as the instant synchronous placeholder for all dropped items
+    const rawRar = String(item.rarity || rarity || 'normal');
+    const rarColor = item.seal ? (SEALS?.[item.seal]?.color ? cssToHex(SEALS[item.seal].color) : 0xf59e0b) : getRarityColor(rawRar);
+    const chestMat = new THREE.MeshStandardMaterial({
+      color: rarColor,
+      emissive: new THREE.Color(rarColor),
+      emissiveIntensity: 0.42,
+      roughness: 0.35,
+      metalness: 0.45
+    });
+    const trimMat = new THREE.MeshStandardMaterial({
+      color: 0xfbbf24,
+      roughness: 0.25,
+      metalness: 0.85
+    });
+
+    const box = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.18, 0.22), chestMat);
+    box.position.y = 0.10;
+
+    const lidGeo = new THREE.CylinderGeometry(0.11, 0.11, 0.322, 14, 1, false, 0, Math.PI);
+    const lid = new THREE.Mesh(lidGeo, chestMat);
+    lid.position.set(0, 0.19, 0);
+    lid.rotation.z = Math.PI / 2;
+
+    const lock = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.06, 0.04), trimMat);
+    lock.position.set(0, 0.14, 0.115);
+
+    const band = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.19, 0.23), trimMat);
+    band.position.y = 0.10;
+
+    coreGroup.add(box, lid, lock, band);
+  }
+  group.add(coreGroup);
+
+  // Celestial Rarity Pillar (RARITY_BEAMS)
+  const rawSeal = String(item.seal || '').toLowerCase().replace(/^sealof/, '');
+  const rawRar = String(item.rarity || rarity || '').toLowerCase();
+  const beamSpec = RARITY_BEAMS?.[rawSeal] || RARITY_BEAMS?.[item.seal] || RARITY_BEAMS?.[rawRar] || null;
+
+  let orbitGroup = null;
+  let rippleRing = null;
+
+  if (beamSpec) {
+    // Tall vertical translucent additive light cylinder
+    const cylGeo = new THREE.CylinderGeometry(
+      (beamSpec.radius || 0.25) * 0.45,
+      beamSpec.radius || 0.25,
+      beamSpec.height || 2.8,
+      12,
+      1,
+      true
+    );
+    const cylMat = new THREE.MeshBasicMaterial({
+      color: beamSpec.color,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: beamSpec.opacity || 0.38,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+    const beamMesh = new THREE.Mesh(cylGeo, cylMat);
+    beamMesh.name = 'LootBeam';
+    beamMesh.userData.keepWithGLB = true;
+    beamMesh.userData.isRarityBeam = true;
+    beamMesh.position.y = (beamSpec.height || 2.8) / 2;
+    group.userData.rarityBeam = beamMesh;
+    group.add(beamMesh);
+
+    // Ground ripple ring at y = 0.04
+    const ringGeo = new THREE.RingGeometry(beamSpec.ringRadius * 0.7, beamSpec.ringRadius, 24);
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: beamSpec.color,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.6,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+    rippleRing = new THREE.Mesh(ringGeo, ringMat);
+    rippleRing.name = 'RarityRing';
+    rippleRing.userData.keepWithGLB = true;
+    rippleRing.rotation.x = -Math.PI / 2;
+    rippleRing.position.y = 0.04;
+    group.add(rippleRing);
+
+    // Orbiting group containing beamSpec.orbitCount glowing star/moon/sun shards
+    orbitGroup = new THREE.Group();
+    orbitGroup.name = 'OrbitRing';
+    orbitGroup.userData.isOrbitRing = true;
+    orbitGroup.userData.keepWithGLB = true;
+    group.userData.orbitGroup = orbitGroup;
+
+    const shardRadius = beamSpec.ringRadius * 0.75;
+    const shardGeo = new THREE.OctahedronGeometry(0.08, 0);
+    const shardMat = new THREE.MeshBasicMaterial({
+      color: beamSpec.color,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.9,
+      blending: THREE.AdditiveBlending
+    });
+    for (let i = 0; i < beamSpec.orbitCount; i++) {
+      const angle = (i / beamSpec.orbitCount) * Math.PI * 2;
+      const shard = new THREE.Mesh(shardGeo, shardMat);
+      shard.position.set(
+        Math.cos(angle) * shardRadius,
+        0.65,
+        Math.sin(angle) * shardRadius
+      );
+      orbitGroup.add(shard);
+    }
+    group.add(orbitGroup);
+  } else {
+    // Non-celestial items: simple beacon
+    const col = isGold ? 0xfacc15 : getRarityColor(item.rarity || rarity || 'normal');
+    const simpleBeam = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.04, 0.14, 0.9, 8),
+      new THREE.MeshBasicMaterial({
+        color: col,
+        transparent: true,
+        opacity: 0.32,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      })
+    );
+    simpleBeam.name = 'LootBeam';
+    simpleBeam.userData.keepWithGLB = true;
+    simpleBeam.position.y = 0.45;
+    group.add(simpleBeam);
+  }
+
+  // Silkroad Online 3D Drop Box GLB Loader
+  let dropUrl = '/assets/sro/drops/drop_ch_equip.glb';
+  if (item.type === 'gold' || isGold) {
+    const amt = Number(item.amount || item.gold || 0);
+    dropUrl = amt >= 500
+      ? '/assets/sro/drops/drop_ch_money_large.glb'
+      : amt >= 100
+        ? '/assets/sro/drops/drop_ch_money_normal.glb'
+        : '/assets/sro/drops/drop_ch_money_small.glb';
+    attachGLBModel(group, dropUrl, { targetHeight: 0.32, yOffset: 0.02, hideFallback: true });
+  } else {
+    const isAlchemyOrPotion = itemType === 'material' || itemType === 'alchemy' || itemType === 'potion' || itemType === 'consumable' || itemId.startsWith('elixir_') || itemId.startsWith('powder_') || itemId.startsWith('potion_') || itemId.startsWith('scroll_');
+    const isAcc = itemType === 'necklace' || itemType === 'ring' || itemType === 'accessory' || item.slot === 'necklace' || item.slot === 'ring';
+    const isRare = Boolean(item.seal || item.rarity === 'rare' || item.rarity === 'epic' || item.rarity === 'legendary');
+
+    if (item.dropModel) {
+      dropUrl = item.dropModel;
+    } else if (isAlchemyOrPotion) {
+      dropUrl = '/assets/sro/drops/drop_archemy.glb';
+    } else if (isAcc) {
+      dropUrl = isRare ? '/assets/sro/drops/drop_ch_acc_rare.glb' : '/assets/sro/drops/drop_ch_acc.glb';
+    } else {
+      dropUrl = isRare ? '/assets/sro/drops/drop_ch_equip_rare.glb' : '/assets/sro/drops/drop_ch_equip.glb';
+    }
+    attachGLBModel(group, dropUrl, { targetHeight: 0.42, yOffset: 0.02, hideFallback: true });
+  }
+
+  group.userData.animate = (time = 0) => {
     const t = typeof time === 'number' ? time : 0;
-    mesh.rotation.y = t * 3;
-    mesh.position.y = 0.26 + Math.sin(t * 4) * 0.07;
+    coreGroup.rotation.y = t * 2.2;
+    coreGroup.position.y = 0.12 + Math.sin(t * 3.5) * 0.05;
+    if (group.userData.glbModel) {
+      group.userData.glbModel.rotation.y = t * 2.2;
+      group.userData.glbModel.position.y = 0.05 + Math.sin(t * 3.5) * 0.05;
+    }
+    if (orbitGroup) {
+      orbitGroup.rotation.y = t * 2.5;
+    }
+    if (rippleRing) {
+      const pulse = 1.0 + Math.sin(t * 3.0) * 0.08;
+      rippleRing.scale.set(pulse, pulse, 1);
+    }
   };
 
-  return root;
+  return group;
 }
 
 export function createTorchMesh(color = 0xff8822) {
@@ -2951,6 +4637,92 @@ export function createStairsMesh(direction = 'down') {
   return root;
 }
 
+/**
+ * Create Silkroad Environment / Furniture / Prop Mesh from /assets/sro/props/ or /assets/sro/models/
+ */
+export function createSroProp(kind = 'table', options = {}) {
+  const root = new THREE.Group();
+  const k = String(kind || 'table').toLowerCase().replace(/\s+/g, '_');
+
+  const PROP_MODELS = {
+    table: '/assets/sro/props/cj_table01.glb',
+    table_chair: '/assets/sro/props/cj_table_chair.glb',
+    lamp: '/assets/sro/props/cj_lamp01.glb',
+    palace_lamp: '/assets/sro/props/cj_pal_lamp.glb',
+    stall: '/assets/sro/props/cj_streetstall.glb',
+    portal: '/assets/sro/props/cj_portal.glb',
+    lion_statue: '/assets/sro/props/cj3_lion01.glb',
+    training_dummy: '/assets/sro/props/cj_dummy_01.glb',
+    cart: '/assets/sro/props/cj_strawcart.glb',
+    basket: '/assets/sro/props/cj_potato_basket.glb',
+    // Character / Monster shortcuts:
+    bandit: '/assets/sro/models/bandit.glb',
+    warrior: '/assets/sro/models/chinaman_warrior.glb',
+    chinaman_warrior: '/assets/sro/models/chinaman_warrior.glb',
+    villageheadman: '/assets/sro/models/chinaquest_villageheadman.glb',
+    village_headman: '/assets/sro/models/chinaquest_villageheadman.glb',
+    headman: '/assets/sro/models/chinaquest_villageheadman.glb',
+    smith: '/assets/sro/models/chinashop_smith.glb',
+    blacksmith: '/assets/sro/models/chinashop_smith.glb',
+    mangnyang: '/assets/sro/models/mangnyang.glb',
+    stoneghost: '/assets/sro/models/stoneghost.glb',
+    tiger: '/assets/sro/models/tiger.glb',
+    tigerwoman: '/assets/sro/models/tigerwoman.glb',
+    whitetiger: '/assets/sro/models/whitetiger.glb'
+  };
+
+  const modelUrl = PROP_MODELS[k] || PROP_MODELS.table;
+  root.name = `SroProp_${k}`;
+
+  // Procedural fallback box placeholder for headless Node or before GLB loads
+  const fallbackMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.7 });
+  const fallbackMesh = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), fallbackMat);
+  fallbackMesh.position.y = 0.4;
+  root.add(fallbackMesh);
+
+  attachGLBModel(root, modelUrl, {
+    scale: options.scale || 1,
+    yOffset: options.yOffset || 0,
+    rotationY: options.rotationY || 0,
+    hideFallback: true
+  });
+
+  return root;
+}
+
+/**
+ * Create Silkroad Foliage / Nature 3D Billboard Sprite
+ */
+export function createSroSprite(spriteUrl, { width = 3, height = 3, yOffset = 1.5 } = {}) {
+  const root = new THREE.Group();
+  root.name = 'SroSprite';
+
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    const fallback = new THREE.Mesh(
+      new THREE.PlaneGeometry(width, height),
+      new THREE.MeshBasicMaterial({ visible: false })
+    );
+    fallback.position.y = yOffset;
+    root.add(fallback);
+    return root;
+  }
+
+  try {
+    const loader = new THREE.TextureLoader();
+    const map = loader.load(spriteUrl);
+    map.colorSpace = THREE.SRGBColorSpace;
+    const material = new THREE.SpriteMaterial({ map, transparent: true });
+    const sprite = new THREE.Sprite(material);
+    sprite.scale.set(width, height, 1);
+    sprite.position.y = yOffset;
+    root.add(sprite);
+  } catch (err) {
+    console.warn('[models3d] Failed to create SRO sprite:', spriteUrl, err);
+  }
+
+  return root;
+}
+
 export class Models3D {
   createHeroMesh(equipment, look) { return createHeroMesh(equipment, look); }
   createProjectileMesh(kind, color, scale) { return createProjectileMesh(kind, color, scale); }
@@ -2968,6 +4740,8 @@ export class Models3D {
   createTrapMesh(type, element) { return createTrapMesh(type, element); }
   createSwitchMesh(isActive) { return createSwitchMesh(isActive); }
   createStairsMesh(direction) { return createStairsMesh(direction); }
+  createSroProp(kind, options) { return createSroProp(kind, options); }
+  createSroSprite(spriteUrl, options) { return createSroSprite(spriteUrl, options); }
 }
 
 export const models3d = new Models3D();

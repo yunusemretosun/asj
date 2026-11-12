@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { createHeroMesh, createProjectileMesh, imbueColorOf } from './models3d.js';
 import { getClass } from '../systems/classes.js';
-import { skillTiming, STATUS } from '../systems/mechanics.js';
+import { skillTiming, STATUS, BERSERK } from '../systems/mechanics.js';
 
 const ELEMENT_FX_COLORS = { fire: 0xff6a2a, ice: 0x6fd4ff, cold: 0x6fd4ff, lightning: 0xffee44, poison: 0x7dff5a, dark: 0x9333ea, holy: 0xfef08a };
 
@@ -240,6 +240,34 @@ export class SoundFX {
         gain.connect(ctx.destination);
         osc.start(now + 0.02);
         osc.stop(now + 0.37);
+      } else if (type === 'berserk') {
+        // Dramatic rising power chord + electric hum
+        const chord = [130.81, 196.0, 261.63, 392.0, 523.25];
+        chord.forEach((freq, idx) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(freq * 0.75, now + idx * 0.04);
+          osc.frequency.exponentialRampToValueAtTime(freq * 1.05, now + idx * 0.04 + 0.35);
+          gain.gain.setValueAtTime(0.001, now + idx * 0.04);
+          gain.gain.linearRampToValueAtTime(this.masterVolume * 0.5, now + idx * 0.04 + 0.08);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now + idx * 0.04);
+          osc.stop(now + 0.72);
+        });
+        const hum = ctx.createOscillator();
+        const hGain = ctx.createGain();
+        hum.type = 'sawtooth';
+        hum.frequency.setValueAtTime(80, now);
+        hum.frequency.linearRampToValueAtTime(160, now + 0.4);
+        hGain.gain.setValueAtTime(this.masterVolume * 0.45, now);
+        hGain.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
+        hum.connect(hGain);
+        hGain.connect(ctx.destination);
+        hum.start(now);
+        hum.stop(now + 0.65);
       } else if (type === 'hurt') {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
@@ -386,11 +414,33 @@ export class PlayerController {
     // Create 3D Hero Mesh and add to scene
     const initialEquip = this._getEquipment();
     this.heroMesh = createHeroMesh(initialEquip, this._getLook());
+    this.mesh = this.heroMesh;
     this.renderer.scene.add(this.heroMesh);
     this.applyHeroLook();
 
     this._bindEvents();
     this._bindGameEvents();
+  }
+
+  get mesh() {
+    return this.heroMesh;
+  }
+
+  set mesh(val) {
+    this.heroMesh = val;
+  }
+
+  tryActivateBerserk() {
+    const res = this.gameState?.activateBerserk?.();
+    if (res?.ok) {
+      this.sound?.play('berserk');
+      this.renderer?.setBerserkAura?.(this.mesh, true);
+      this.renderer?.spawnLevelUpPillar?.(this.position);
+      this.onToast?.('⚡ BERSERK MODE ACTIVATED! (2x DMG, +38% Speed)', 'levelup');
+    } else if (res?.reason) {
+      this.onToast?.(res.reason, 'warning');
+    }
+    return res;
   }
 
   /** Subscribe to gameState events (alchemy results). Safe without an event emitter. */
@@ -510,6 +560,9 @@ export class PlayerController {
       if (code === 'Space') {
         e.preventDefault();
         this.performDash();
+      } else if (code === 'Tab' || code === 'KeyR') {
+        if (code === 'Tab') e.preventDefault();
+        this.tryActivateBerserk();
       } else if ((code === 'ShiftLeft' || code === 'ShiftRight') && !e.repeat && !this._canBlock()) {
         this.performDash();
       } else if (code === 'KeyJ') {
@@ -698,6 +751,10 @@ export class PlayerController {
       const radius = this.comboStage === 3 ? 2.65 : 2.15;
       const arc = this.comboStage === 3 ? Math.PI * 1.15 : Math.PI * 0.9;
       this.renderer.spawnSlashArc(this.position, this.rotation, radius, slashColor, arc, this.comboStage);
+      this.renderer?.spawnWeaponTrail?.(this.position, this.rotation, {
+        reach: radius,
+        imbueElement: this.gameState?.hero?.activeImbue?.element || this.gameState?.getActiveImbue?.()?.element
+      });
     }
     this.attackTimer = this.attackDuration;
 
@@ -735,8 +792,16 @@ export class PlayerController {
       knockback = this.comboStage === 3 ? 2.4 : 1.1;
 
       // Heavy swings show their arc on impact (after the wind-up)
+      const isDualAxe = cls?.id === 'axeman';
       const color = this._imbueColor() ?? (this.comboStage === 3 ? 0xf97316 : 0xef4444);
       this.renderer.spawnSlashArc(this.position, this.rotation, range, color, arc, this.comboStage);
+      if (isDualAxe) {
+        this.renderer.spawnSlashArc(this.position, this.rotation + 0.35, range * 0.95, color, arc * 0.9, this.comboStage + 1);
+      }
+      this.renderer?.spawnWeaponTrail?.(this.position, this.rotation, {
+        reach: range,
+        imbueElement: this.gameState?.hero?.activeImbue?.element || this.gameState?.getActiveImbue?.()?.element
+      });
       if (this.comboStage === 3) {
         const fx = this.position.x + Math.sin(this.rotation) * 1.4;
         const fz = this.position.z + Math.cos(this.rotation) * 1.4;
@@ -1246,40 +1311,40 @@ export class PlayerController {
   _skillAnimPlan(desc, index = 0, isChain = false) {
     const kind = String(desc?.kind || desc?.vfx || 'nova').toLowerCase();
     const style = this._getAttackStyle();
+    const cls = this._getHeroClass();
+    const classId = String(cls?.id || this.gameState?.classId || this.gameState?.hero?.classId || 'knight').toLowerCase();
     const range = Number(desc?.range) || 3.2;
     const ranged = kind === 'projectile' || (kind === 'aoe' && range > 5);
     const combo = isChain ? (index % 3) + 1 : kind === 'aoe' ? 3 : 1;
-    if (style === 'magic_bolt') {
-      return { prep: 'cast', recover: 'cast', combo: isChain ? 1 : 3, rel: 0.4 };
+
+    // Silkroad Martial Arts Class-Specific Animation Plans
+    if (classId === 'wizard' || style === 'magic_bolt') {
+      return { prep: 'wizard_prep', release: 'wizard_release', recover: 'wizard_recover', combo: isChain ? 1 : 3, rel: 0.4 };
     }
-    if (style === 'arrow') {
-      if (ranged) return { prep: 'shoot', recover: 'shoot', combo: 1, rel: 0.72 };
-      return { prep: 'cast', recover: 'cast', combo: 3, rel: 0.4 };
+    if (classId === 'archer' || style === 'arrow') {
+      return { prep: 'archer_prep', release: 'archer_release', recover: 'archer_recover', combo: 1, rel: 0.72 };
     }
-    // Melee classes
-    if (kind === 'melee_arc' || (kind === 'aoe' && !ranged)) {
-      return { prep: 'attack', recover: 'attack', combo, rel: combo === 3 ? 0.45 : 0.35 };
+    if (classId === 'axeman' || style === 'melee_heavy') {
+      return { prep: 'axeman_prep', release: 'axeman_release', recover: 'axeman_recover', combo, rel: combo === 3 ? 0.45 : 0.35 };
     }
-    if (kind === 'heal' || kind === 'buff' || kind === 'imbue') {
-      return { prep: 'windup', recover: 'idle', combo: 1, rel: 1 };
-    }
-    if (kind === 'dash') return { prep: 'windup', recover: 'dash', combo: 1, rel: 1 };
-    if (ranged) return { prep: 'windup', recover: 'attack', combo: 3, rel: 1 };
-    // nova / whirlwind / generic: raise the weapon, then the legacy spin
-    return { prep: 'windup', recover: 'skill', combo: 3, rel: 1 };
+    // Knight (Bicheon)
+    return { prep: 'knight_prep', release: 'knight_release', recover: 'knight_recover', combo, rel: combo === 3 ? 0.45 : 0.35 };
   }
 
   _setSkillAnim(plan, stage, g) {
     const k = Math.max(0, Math.min(1, g));
     if (stage === 'recover') {
-      this.skillAnim = plan.recover;
+      this.skillAnim = plan.recover || 'idle';
       this.skillAnimCombo = plan.combo;
-      // windup plans swap to a different pose on release: play that pose from its start
-      this.skillAnimProgress = plan.prep === 'windup' ? k : plan.rel + (1 - plan.rel) * k;
+      this.skillAnimProgress = k;
+    } else if (stage === 'release') {
+      this.skillAnim = plan.release || (plan.prep ? plan.prep.replace('_prep', '_release') : 'attack');
+      this.skillAnimCombo = plan.combo;
+      this.skillAnimProgress = k;
     } else {
       this.skillAnim = plan.prep;
       this.skillAnimCombo = plan.combo;
-      this.skillAnimProgress = plan.prep === 'windup' ? k : plan.rel * k;
+      this.skillAnimProgress = k;
     }
   }
 
@@ -1340,7 +1405,24 @@ export class PlayerController {
     };
     this._aimSkillAtCursor(first);
     this._setSkillAnim(plan, 'prep', 0);
-    if (prep > 0.12) this.renderer.spawnHitSparks?.(this.position, desc.color || 0xa855f7, 4);
+    if (prep > 0.05 && this.renderer?.spawnSkillIndicator) {
+      this.renderer.spawnSkillIndicator(first.kind || 'arc', this.position, this.rotation, {
+        range: first.range || 3.5,
+        radius: first.radius || first.range || 3.5,
+        angle: first.angle || Math.PI * 1.1,
+        duration: prep,
+        color: first.color
+      });
+    } else if (prep > 0.12) {
+      this.renderer.spawnHitSparks?.(this.position, desc.color || 0xa855f7, 4);
+    }
+
+    const cls = this._getHeroClass();
+    const classId = String(cls?.id || this.gameState?.classId || 'knight').toLowerCase();
+    if (classId === 'wizard' || this._getAttackStyle() === 'magic_bolt') {
+      // Wizard (Force) glowing magic circle ring on the ground during prep
+      this.renderer?.spawnShockwave?.(this.position, 2.2, desc.color || 0x818cf8, Math.max(0.4, prep));
+    }
 
     if (prep <= 0) this._advanceSkillPhase();
     return true;
@@ -1377,6 +1459,7 @@ export class PlayerController {
     const chain = ph.chain;
     const relDesc = chain ? this._chainSegmentDesc(ph.desc, chain.index) : ph.desc;
     this._aimSkillAtCursor(relDesc);
+    this._setSkillAnim(ph.plan, 'release', 0.5);
     this._releaseSkill(relDesc, { chainIndex: chain ? chain.index : -1 });
     if (this.skillPhase !== ph) return; // cleared during release (zone change, death...)
 
@@ -1521,6 +1604,14 @@ export class PlayerController {
       range: desc.range || 3.2,
       angle: desc.angle
     });
+
+    if (inChain || kind === 'melee_arc') {
+      const reach = Number(desc.reach || desc.range || desc.radius || 3.2);
+      this.renderer?.spawnWeaponTrail?.(this.position, this.rotation, {
+        reach,
+        imbueElement: this.gameState?.hero?.activeImbue?.element || this.gameState?.getActiveImbue?.()?.element || (element !== 'physical' ? element : null)
+      });
+    }
 
     if (kind === 'heal' || kind === 'buff') {
       if (kind === 'heal') this._showHeal(desc);
@@ -1862,18 +1953,37 @@ export class PlayerController {
     // Sync 3D Hero mesh transform & animation
     this.heroMesh.position.copy(this.position);
     this.heroMesh.rotation.y = this.rotation;
+
+    // Wizard (Force) floating/levitating cast pose (+0.35m) during prep
+    const heroClass = this._getHeroClass();
+    const isForceMage = heroClass?.id === 'wizard' || this._getAttackStyle() === 'magic_bolt';
+    if (this.state === 'skill' && this.skillPhase && (this.skillPhase.stage === 'prep' || this.skillPhase.stage === 'gap') && isForceMage) {
+      const g = 1 - Math.max(0, this.skillPhase.timer) / this.skillPhase.total;
+      this.heroMesh.position.y += 0.35 * Math.sin(g * Math.PI * 0.5);
+    }
+
+    // Keep Berserk 3D Aura synchronized
+    const isBerserk = !!this.gameState?.hero?.berserkActive;
+    this.renderer?.setBerserkAura?.(this.mesh, isBerserk);
+    if (this.heroMesh?.userData) {
+      this.heroMesh.userData.isBerserk = isBerserk;
+    }
     if (this.heroMesh.userData?.animate) {
       let animState = this.state;
       let animCombo = this.comboStage;
+      let attackProgress = 0;
       if (this.state === 'attack') {
+        attackProgress = 1 - Math.max(0, this.attackTimer) / Math.max(0.0001, this.attackDuration);
         if (this.attackKind === 'arrow') animState = 'shoot';
         else if (this.attackKind === 'magic_bolt') animState = 'cast';
       } else if (this.state === 'skill' && this.skillPhase && this.skillAnim) {
         animState = this.skillAnim;
         animCombo = this.skillAnimCombo || 3;
+        attackProgress = this.skillAnimProgress || 0;
       } else if (this.state === 'skill' && this.skillAnim) {
         animState = this.skillAnim;
         animCombo = 3;
+        attackProgress = this.skillAnimProgress || 0;
       }
       this.heroMesh.userData.animate(animState, elapsed, dt, animCombo, attackProgress);
     }

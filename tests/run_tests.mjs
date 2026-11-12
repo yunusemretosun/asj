@@ -1,10 +1,22 @@
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { CLASSES, CLASS_IDS, getClass, canClassUse } from '../src/systems/classes.js';
-import { ALCHEMY, SEALS, STATUS, IMBUE_DEFAULTS } from '../src/systems/mechanics.js';
+import {
+  ALCHEMY,
+  SEALS,
+  STATUS,
+  IMBUE_DEFAULTS,
+  BERSERK,
+  berserkOrbs,
+  RARITY_BEAMS,
+  NEMESIS,
+  createNemesisTitle,
+  BOSS_MECHANICS,
+  HOT_SPRINGS
+} from '../src/systems/mechanics.js';
 import { createGame } from '../src/systems/gameState.js';
-import { SETS, floorMonsterLevel, generateItem } from '../src/systems/inventory.js';
-import { SKILL_DEFS } from '../src/systems/skills.js';
+import { ITEM_BASES, SET_BASE_IDS, SETS, SHOP_DEFS, floorMonsterLevel, generateItem, Inventory } from '../src/systems/inventory.js';
+import { SKILL_DEFS, SKILL_ALIASES } from '../src/systems/skills.js';
 import { createDungeonGenerator, DUNGEON_THEMES } from '../src/world/dungeonGenerator.js';
 import { createEnemyManager, AI_STATE } from '../src/world/enemyAI.js';
 import { models3d } from '../src/engine/models3d.js';
@@ -118,5 +130,164 @@ check('Boss skill windup spawns bossArena telegraph decal', telegraphs.length > 
 // 6. Status application on EnemyManager
 const burnEntry = enemyMgr.applyStatus(boss, { id: 'burn', duration: 4, dotPerTick: 10 });
 check('Burn status applied to boss', Boolean(burnEntry && enemyMgr.hasStatus(boss, 'burn')));
+
+// 7. Milestone 5: 5-Orb Berserk (Hwan) Mode
+check('berserkOrbs maps 0..100 to 0..5 orbs', berserkOrbs(0) === 0 && berserkOrbs(60) === 3 && berserkOrbs(100) === 5);
+const baseStatsBefore = game.getStats();
+game.addBerserkCharge(100);
+check('Berserk charge reaches 100', game.hero.berserkCharge === 100);
+const bRes = game.activateBerserk();
+check('Berserk activates when 5 orbs full', Boolean(bRes?.ok && game.hero.berserkActive));
+const berserkStats = game.getStats();
+check('Berserk doubles attack power', berserkStats.atk >= Math.floor(baseStatsBefore.atk * BERSERK.damageMult * 0.95));
+check('Berserk increases move speed', berserkStats.moveSpeed > baseStatsBefore.moveSpeed);
+for (let t = 0; t < 45; t++) game.update(0.5);
+check('Berserk expires after duration', !game.hero.berserkActive);
+
+// 8. Milestone 5: Jade Mist Hot Springs & Rested EXP
+check('Village hub includes Jade Mist Hot Springs', Boolean(hub.hotSprings && hub.hotSprings.radius > 0));
+game.soakInHotSprings(5.0);
+check('Soaking in Hot Springs grants Rested EXP', game.hero.restedExp > 0 && game.hero.isSoaking === true);
+const restedBefore = game.hero.restedExp;
+game.gainExp(20);
+check('Gaining EXP consumes Rested EXP pool for bonus EXP', game.hero.restedExp < restedBefore);
+
+// 9. Milestone 5: Nemesis System & Vengeance Payout
+const nemEntry = game.registerNemesisFromKill({ name: 'White Tiger', type: 'tiger', level: 10 }, 3);
+check('registerNemesisFromKill creates ranked Nemesis', Boolean(nemEntry && game.nemesis && game.nemesis.rank === 1 && game.nemesis.floor === 3));
+const enemyMgrNem = createEnemyManager({ renderer: mockRenderer, scene, models3d, dungeon, gameState: game }, models3d, {});
+const f3Nem = dungeon.generateFloor(3, mockRenderer, models3d, {});
+const spawnedF3 = enemyMgrNem.spawnFloorEnemies(f3Nem, 3, scene, models3d, {});
+const spawnedNemesis = spawnedF3.find((e) => e.isNemesis);
+check('Floor 3 spawns promoted Nemesis monster', Boolean(spawnedNemesis && spawnedNemesis.nemesisRank >= 1));
+const vengeance = game.claimNemesisVengeance(spawnedNemesis);
+check('Claiming Nemesis vengeance clears active Nemesis and rewards gold/EXP', Boolean(vengeance?.ok && !game.nemesis && game.hero.nemesisKills >= 1));
+
+// 10. Milestone 5: Boss Fury Countdown & Elemental Aegis Shield Crystals
+const bossF3 = spawnedF3.find((e) => e.isBoss);
+check('Boss initializes with Fury countdown timer', Boolean(bossF3 && bossF3.furyTimer === BOSS_MECHANICS.furyTimerSeconds));
+enemyMgrNem.spawnBossAegisCrystals(bossF3);
+const spawnedCrystals = enemyMgrNem.enemies.filter((e) => !e.dead && e.isAegisCrystal && e.parentBossId === bossF3.id);
+check('Boss spawns Elemental Aegis shield crystals', Boolean(bossF3.aegisActive && spawnedCrystals.length === BOSS_MECHANICS.aegisCrystalCount));
+for (const crystal of spawnedCrystals) {
+  enemyMgrNem.applyDamageToEnemy(crystal, 99999);
+}
+check('Destroying all Aegis crystals breaks Boss Aegis shield', !bossF3.aegisActive);
+const atkBeforeFury = bossF3.atk;
+enemyMgrNem.triggerBossFury(bossF3);
+check('Boss Fury mode boosts boss attack and speed', Boolean(bossF3.isFurious && bossF3.atk > atkBeforeFury));
+
+// 11. Silkroad Online Genderless Icons, Drop Boxes, Skill Icons & Clean Alchemy Shop
+for (const baseId of SET_BASE_IDS) {
+  const piece = ITEM_BASES[baseId];
+  check(
+    `Set piece ${baseId} has genderless Silkroad PNG icon`,
+    Boolean(piece && /^\/assets\/sro\/icons\/(armor|weapon|shield)\/[a-z0-9_]+\.png$/.test(piece.icon))
+  );
+}
+const sunWeapon = generateItem('sword_4', 'legendary', 12);
+check('Generated weapon has Silkroad PNG icon and dropModel GLB', sunWeapon.icon.startsWith('/assets/sro/icons/weapon/') && (sunWeapon.dropModel.startsWith('/assets/sro/drops/') || sunWeapon.dropModel.startsWith('/assets/sro/item_drops/')));
+const composerItems = SHOP_DEFS.composer?.items || [];
+check('Alchemy shop stocks Elixirs, Powders, and Talisman', composerItems.includes('elixir_weapon') && composerItems.includes('powder_1') && composerItems.includes('guardian_talisman'));
+check('Obsolete composing stones and crystals removed from Alchemy shop', !composerItems.some((id) => id.startsWith('stone_') || id.startsWith('crystal_') || id === 'lucky_charm'));
+const allSkillsHaveSroIcons = Object.values(SKILL_DEFS).every((sk) => typeof sk.icon === 'string' && sk.icon.startsWith('/assets/sro/icons/skills/') && sk.icon.endsWith('.png'));
+check('All 48 skills use Silkroad skill PNG icons', allSkillsHaveSroIcons);
+
+// 12. Celestial Rarity Beams & Parabolic Loot Drop Arc
+const beamLootMesh = models3d.createLootMesh({ rarity: 'legendary', seal: 'sealOfSun', name: 'Sun Sword' });
+check('Legendary/Seal loot mesh includes Celestial Rarity Beam', Boolean(beamLootMesh?.userData?.rarityBeam));
+const droppedEntry = dungeon.spawnGroundLoot(2, 2, sunWeapon, { x: 0, z: 0 });
+check('Ground loot spawns with parabolic toss arc metadata', Boolean(droppedEntry && droppedEntry.tossDuration > 0));
+
+// 13. Axeman Dual-Wield Axes, Visual Metadata & Silkroad Skills
+check('Axeman class has dualWield and canOffhandAxe', Boolean(CLASSES.axeman.dualWield && CLASSES.axeman.canOffhandAxe));
+check('Axeman can use axe, dagger, and shield', canClassUse('axeman', { type: 'weapon', subType: 'axe' }) && canClassUse('axeman', { type: 'weapon', subType: 'dagger' }) && canClassUse('axeman', { type: 'shield' }));
+
+const axemanGame = createGame('axeman');
+check('Axeman starter kit equips mainhand axe and offhand axe', Boolean(axemanGame.inventory.equipment.weapon && axemanGame.inventory.equipment.shield && (axemanGame.inventory.equipment.shield.subType || axemanGame.inventory.equipment.shield.subtype) === 'axe'));
+
+const initialAtk = axemanGame.getStats().atk;
+const offhandBonus = axemanGame.inventory.calcEquipmentBonuses();
+check('Equipment bonuses calculate stats from offhand axe in shield slot', offhandBonus.atk > 0 || offhandBonus.dmg > 0);
+
+// Equipping a second axe fills empty shield slot
+const testInv = new Inventory(null, 'axeman');
+testInv.equipment.weapon = generateItem('axe_1', 'normal', 1);
+const secondAxe = generateItem('axe_1', 'normal', 1);
+testInv.addItem(secondAxe);
+testInv.equip(0);
+check('Equipping a second axe when offhand empty places it in shield slot', Boolean(testInv.equipment.shield && testInv.equipment.shield.uid === secondAxe.uid));
+
+// Visual metadata on dropped / generated items
+const droppedArmor = generateItem('armor_2', 'rare', 5);
+check('Generated armor carries visualSet, visualPart and visualGlb', Boolean(droppedArmor.visualSet && droppedArmor.visualPart && droppedArmor.visualGlb));
+
+// Silkroad 32 Skill IDs and SRO metadata
+const expectedSroKeys = [
+  'k_slash', 'k_shield_bash', 'k_war_cry', 'k_whirlwind', 'k_holy_strike', 'k_earthquake', 'k_iron_skin', 'k_avatar',
+  'a_cleave', 'a_leap', 'a_blood_rage', 'a_rend', 'a_whirl', 'a_execute', 'a_war_stomp', 'a_ragnarok',
+  'w_fireball', 'w_frost_nova', 'w_chain_lightning', 'w_teleport', 'w_meteor', 'w_blizzard', 'w_mana_shield', 'w_archon',
+  'r_multi_shot', 'r_poison_arrow', 'r_evade_roll', 'r_trap', 'r_piercing', 'r_rain', 'r_hawk_eye', 'r_phoenix'
+];
+for (const k of expectedSroKeys) {
+  const sk = SKILL_DEFS[k];
+  check(`Silkroad skill ${k} exists with authentic icon and sroCode`, Boolean(sk && sk.icon?.startsWith('/assets/sro/icons/skills/') && sk.sroCode));
+}
+
+// Skill alias resolution
+check('Axeman skill alias level lookup resolves seamlessly', axemanGame.skills.getLevel('a_cleave') === axemanGame.skills.getLevel('ax_cleave'));
+
+// 14. Class-Specific Starter Kits, Archer Equip & Save/Load Class Sync
+const archerGame = createGame({ classId: 'knight' }); // simulate boot default
+archerGame.newCharacter({ name: 'Robin', classId: 'archer' });
+check('Archer starts with Short Bow (bow_1) and no shield', archerGame.inventory.equipment.weapon?.baseId === 'bow_1' && archerGame.inventory.equipment.shield === null);
+check('Archer starter armor uses light armor family', archerGame.inventory.equipment.armor?.armorFamily === 'light');
+
+const wizardGame = createGame({ classId: 'knight' });
+wizardGame.newCharacter({ name: 'Merlin', classId: 'wizard' });
+check('Wizard starts with Wooden Staff (staff_1) and no shield', wizardGame.inventory.equipment.weapon?.baseId === 'staff_1' && wizardGame.inventory.equipment.shield === null);
+check('Wizard starter armor uses clothes armor family', wizardGame.inventory.equipment.armor?.armorFamily === 'clothes');
+
+const knightGame = createGame({ classId: 'knight' });
+knightGame.newCharacter({ name: 'Arthur', classId: 'knight' });
+check('Knight starts with Short Sword (sword_1) and Wooden Buckler (shield_1)', knightGame.inventory.equipment.weapon?.baseId === 'sword_1' && knightGame.inventory.equipment.shield?.baseId === 'shield_1');
+
+// Save and reload Archer into a fresh GameState (which boots as knight)
+const savedArcherJSON = archerGame.toJSON();
+const reloadedGame = createGame({ classId: 'knight' });
+reloadedGame.fromJSON(savedArcherJSON);
+check('Reloaded Archer save syncs inventory.classId to archer', reloadedGame.inventory.classId === 'archer');
+
+const archerSetWeapon = generateItem({ baseId: 'set_archer_1_weapon', rarity: 'rare', level: 1 });
+const archerSetArmor = generateItem({ baseId: 'set_archer_1_armor', rarity: 'rare', level: 1 });
+reloadedGame.inventory.addItem(archerSetWeapon);
+reloadedGame.inventory.addItem(archerSetArmor);
+const eqBowRes = reloadedGame.inventory.equip(archerSetWeapon.uid);
+const eqArmRes = reloadedGame.inventory.equip(archerSetArmor.uid);
+check('Archer can equip Scout Longbow (set_archer_1_weapon) after save load', Boolean(eqBowRes.ok && reloadedGame.inventory.equipment.weapon?.uid === archerSetWeapon.uid));
+check('Archer can equip Scout Jerkin (set_archer_1_armor) after save load', Boolean(eqArmRes.ok && reloadedGame.inventory.equipment.armor?.uid === archerSetArmor.uid));
+
+// 15. European Dual Axes, Visual Degree Progression (01..04) & Boss SOS Drops
+import { getEquipmentGlbTier, getWeaponGlbInfo, createEuropeanAxeMesh, SRO_CHAR_GLB_MAP } from '../src/engine/models3d.js';
+import { rollLoot } from '../src/systems/inventory.js';
+
+check('Axeman character uses European Adventurer GLB', SRO_CHAR_GLB_MAP.axeman === '/assets/sro/char/europeman_adventurer.glb');
+check('Axeman starter mainhand and offhand are European axes (axe_01)', axemanGame.inventory.equipment.weapon?.visualModel === 'axe_01' && axemanGame.inventory.equipment.shield?.visualModel === 'axe_01');
+const axeTier2 = generateItem({ baseId: 'axe_2', rarity: 'magic', level: 5 });
+const axeTier3 = generateItem({ baseId: 'axe_3', rarity: 'rare', level: 10 });
+const axeTier4 = generateItem({ baseId: 'axe_4', rarity: 'epic', level: 16 });
+check('Axe tiers 1..4 map to distinct visual degrees 01, 02, 03, 04',
+  getEquipmentGlbTier(axemanGame.inventory.equipment.weapon) === '01' &&
+  getEquipmentGlbTier(axeTier2) === '02' &&
+  getEquipmentGlbTier(axeTier3) === '03' &&
+  getEquipmentGlbTier(axeTier4) === '04' &&
+  getWeaponGlbInfo(axeTier3, 'axeman').type === 'axe'
+);
+const euAxe3D = createEuropeanAxeMesh(axeTier4, '04', false);
+check('createEuropeanAxeMesh builds 3D European battle axe mesh with child geometries', Boolean(euAxe3D && euAxe3D.children.length >= 6));
+
+const bossDrops = rollLoot(15, { isBoss: true, classId: 'axeman' });
+const bossSealedCount = bossDrops.items.filter((it) => it && it.seal).length;
+check('Boss loot guarantees at least one SOS/SOM/SOSun sealed equipment drop', bossSealedCount >= 1);
 
 console.log(`ALL ${passed} CHECKS PASSED.`);
