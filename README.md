@@ -28,7 +28,8 @@ npm run build
 | **`W` `A` `S` `D` / Arrow Keys** | Move Hero |
 | **Left Click / `J`** | 4-Stage Melee Attack Combo |
 | **Right Click / `K`** | Shield Block / Timed Parry |
-| **`Space` / `Shift`** | Dodge Roll (with invulnerability frames) |
+| **`Space`** | Dodge Roll (with invulnerability frames) |
+| **`Shift` (hold)** | Raise shield (shield equipped) or walk slowly; never interrupts skills |
 | **`1` – `5`** | Cast Active Battle Skills |
 | **`6` – `9`** | Use Quick-Slot Potions |
 | **`E` / `F`** | Interact with NPCs, Chests, Portals, Shrines |

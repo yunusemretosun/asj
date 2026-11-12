@@ -1416,6 +1416,49 @@ export const CLASS_CLIP_MAP = {
   },
 };
 
+/* Shift guard: the left-arm pose of the shield stance clip, layered over STAND1/WALK so only the shield arm rises */
+const GUARD_POSE_CLIP = 'SKILL_3_skill_ch_sword_shield_wait';
+const GUARD_POSE_TIME = 1.0;
+const GUARD_BONE_RE = /(^|[_ ])L[_ ](Clavicle|UpperArm|Forearm|Hand)$/i;
+
+// Swing the raised shield arm forward in front of the chest (radians around the body up / right axes)
+const GUARD_TUNE = { yaw: -1.0, pitch: 0.5 };
+const _gq1 = new THREE.Quaternion();
+const _gq2 = new THREE.Quaternion();
+const _gq3 = new THREE.Quaternion();
+const _gax = new THREE.Vector3();
+
+function applyGuardArmSwing(root, upperArm, weight) {
+  if (!upperArm || !upperArm.parent) return;
+  const tune = root.userData.guardTune || GUARD_TUNE;
+  upperArm.parent.updateWorldMatrix(true, false);
+  const toParent = upperArm.parent.getWorldQuaternion(_gq1).invert();
+  const rootQ = root.getWorldQuaternion(_gq2);
+  _gax.set(0, 1, 0).applyQuaternion(rootQ).applyQuaternion(toParent);
+  _gq3.setFromAxisAngle(_gax, tune.yaw * weight);
+  upperArm.quaternion.premultiply(_gq3);
+  _gax.set(1, 0, 0).applyQuaternion(rootQ).applyQuaternion(toParent);
+  _gq3.setFromAxisAngle(_gax, tune.pitch * weight);
+  upperArm.quaternion.premultiply(_gq3);
+}
+
+export function buildGuardPose(clips, skeletonRoot) {
+  const clip = (clips || []).find((c) => c.name === GUARD_POSE_CLIP);
+  if (!clip || !skeletonRoot) return null;
+  const pose = [];
+  const t = Math.min(GUARD_POSE_TIME, clip.duration);
+  for (const track of clip.tracks) {
+    const dot = track.name.lastIndexOf('.');
+    const nodeName = track.name.slice(0, dot);
+    if (track.name.slice(dot + 1) !== 'quaternion' || !GUARD_BONE_RE.test(nodeName)) continue;
+    const bone = skeletonRoot.getObjectByName(nodeName);
+    if (!bone) continue;
+    const v = track.createInterpolant().evaluate(t);
+    pose.push({ bone, quat: new THREE.Quaternion(v[0], v[1], v[2], v[3]).normalize() });
+  }
+  return pose.length ? pose : null;
+}
+
 /** Point logical action slots (RUN, ATTACK1..4, CAST1/2, DEFENCE) at the class weapon clips. */
 export function applyClassClipMap(actions, classId) {
   const map = CLASS_CLIP_MAP[classId];
@@ -2852,6 +2895,8 @@ export function createHeroMesh(equipment = {}, look = {}) {
 
       // Swap the generic (unarmed) base clips for the class weapon clips embedded in the GLB
       applyClassClipMap(actions, classId);
+      root.userData.guardPose = buildGuardPose(entry.animations, charClone);
+      root.userData.guardWeight = 0;
 
       // Spiky Hwan Hair for Berserk
       loadGLB('/assets/sro/char/chinaman_hwan_hair.glb').then((hwanEntry) => {
@@ -3029,6 +3074,9 @@ export function createHeroMesh(equipment = {}, look = {}) {
       } else if (st === 'stroll' || st === 'patrol') {
         targetActionName = root.userData.actions?.['WALK'] ? 'WALK' : 'RUN';
         targetTimeScale = 0.88;
+      } else if (st === 'walk_slow' || st === 'block_walk') {
+        targetActionName = root.userData.actions?.['WALK'] ? 'WALK' : 'RUN';
+        targetTimeScale = st === 'block_walk' ? 0.9 : 1.0;
       } else if (st === 'walk') {
         targetActionName = 'RUN';
         targetTimeScale = isBerserk ? 1.25 : 0.95;
@@ -3050,7 +3098,7 @@ export function createHeroMesh(equipment = {}, look = {}) {
         targetTimeScale = isBerserk ? 1.3 : 1.1;
         targetLoop = THREE.LoopOnce;
       } else if (st === 'defend' || st === 'block') {
-        targetActionName = 'DEFENCE';
+        targetActionName = 'STAND1';
       } else {
         targetActionName = 'STAND1';
       }
@@ -3089,6 +3137,16 @@ export function createHeroMesh(equipment = {}, look = {}) {
       }
       root.userData.lastComboStep = comboStep;
       root.userData.mixer.update(dt);
+      const guardPose = root.userData.guardPose;
+      if (guardPose) {
+        const wantGuard = st === 'block' || st === 'block_walk' || st === 'defend' ? 1 : 0;
+        root.userData.guardWeight = THREE.MathUtils.damp(root.userData.guardWeight || 0, wantGuard, 12, dt);
+        const gw = root.userData.guardWeight;
+        if (gw > 0.001) {
+          for (const g of guardPose) g.bone.quaternion.slerp(g.quat, gw);
+          applyGuardArmSwing(root, guardPose.find((g) => /UpperArm/i.test(g.bone.name))?.bone, gw);
+        }
+      }
       fxUpdate(dt);
       return;
     }

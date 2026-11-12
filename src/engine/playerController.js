@@ -366,7 +366,7 @@ export class PlayerController {
     this.rotation = 0; // Yaw in radians (0 = +Z)
     this.radius = 0.42;
 
-    this.state = 'idle'; // 'idle' | 'walk' | 'attack' | 'skill' | 'dash' | 'block'
+    this.state = 'idle'; // 'idle' | 'walk' | 'attack' | 'skill' | 'dash' | 'block' | 'block_walk' | 'walk_slow'
     this.comboCount = 0; // Hit counter for HUD combo gauge
     this.comboDecayTimer = 0;
 
@@ -484,8 +484,16 @@ export class PlayerController {
     return this._getHeroClass()?.attackStyle || 'melee';
   }
 
+  /** Only a real shield in the offhand slot can block (an Axeman's offhand axe cannot). */
   _canBlock() {
-    return this._getHeroClass()?.shield !== false;
+    const sh = this.gameState?.inventory?.equipment?.shield;
+    if (!sh) return false;
+    const sub = String(sh.subtype || sh.subType || '').toLowerCase();
+    return sub === 'shield' || (!sub && sh.type !== 'weapon');
+  }
+
+  _isShiftHeld() {
+    return this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
   }
 
   _getLook() {
@@ -563,8 +571,6 @@ export class PlayerController {
       } else if (code === 'Tab' || code === 'KeyR') {
         if (code === 'Tab') e.preventDefault();
         this.tryActivateBerserk();
-      } else if ((code === 'ShiftLeft' || code === 'ShiftRight') && !e.repeat && !this._canBlock()) {
-        this.performDash();
       } else if (code === 'KeyJ') {
         this.performMeleeAttack(false);
       } else if (code === 'KeyE' || code === 'KeyF') {
@@ -1829,7 +1835,10 @@ export class PlayerController {
       }
     }
 
-    this.isBlocking = this.inputEnabled && this._canBlock() && (this.keys.has('ShiftLeft') || this.keys.has('ShiftRight'));
+    // Shift: raise the shield when one is equipped, otherwise walk slowly. Never interrupts skills.
+    const shiftHeld = this.inputEnabled && this._isShiftHeld();
+    this.isBlocking = shiftHeld && this._canBlock();
+    const slowWalk = shiftHeld && !this.isBlocking;
 
     this._updateDelayedHits(dt);
     this._syncImbueVisual();
@@ -1841,7 +1850,7 @@ export class PlayerController {
     let attackProgress = 0;
     let skillPhaseActive = false;
     if (this.skillPhase && this.dashTimer <= 0) {
-      const mv = this.inputEnabled ? this._getMoveInputVector() : null;
+      const mv = this.inputEnabled && !shiftHeld ? this._getMoveInputVector() : null;
       skillPhaseActive = this._updateSkillPhase(dt, mv);
       if (skillPhaseActive) {
         this.state = 'skill';
@@ -1883,17 +1892,18 @@ export class PlayerController {
         this.skillAnim = null;
       }
     } else if (this.isBlocking) {
-      this.state = 'block';
       const moveInput = this.inputEnabled ? this._getMoveInputVector() : new THREE.Vector3();
-      if (moveInput.lengthSq() > 0) {
-        desiredMove.copy(moveInput).multiplyScalar(moveSpeed * 0.45);
+      this.state = 'block';
+      if (moveInput.lengthSq() > 0.001) {
+        this.state = 'block_walk';
+        desiredMove.copy(moveInput).multiplyScalar(moveSpeed * 0.38);
         this.rotation = Math.atan2(moveInput.x, moveInput.z);
       }
     } else {
       const moveInput = this.inputEnabled ? this._getMoveInputVector() : new THREE.Vector3();
       if (moveInput.lengthSq() > 0.001) {
-        this.state = 'walk';
-        desiredMove.copy(moveInput).multiplyScalar(moveSpeed);
+        this.state = slowWalk ? 'walk_slow' : 'walk';
+        desiredMove.copy(moveInput).multiplyScalar(slowWalk ? moveSpeed * 0.4 : moveSpeed);
         const targetYaw = Math.atan2(moveInput.x, moveInput.z);
         // Smooth angular interpolation
         let diff = targetYaw - this.rotation;
