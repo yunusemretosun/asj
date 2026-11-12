@@ -1111,7 +1111,7 @@ export function buildVillage(ctx = {}) {
     knight_sos: {
       classId: 'knight',
       eq: {
-        weapon: { slot: 'weapon', subtype: 'sword', visualModel: 'sword_04', tier: 7, plus: 9, seal: 'star', rarity: 'unique' },
+        weapon: { slot: 'weapon', subtype: 'blade', visualModel: 'blade_04', tier: 7, plus: 9, seal: 'star', rarity: 'unique' },
         shield: { slot: 'shield', subtype: 'shield', visualModel: 'shield_04', tier: 7, plus: 9, seal: 'star', rarity: 'unique' },
         armor: { slot: 'armor', visualSet: 'heavy_04', tier: 7, rarity: 'epic' },
         boots: { slot: 'boots', visualSet: 'heavy_04', tier: 7, rarity: 'epic' },
@@ -1130,7 +1130,7 @@ export function buildVillage(ctx = {}) {
     wizard_sos: {
       classId: 'wizard',
       eq: {
-        weapon: { slot: 'weapon', subtype: 'staff', visualModel: 'spear_04', tier: 7, plus: 10, seal: 'star', rarity: 'unique' },
+        weapon: { slot: 'weapon', subtype: 'staff', visualModel: 'staff_04', tier: 7, plus: 10, seal: 'star', rarity: 'unique' },
         armor: { slot: 'armor', visualSet: 'clothes_04', tier: 7, rarity: 'epic' },
         boots: { slot: 'boots', visualSet: 'clothes_04', tier: 7, rarity: 'epic' }
       }

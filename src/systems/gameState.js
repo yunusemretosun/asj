@@ -10,7 +10,7 @@
 //   per frame: game.update(dt)
 // =============================================================================
 
-import { Inventory, applyItemData, rollLoot, generateItem, RARITY, SLOTS, getItemBase, floorMonsterLevel } from './inventory.js';
+import { Inventory, applyItemData, rollLoot, generateItem, RARITY, SLOTS, getItemBase, floorMonsterLevel, createOffhandAxe, applyVisualMetadata } from './inventory.js';
 import { STATUS, BERSERK, berserkOrbs, NEMESIS, createNemesisTitle, HOT_SPRINGS } from './mechanics.js';
 import { SkillSystem, applySkillData, BASIC_COMBO } from './skills.js';
 import { QuestSystem, applyQuestData } from './quests.js';
@@ -973,20 +973,16 @@ export class GameState extends Emitter {
     if ((savedClass === 'archer' || savedClass === 'wizard' || cls.twoHanded) && eq.shield) {
       eq.shield = null;
     } else if (savedClass === 'axeman' && (!eq.shield || eq.shield.baseId === 'shield_1')) {
-      const offhandAxe = generateItem({ baseId: 'axe_1', rarity: 'normal', level: 1, classId: 'axeman' });
-      if (offhandAxe) {
-        offhandAxe.name = 'Twin Bronze Cleaver';
-        offhandAxe.baseName = 'Twin Bronze Cleaver';
-        offhandAxe.type = 'weapon';
-        offhandAxe.subtype = 'axe';
-        offhandAxe.subType = 'axe';
-        offhandAxe.slot = 'shield';
-        offhandAxe.visualModel = 'tblade_01';
-        offhandAxe.visualGlb = '/assets/sro/equipment/tblade_01.glb';
-        offhandAxe.icon = '/assets/sro/icons/weapon/tblade_01.png';
-        eq.shield = offhandAxe;
-      }
+      eq.shield = createOffhandAxe(0) || eq.shield;
     }
+    // Older saves rendered staves as Chinese spears and offhand axes as glaives: refresh weapon visuals
+    const refreshVisual = (it) => {
+      if (!it) return;
+      const sub = String(it.subtype || it.subType || '').toLowerCase();
+      if ((it.slot === 'weapon' || it.slot === 'shield') && (sub === 'staff' || sub === 'axe' || sub === 'blade')) applyVisualMetadata(it);
+    };
+    Object.values(eq).forEach(refreshVisual);
+    (this.inventory.bag || []).forEach(refreshVisual);
 
     this.skills.fromJSON(d.skills || {});
     this.quests.fromJSON(d.quests || {});

@@ -808,7 +808,7 @@ function buildHair(style, hairMat) {
 export const SRO_CHAR_GLB_MAP = {
   knight: '/assets/sro/char/chinaman_warrior.glb',
   axeman: '/assets/sro/char/europeman_adventurer.glb',
-  wizard: '/assets/sro/char/chinaman_scholar.glb',
+  wizard: '/assets/sro/char/europeman_adventurer.glb',
   archer: '/assets/sro/char/chinaman_adventurer.glb'
 };
 
@@ -821,7 +821,7 @@ export const SRO_STARTER_SETS = {
 
 export function getEquipmentGlbTier(item) {
   if (!item) return '01';
-  const m = String(item.visualModel || item.visualGlb || item.icon || item.id || '').match(/(?:sword|blade|tblade|spear|bow|axe|shield|heavy|light|clothes)_0([1-4])/i);
+  const m = String(item.visualModel || item.visualGlb || item.icon || item.id || '').match(/(?:sword|blade|tblade|spear|staff|bow|axe|shield|heavy|light|clothes)_0([1-4])/i);
   if (m) return '0' + m[1];
   const t = Number(item.tier ?? itemVisualTier(item) ?? 0);
   if (t >= 3) return '04';
@@ -857,21 +857,28 @@ export function getWeaponGlbInfo(weapon, classId) {
   const probe = `${rawSub} ${weapon?.baseId || ''} ${weapon?.visualModel || ''} ${weapon?.name || ''}`.toLowerCase().trim() || defaultSub;
   const tier = getEquipmentGlbTier(weapon);
 
-  const m = String(weapon?.visualModel || weapon?.visualGlb || weapon?.icon || weapon?.id || '').match(/(sword|blade|tblade|spear|bow|axe|shield)_0([1-4])/i);
+  // Staves & axes are always procedural European meshes, whatever an old save's visualModel says
+  if (rawSub === 'staff' || (!rawSub && classId === 'wizard' && !/spear|bow|sword|blade|axe/.test(probe))) return { file: null, type: 'staff', tier, procedural: true };
+  if (rawSub === 'axe') return { file: null, type: 'axe', tier, procedural: true };
+
+  const m = String(weapon?.visualModel || weapon?.visualGlb || weapon?.icon || weapon?.id || '').match(/(sword|blade|tblade|spear|staff|bow|axe|shield)_0([1-4])/i);
   if (m) {
     const matchedType = m[1].toLowerCase();
-    return { file: `${matchedType}_0${m[2]}.glb`, type: matchedType, tier: '0' + m[2] };
+    const procedural = matchedType === 'staff' || matchedType === 'axe';
+    return { file: procedural ? null : `${matchedType}_0${m[2]}.glb`, type: matchedType, tier: '0' + m[2], procedural };
   }
 
   let glbBase = 'sword';
   if (probe.includes('bow') || classId === 'archer') glbBase = 'bow';
   else if (probe.includes('axe') || probe.includes('cleaver') || classId === 'axeman') glbBase = 'axe';
   else if (probe.includes('tblade') || probe.includes('glaive')) glbBase = 'tblade';
-  else if (probe.includes('spear') || probe.includes('staff') || probe.includes('pole') || probe.includes('wand') || probe.includes('rod') || classId === 'wizard') glbBase = 'spear';
-  else if (probe.includes('dagger') || probe.includes('blade') || probe.includes('mace')) glbBase = 'blade';
+  else if (probe.includes('staff') || probe.includes('wand') || probe.includes('rod') || probe.includes('scepter') || classId === 'wizard') glbBase = 'staff';
+  else if (probe.includes('spear') || probe.includes('pole')) glbBase = 'spear';
+  else if (probe.includes('dagger') || probe.includes('blade') || probe.includes('mace') || classId === 'knight') glbBase = 'blade';
   else glbBase = 'sword';
 
-  return { file: `${glbBase}_${tier}.glb`, type: glbBase, tier };
+  const procedural = glbBase === 'staff' || glbBase === 'axe';
+  return { file: procedural ? null : `${glbBase}_${tier}.glb`, type: glbBase, tier, procedural };
 }
 
 /**
@@ -1002,6 +1009,148 @@ export function createEuropeanAxeMesh(weaponItem = null, tierStr = '01', isOffha
     }
   });
   return g;
+}
+
+/**
+ * Create a 3D European two-handed Wizard staff oriented for Silkroad hand sockets
+ * (+Z shaft, grip at origin, ornate crystal head towards +Z).
+ */
+export function createEuropeanStaffMesh(weaponItem = null, tierStr = '01') {
+  const g = new THREE.Group();
+  const degNum = Math.max(1, Math.min(4, parseInt(tierStr, 10) || 1));
+  g.name = `EuropeanStaff_0${degNum}`;
+  const styles = [
+    { wood: 0x6b4423, metal: 0xa8a29e, gem: 0x60a5fa, len: 1.55, prongs: 0, orb: 0.07 },
+    { wood: 0x4a2f1b, metal: 0xcbd5e1, gem: 0x22d3ee, len: 1.65, prongs: 3, orb: 0.08 },
+    { wood: 0x2e1a2f, metal: 0xd4a017, gem: 0xa855f7, len: 1.75, prongs: 4, orb: 0.09 },
+    { wood: 0x1c1030, metal: 0xfacc15, gem: 0xf43f5e, len: 1.85, prongs: 5, orb: 0.1 },
+  ];
+  const st = styles[degNum - 1];
+  const woodMat = new THREE.MeshStandardMaterial({ color: st.wood, roughness: 0.7, metalness: 0.08 });
+  const metalMat = new THREE.MeshStandardMaterial({ color: st.metal, roughness: 0.28, metalness: 0.88 });
+  const gemMat = new THREE.MeshStandardMaterial({
+    color: st.gem, emissive: new THREE.Color(st.gem), emissiveIntensity: 0.9, roughness: 0.1, metalness: 0.2,
+    transparent: true, opacity: 0.92,
+  });
+
+  const butt = -0.45;
+  const headZ = butt + st.len;
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.019, 0.024, st.len, 10), woodMat);
+  shaft.rotation.x = Math.PI / 2;
+  shaft.position.z = butt + st.len / 2;
+  g.add(shaft);
+
+  // Metal ferrule, grip bands and spiral inlay
+  const ferrule = new THREE.Mesh(new THREE.ConeGeometry(0.026, 0.09, 8), metalMat);
+  ferrule.rotation.x = -Math.PI / 2;
+  ferrule.position.z = butt - 0.03;
+  g.add(ferrule);
+  for (const z of [-0.12, 0.0, 0.12, headZ - 0.32]) {
+    const band = new THREE.Mesh(new THREE.TorusGeometry(0.025, 0.006, 6, 14), metalMat);
+    band.position.z = z;
+    g.add(band);
+  }
+
+  // Head: flared collar + cradle prongs holding a glowing crystal orb
+  const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.022, 0.12, 10), metalMat);
+  collar.rotation.x = Math.PI / 2;
+  collar.position.z = headZ - 0.06;
+  g.add(collar);
+  const orbZ = headZ + st.orb + 0.02;
+  const orb = new THREE.Mesh(new THREE.IcosahedronGeometry(st.orb, 1), gemMat);
+  orb.position.z = orbZ;
+  orb.userData.isStaffOrb = true;
+  g.add(orb);
+  const prongCount = st.prongs || 2;
+  for (let i = 0; i < prongCount; i++) {
+    const a = (i / prongCount) * Math.PI * 2;
+    const pivot = new THREE.Group();
+    pivot.position.set(Math.cos(a) * 0.035, Math.sin(a) * 0.035, headZ);
+    pivot.rotation.z = a;
+    const prong = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.01, st.orb * 2.6, 5), metalMat);
+    prong.rotation.x = Math.PI / 2;
+    prong.rotation.y = -0.35;
+    prong.position.set(st.orb * 0.55, 0, st.orb * 1.2);
+    pivot.add(prong);
+    g.add(pivot);
+  }
+  if (!st.prongs) {
+    // Degree 01: simple crescent hook around the orb
+    const hook = new THREE.Mesh(new THREE.TorusGeometry(st.orb * 1.4, 0.012, 6, 16, Math.PI * 1.3), metalMat);
+    hook.rotation.y = Math.PI / 2;
+    hook.position.z = orbZ;
+    g.add(hook);
+  }
+  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.018, 0.1, 6), metalMat);
+  tip.rotation.x = Math.PI / 2;
+  tip.position.z = orbZ + st.orb + 0.07;
+  g.add(tip);
+  const glow = new THREE.PointLight(st.gem, 0.6 + degNum * 0.15, 2.2);
+  glow.position.z = orbZ;
+  g.add(glow);
+
+  g.traverse((c) => {
+    if (c.isMesh) {
+      c.frustumCulled = false;
+      c.castShadow = true;
+      c.receiveShadow = true;
+      c.userData._origMat = c.material;
+    }
+  });
+  return g;
+}
+
+/**
+ * Weapon-specific clips per class (all embedded in the class character GLB).
+ * Each logical slot lists candidates in priority order; the first existing clip wins.
+ */
+export const CLASS_CLIP_MAP = {
+  knight: {
+    RUN: ['RUN_chinaman_fighter_runforward_sword'],
+    ATTACK1: ['ATTACK1_sword_base_01'],
+    ATTACK2: ['ATTACK2_sword_base_02'],
+    ATTACK3: ['ATTACK3_sword_base_03'],
+    ATTACK4: ['ATTACK4_sword_base_04'],
+    CAST1: ['SKILL_1_skill_ch_sword_smash_a'],
+    CAST2: ['SKILL_2_skill_ch_sword_chain_a'],
+    DEFENCE: ['SKILL_3_skill_ch_sword_shield_wait'],
+  },
+  axeman: {
+    RUN: ['RUN_europe_man_fighter_dagger_run_2', 'RUN_europe_man_fighter_dagger_run'],
+    ATTACK1: ['ATTACK1_skill_eu_warrior_duala_attack01'],
+    ATTACK2: ['ATTACK2_skill_eu_warrior_duala_attack02'],
+    ATTACK3: ['SKILL_10_skill_eu_warrior_duala_twist_a', 'ATTACK1_skill_eu_warrior_duala_attack01'],
+    ATTACK4: ['SKILL_4_skill_eu_warrior_duala_cross_a'],
+    CAST1: ['SKILL_40_skill_eu_warrior_duala_whirlwind_a'],
+    CAST2: ['SKILL_4_skill_eu_warrior_duala_cross_a'],
+  },
+  wizard: {
+    RUN: ['RUN_europe_man_fighter_tstaff_run'],
+    ATTACK1: ['ATTACK1_skill_eu_wizard_twohand_attack01'],
+    ATTACK2: ['ATTACK1_skill_eu_wizard_twohand_attack01'],
+    ATTACK3: ['SKILL_1_skill_eu_wizard_twohand_target_shot'],
+    CAST1: ['SKILL_1_skill_eu_wizard_twohand_target_shot'],
+    CAST2: ['SKILL_2_skill_eu_wizard_twohand_area_shot'],
+  },
+  archer: {
+    RUN: ['RUN_bow_run_fighter', 'RUN_bow_run_merchant'],
+    ATTACK1: ['ATTACK1_skill_ch_bow_normal'],
+    ATTACK2: ['ATTACK1_skill_ch_bow_normal'],
+    ATTACK3: ['ATTACK1_skill_ch_bow_normal'],
+    CAST1: ['SKILL_1_skill_ch_bow_critical_a'],
+    CAST2: ['SKILL_2_skill_ch_bow_chain_a'],
+  },
+};
+
+/** Point logical action slots (RUN, ATTACK1..4, CAST1/2, DEFENCE) at the class weapon clips. */
+export function applyClassClipMap(actions, classId) {
+  const map = CLASS_CLIP_MAP[classId];
+  if (!actions || !map) return actions;
+  for (const [slot, candidates] of Object.entries(map)) {
+    const hit = candidates.find((n) => actions[n]);
+    if (hit) actions[slot] = actions[hit];
+  }
+  return actions;
 }
 
 /**
@@ -2388,6 +2537,22 @@ export function createHeroMesh(equipment = {}, look = {}) {
         const axeMesh = createEuropeanAxeMesh(weaponItem, weaponInfo.tier || '01', false);
         applyGLBWeaponGlow(axeMesh, weaponItem);
         if (rWeaponMount) rWeaponMount.add(axeMesh);
+      } else if (weaponInfo.type === 'staff') {
+        const staffMesh = createEuropeanStaffMesh(weaponItem, weaponInfo.tier || '01');
+        applyGLBWeaponGlow(staffMesh, weaponItem);
+        // Hold the staff upright: orient the shaft (+Z) to the hero's up axis, tilted slightly forward,
+        // relative to the hand pose at mount time so it then follows the hand animation.
+        const staffPivot = new THREE.Group();
+        staffPivot.name = 'EuropeanStaffPivot';
+        staffPivot.add(staffMesh);
+        if (rWeaponMount) {
+          rWeaponMount.add(staffPivot);
+          root.updateMatrixWorld(true);
+          const qRoot = root.getWorldQuaternion(new THREE.Quaternion());
+          const qMount = rWeaponMount.getWorldQuaternion(new THREE.Quaternion());
+          const upInRoot = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2 + 0.18, 0, 0));
+          staffPivot.quaternion.copy(qMount.invert().multiply(qRoot).multiply(upInRoot));
+        }
       } else {
         const mainWeaponUrl = `/assets/sro/equipment/${weaponInfo.file}`;
         loadGLB(mainWeaponUrl).then((entry) => {
@@ -2516,19 +2681,8 @@ export function createHeroMesh(equipment = {}, look = {}) {
       root.userData.currentAction = null;
       root.userData.currentActionName = '';
 
-      // Load European Dual-Axe combat animations for Axeman
-      if (classId === 'axeman') {
-        loadGLB('/assets/sro/char/dual_axe_anims.glb').then((daEntry) => {
-          if (!daEntry || !daEntry.animations || version !== glbLoadVer) return;
-          for (const clip of daEntry.animations) {
-            actions[clip.name] = mixer.clipAction(clip);
-          }
-          if (actions['skill_eu_warrior_duala_attack01']) actions['ATTACK1'] = actions['skill_eu_warrior_duala_attack01'];
-          if (actions['skill_eu_warrior_duala_attack02']) actions['ATTACK2'] = actions['skill_eu_warrior_duala_attack02'];
-          if (actions['skill_eu_warrior_duala_whirlwind_a']) actions['ATTACK3'] = actions['skill_eu_warrior_duala_whirlwind_a'];
-          if (actions['skill_eu_warrior_duala_cross_a']) actions['ATTACK4'] = actions['skill_eu_warrior_duala_cross_a'];
-        });
-      }
+      // Swap the generic (unarmed) base clips for the class weapon clips embedded in the GLB
+      applyClassClipMap(actions, classId);
 
       // Spiky Hwan Hair for Berserk
       loadGLB('/assets/sro/char/chinaman_hwan_hair.glb').then((hwanEntry) => {
@@ -2712,12 +2866,14 @@ export function createHeroMesh(equipment = {}, look = {}) {
         targetActionName = 'RUN';
         targetTimeScale = 1.6;
       } else if (st === 'attack' || st === 'shoot' || st === 'melee' || st === 'slash') {
-        const stage = (comboStep % 3) || 1;
-        targetActionName = stage === 2 ? 'ATTACK2' : stage === 3 ? 'ATTACK3' : 'ATTACK1';
+        const stage = comboStep > 0 ? ((comboStep - 1) % 3) + 1 : 1;
+        const wanted = stage === 2 ? 'ATTACK2' : stage === 3 ? 'ATTACK3' : 'ATTACK1';
+        targetActionName = root.userData.actions?.[wanted] ? wanted : 'ATTACK1';
         targetTimeScale = isBerserk ? 1.4 : 1.15;
         targetLoop = THREE.LoopOnce;
       } else if (st === 'cast' || st === 'skill') {
-        targetActionName = (comboStep % 2 === 0) ? 'ATTACK3' : 'ATTACK2';
+        const castSlot = (comboStep % 2 === 0) ? 'CAST2' : 'CAST1';
+        targetActionName = root.userData.actions?.[castSlot] ? castSlot : ((comboStep % 2 === 0) ? 'ATTACK3' : 'ATTACK2');
         targetTimeScale = isBerserk ? 1.3 : 1.1;
         targetLoop = THREE.LoopOnce;
       } else if (st === 'defend' || st === 'block') {
@@ -2729,6 +2885,12 @@ export function createHeroMesh(equipment = {}, look = {}) {
       const actions = root.userData.actions;
       if (actions) {
         const targetAction = actions[targetActionName] || actions['STAND1'];
+        if (targetAction && targetLoop === THREE.LoopOnce && !clamp) {
+          // Weapon clips (e.g. EU staff 1.7s) are longer than the gameplay swing; speed them up to fit
+          const clipDur = targetAction.getClip?.().duration || 0;
+          const windowSec = st === 'cast' || st === 'skill' ? 0.9 : 0.6;
+          if (clipDur > windowSec) targetTimeScale *= clipDur / windowSec;
+        }
         if (targetAction) {
           if (root.userData.currentAction !== targetAction) {
             const prev = root.userData.currentAction;
@@ -3997,8 +4159,10 @@ export function createNPCMesh(npcOrRole = 'chief') {
         loadGLB(`/assets/sro/equipment/${npcSosWeapon}`).then((wEntry) => {
           if (!wEntry || !wEntry.scene) return;
           const wClone = SkeletonUtils.clone(wEntry.scene);
-          wClone.traverse((m) => {
-            if (m.isMesh) {
+          const wMeshes = [];
+          wClone.traverse((m) => { if (m.isMesh) wMeshes.push(m); });
+          wMeshes.forEach((m) => {
+            {
               m.frustumCulled = false;
               if (m.material) {
                 const cMat = m.material.clone();

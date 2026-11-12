@@ -25,18 +25,18 @@ export const CLASSES = {
     name: 'Knight',
     plural: 'Knights',
     icon: '🛡️',
-    tagline: 'Sword & shield guardian',
-    desc: 'A sturdy frontline fighter. Wields swords or maces with a shield, blocks well and shrugs off punishment.',
-    weapons: ['sword', 'mace'],
+    tagline: 'Blade & shield guardian',
+    desc: 'A sturdy frontline fighter. Wields a Chinese blade (or sword / mace) with a shield, blocks well and shrugs off punishment.',
+    weapons: ['blade', 'sword', 'mace'],
     shield: true,
     twoHanded: false,
     attackStyle: 'melee',
     attackRange: 2.4,
     startAttrs: { str: 7, dex: 5, int: 3, lck: 5 },
     statMods: { defPct: 12, hpPct: 10, block: 5 },
-    starter: { weapon: 'sword_1', shield: 'shield_1', armor: 'armor_1' },
+    starter: { weapon: 'blade_1', shield: 'shield_1', armor: 'armor_1' },
     skillTree: 'Knight',
-    mastery: 'Bicheon (Sword & Shield)',
+    mastery: 'Bicheon (Blade & Shield)',
     sroMastery: 'Bicheon',
     color: 0x38bdf8,
     css: '#38bdf8',
@@ -48,8 +48,8 @@ export const CLASSES = {
     name: 'Axeman',
     plural: 'Axemen',
     icon: '🪓',
-    tagline: 'Dual-axe berserker',
-    desc: 'A ferocious fighter wielding axes in both hands. Devastating cleaves, high HP and dual-wielding offensive power.',
+    tagline: 'European dual-axe berserker',
+    desc: 'A ferocious European fighter wielding axes in both hands. Devastating cleaves, high HP and dual-wielding offensive power.',
     weapons: ['axe', 'dagger'],
     shield: true,
     dualWield: true,
@@ -73,8 +73,8 @@ export const CLASSES = {
     name: 'Wizard',
     plural: 'Wizards',
     icon: '🪄',
-    tagline: 'Elemental spellcaster',
-    desc: 'Hurls arcane bolts from range and commands fire, ice and lightning. Fragile, but deadly from afar.',
+    tagline: 'European elemental spellcaster',
+    desc: 'A European wizard wielding a two-handed staff. Hurls arcane bolts from range and commands fire, ice and lightning. Fragile, but deadly from afar.',
     weapons: ['staff'],
     shield: false,
     twoHanded: true,
@@ -116,7 +116,7 @@ export const CLASSES = {
 };
 
 /** Weapon subtype -> display noun (for messages like "Only Archers can use bows"). */
-export const WEAPON_NOUNS = { sword: 'swords', mace: 'maces', axe: 'axes', dagger: 'daggers', blade: 'blades', staff: 'staves', bow: 'bows', shield: 'shields' };
+export const WEAPON_NOUNS = { blade: 'blades', sword: 'swords', mace: 'maces', axe: 'axes', dagger: 'daggers', blade: 'blades', staff: 'staves', bow: 'bows', shield: 'shields' };
 
 // ----------------------------------------------------------------------------- appearance
 export const APPEARANCE_OPTIONS = {
@@ -173,7 +173,8 @@ function normalizeWeaponSubtype(item) {
   if (probe.includes('axe') || probe.includes('tblade') || probe.includes('cleaver') || base.startsWith('axe_') || base.startsWith('tblade_') || base.includes('_axeman_')) return 'axe';
   if (probe.includes('dagger') || probe.includes('dirk') || base.startsWith('dagger_')) return 'dagger';
   if (probe.includes('mace') || probe.includes('hammer') || probe.includes('club') || base.startsWith('mace_')) return 'mace';
-  if (probe.includes('sword') || probe.includes('blade') || base.startsWith('sword_') || base.startsWith('blade_') || base.includes('_knight_')) return 'sword';
+  if (probe.includes('blade') || base.startsWith('blade_') || base.includes('_knight_')) return 'blade';
+  if (probe.includes('sword') || base.startsWith('sword_')) return 'sword';
   return raw;
 }
 

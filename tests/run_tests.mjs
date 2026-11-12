@@ -250,7 +250,18 @@ check('Wizard starter armor uses clothes armor family', wizardGame.inventory.equ
 
 const knightGame = createGame({ classId: 'knight' });
 knightGame.newCharacter({ name: 'Arthur', classId: 'knight' });
-check('Knight starts with Short Sword (sword_1) and Wooden Buckler (shield_1)', knightGame.inventory.equipment.weapon?.baseId === 'sword_1' && knightGame.inventory.equipment.shield?.baseId === 'shield_1');
+check('Knight starts with Chinese Bronze Blade (blade_1, blade_01 model) and Wooden Buckler (shield_1)', knightGame.inventory.equipment.weapon?.baseId === 'blade_1' && knightGame.inventory.equipment.weapon?.visualModel === 'blade_01' && knightGame.inventory.equipment.shield?.baseId === 'shield_1');
+check('Knight starter armor uses heavy armor family', knightGame.inventory.equipment.armor?.armorFamily === 'heavy' && knightGame.inventory.equipment.armor?.visualSet === 'heavy_01');
+check('Wizard starter staff uses the European staff model (not a Chinese spear)', wizardGame.inventory.equipment.weapon?.visualModel === 'staff_01');
+const axeStarter = createGame({ classId: 'knight' });
+axeStarter.newCharacter({ name: 'Ragnar', classId: 'axeman' });
+check('Axeman starts with European dual axes (main + offhand axe_01)', axeStarter.inventory.equipment.weapon?.visualModel === 'axe_01' && axeStarter.inventory.equipment.shield?.subtype === 'axe' && axeStarter.inventory.equipment.shield?.visualModel === 'axe_01');
+check('Knight can equip and only Knights use blades', canClassUse('knight', { slot: 'weapon', subtype: 'blade' }).ok && !canClassUse('wizard', { slot: 'weapon', subtype: 'blade' }).ok);
+const oldWizSave = wizardGame.toJSON();
+oldWizSave.inventory.equipment.weapon.visualModel = 'spear_01';
+const reloadedWiz = createGame({ classId: 'knight' });
+reloadedWiz.fromJSON(oldWizSave);
+check('Old wizard saves migrate spear visuals to the European staff', reloadedWiz.inventory.equipment.weapon?.visualModel === 'staff_01');
 
 // Save and reload Archer into a fresh GameState (which boots as knight)
 const savedArcherJSON = archerGame.toJSON();

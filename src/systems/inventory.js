@@ -81,6 +81,7 @@ export function floorMonsterLevel(floor) {
 }
 
 const EQUIP_NAMES = {
+  blade: ['Bronze Blade', 'Iron Blade', 'Steel Blade', 'Guard Blade', 'Crescent Blade', 'Rune Saber', 'Dragon Blade', 'Arkenveil Saber'],
   sword: ['Short Sword', 'Long Sword', 'Broad Sword', 'Knight Sword', 'Flamberge', 'Rune Blade', 'Dragon Slayer', 'Arkenveil Blade'],
   axe: ['Hand Axe', 'Battle Axe', 'War Axe', 'Bearded Axe', 'Executioner', 'Rune Axe', 'Dragon Cleaver', 'Titan Axe'],
   dagger: ['Bronze Dagger', 'Iron Dagger', 'Steel Dagger', 'Assassin Blade', 'Shadow Dagger', 'Rune Dagger', 'Dragon Tooth', 'Nether Dagger'],
@@ -96,7 +97,7 @@ const EQUIP_NAMES = {
 };
 const WEAPON_ATK = [[3, 6], [7, 12], [12, 19], [18, 28], [26, 39], [36, 53], [50, 72], [68, 96]];
 const ICONS = {
-  sword: '🗡️', axe: '🪓', dagger: '🗡️', mace: '🔨', staff: '🪄', bow: '🏹', shield: '🛡️', helmet: '⛑️', armor: '🥋', boots: '👢', necklace: '📿', ring: '💍',
+  sword: '🗡️', blade: '🗡️', axe: '🪓', dagger: '🗡️', mace: '🔨', staff: '🪄', bow: '🏹', shield: '🛡️', helmet: '⛑️', armor: '🥋', boots: '👢', necklace: '📿', ring: '💍',
   hp: '🧪', mp: '🔷', elixir: '⚗️', scroll: '📜', crystal: '💎', stone: '🪨', charm: '🍀', quest: '📦', tonic: '🍶', antidote: '🌿',
 };
 
@@ -126,26 +127,29 @@ function buildEquipmentBases() {
     const [mn, mx] = WEAPON_ATK[t];
     const weaponIcons = {
       sword: `/assets/sro/icons/weapon/sword_${deg}.png`,
+      blade: `/assets/sro/icons/weapon/blade_${deg}.png`,
       mace: `/assets/sro/icons/weapon/blade_${deg}.png`,
       dagger: `/assets/sro/icons/weapon/blade_${deg}.png`,
       axe: `/assets/sro/icons/weapon/axe_${deg}.png`,
-      staff: `/assets/sro/icons/weapon/spear_${deg}.png`,
+      staff: `/assets/sro/icons/weapon/staff_${deg}.png`,
       bow: `/assets/sro/icons/weapon/bow_${deg}.png`,
     };
     const weaponGlb = {
       sword: `/assets/sro/equipment/sword_${deg}.glb`,
+      blade: `/assets/sro/equipment/blade_${deg}.glb`,
       mace: `/assets/sro/equipment/blade_${deg}.glb`,
       dagger: `/assets/sro/equipment/blade_${deg}.glb`,
       axe: `/assets/sro/equipment/axe_${deg}.glb`,
-      staff: `/assets/sro/equipment/spear_${deg}.glb`,
+      staff: null,
       bow: `/assets/sro/equipment/bow_${deg}.glb`,
     };
     const weaponModel = {
       sword: `sword_${deg}`,
+      blade: `blade_${deg}`,
       mace: `blade_${deg}`,
       dagger: `blade_${deg}`,
       axe: `axe_${deg}`,
-      staff: `spear_${deg}`,
+      staff: `staff_${deg}`,
       bow: `bow_${deg}`,
     };
     const W = (sub, stats, extra = {}) => registerItemBase({
@@ -154,6 +158,7 @@ function buildEquipmentBases() {
       visualModel: weaponModel[sub], visualGlb: weaponGlb[sub], material: TIER_MATERIALS[t],
     });
     W('sword', { atkMin: mn, atkMax: mx });
+    W('blade', { atkMin: Math.round(mn * 0.96), atkMax: Math.round(mx * 1.02), critRate: 1 + Math.floor(t / 2) });
     W('dagger', { atkMin: Math.round(mn * 0.95), atkMax: Math.round(mx * 1.05), critRate: 3 + t, attackSpeedPct: 5 });
     W('axe', { atkMin: Math.round(mn * 0.85), atkMax: Math.round(mx * 1.22), attackSpeedPct: -6 });
     W('mace', { atkMin: Math.round(mn * 1.12), atkMax: Math.round(mx * 1.04), critDmg: 10 + t * 3 });
@@ -361,7 +366,7 @@ function classSetStats(cls, slot, t) {
   const g = (ITEM_BASES[`${slot}_${t + 1}`] || {}).stats || {}; // generic base of same tier/slot
   const up = (v, m = 1.12) => Math.max(1, Math.round(v * m));
   if (slot === 'weapon') {
-    const w = ITEM_BASES[`${{ knight: 'sword', axeman: 'axe', wizard: 'staff', archer: 'bow' }[cls]}_${t + 1}`].stats;
+    const w = ITEM_BASES[`${{ knight: 'blade', axeman: 'axe', wizard: 'staff', archer: 'bow' }[cls]}_${t + 1}`].stats;
     const o = { ...w, atkMin: up(w.atkMin), atkMax: up(w.atkMax) };
     if (cls === 'knight') o.hp = 6 + t * 6;
     if (cls === 'axeman') o.critDmg = 8 + t * 3;
@@ -439,15 +444,17 @@ function buildClassSets() {
         if (isWeapon) {
           const weaponPrefixMap = {
             sword: 'sword',
+            blade: 'blade',
             mace: 'blade',
             dagger: 'blade',
             axe: 'axe',
-            staff: 'spear',
+            staff: 'staff',
             bow: 'bow',
           };
           const pref = weaponPrefixMap[subtype] || 'sword';
           visualModel = `${pref}_${deg}`;
-          visualGlb = `/assets/sro/equipment/${pref}_${deg}.glb`;
+          // Axes & staves are procedural European meshes (no GLB file)
+          visualGlb = pref === 'staff' || pref === 'axe' ? null : `/assets/sro/equipment/${pref}_${deg}.glb`;
           icon = `/assets/sro/icons/weapon/${pref}_${deg}.png`;
         } else if (slot === 'shield') {
           visualModel = `shield_${deg}`;
@@ -584,13 +591,14 @@ export function applyVisualMetadata(item) {
     let prefix = 'sword';
     if (sub === 'dagger' || sub === 'blade' || sub === 'mace') prefix = 'blade';
     else if (sub === 'axe') prefix = 'axe';
-    else if (sub === 'staff' || sub === 'spear') prefix = 'spear';
+    else if (sub === 'staff') prefix = 'staff';
+    else if (sub === 'spear') prefix = 'spear';
     else if (sub === 'bow') prefix = 'bow';
     else if (sub === 'sword') prefix = 'sword';
 
     const modelName = `${prefix}_${deg}`;
     item.visualModel = modelName;
-    item.visualGlb = `/assets/sro/equipment/${modelName}.glb`;
+    item.visualGlb = prefix === 'staff' || prefix === 'axe' ? null : `/assets/sro/equipment/${modelName}.glb`;
     item.icon = `/assets/sro/icons/weapon/${modelName}.png`;
     return item;
   }
@@ -745,6 +753,50 @@ function rollAffixes(slot, rarity, level, count) {
  * Create an item instance.
  * opts: { baseId, slot, subtype, level, rarity, minRarity, magicFind, isBoss, isElite, count, plus, uniqueId, setId }
  */
+const STARTER_ARMOR_NAMES = { heavy: 'Bronze Chest Plate', light: 'Leather Tunic', clothes: 'Apprentice Robe' };
+export const STARTER_ARMOR_FAMILY = { knight: 'heavy', axeman: 'light', wizard: 'clothes', archer: 'light' };
+
+/** Offhand axe for the Axeman's European dual-wield (lives in the shield slot). */
+export function createOffhandAxe(tier = 0) {
+  const t = clamp(num(tier) | 0, 0, 7);
+  const it = generateItem({ baseId: `axe_${t + 1}`, rarity: 'normal', level: 1 });
+  if (!it) return null;
+  it.name = t === 0 ? 'Twin Bronze Cleaver' : `Twin ${it.baseName}`;
+  it.baseName = it.name;
+  it.type = 'weapon';
+  it.subtype = 'axe';
+  it.subType = 'axe';
+  it.slot = 'shield';
+  applyVisualMetadata(it);
+  it.dropModel = getDropModelForItem(it);
+  return it;
+}
+
+/** Starter gear a fresh hero of `classId` wears: class weapon (+ shield / offhand axe) and class armor family. */
+export function buildStarterEquipment(classId = DEFAULT_CLASS) {
+  const cls = getClass(classId);
+  const cid = cls.id;
+  const starter = cls.starter || {};
+  const armorFamily = STARTER_ARMOR_FAMILY[cid] || 'light';
+  const out = {};
+  for (const k of Object.keys(starter)) {
+    const it = generateItem({ baseId: starter[k], rarity: 'normal', level: 1, classId: cid });
+    if (!it) continue;
+    if (it.type === 'armor' && it.slot !== 'shield') {
+      it.armorFamily = armorFamily;
+      if (it.slot === 'armor') it.name = it.baseName = STARTER_ARMOR_NAMES[armorFamily] || it.name;
+    }
+    applyVisualMetadata(it);
+    out[it.slot] = it;
+  }
+  if (cls.twoHanded || !cls.shield) delete out.shield;
+  if (cid === 'axeman') {
+    const off = createOffhandAxe(0);
+    if (off) out.shield = off;
+  }
+  return out;
+}
+
 export function generateItem(opts = {}) {
   if (typeof opts === 'string') opts = { baseId: opts };
   const level = Math.max(1, num(opts.level, 1) | 0);
@@ -1000,53 +1052,11 @@ export class Inventory {
   _level() { return this.game ? this.game.hero.level : 1; }
 
   grantStarterKit(classId = this.game?.classId || DEFAULT_CLASS) {
-    const cls = getClass(classId);
-    const cid = cls.id;
+    const cid = getClass(classId).id;
     this.classId = cid;
     for (const s of SLOTS) this.equipment[s] = null;
     this.bag.fill(null);
-    const starterArmorFamily = cid === 'knight' ? 'heavy' : cid === 'wizard' ? 'clothes' : 'light';
-    const eq = (baseId) => {
-      const it = generateItem({ baseId, rarity: 'normal', level: 1, classId: cid });
-      if (!it) return;
-      if (it.type === 'armor' && it.slot !== 'shield') {
-        it.armorFamily = starterArmorFamily;
-        applyVisualMetadata(it);
-      }
-      this.equipment[it.slot] = it;
-    };
-    const starter = cls.starter || {};
-    for (const k of ['weapon', 'shield', 'armor']) if (starter[k]) eq(starter[k]);
-    for (const k in starter) if (!['weapon', 'shield', 'armor'].includes(k) && starter[k]) eq(starter[k]);
-
-    // Explicitly ensure two-handed classes (Wizard, Archer) never start with a shield
-    if (cid === 'wizard' || cid === 'archer' || !starter.shield) {
-      this.equipment.shield = null;
-    }
-
-    // Axeman starts with dual axes equipped (mainhand axe + offhand Twin Bronze Cleaver)
-    if (cid === 'axeman') {
-      const offhandAxe = generateItem({ baseId: 'axe_1', rarity: 'normal', level: 1 }) || {
-        uid: newUid(),
-        baseId: 'axe_1',
-        stats: { atkMin: 3, atkMax: 6 },
-        tier: 0,
-        reqLevel: 1,
-        price: 30,
-        value: 7,
-      };
-      offhandAxe.name = 'Twin Bronze Cleaver';
-      offhandAxe.baseName = 'Twin Bronze Cleaver';
-      offhandAxe.type = 'weapon';
-      offhandAxe.subtype = 'axe';
-      offhandAxe.subType = 'axe';
-      offhandAxe.slot = 'shield';
-      offhandAxe.visualModel = 'axe_01';
-      offhandAxe.visualGlb = '/assets/sro/equipment/axe_01.glb';
-      offhandAxe.icon = '/assets/sro/icons/weapon/axe_01.png';
-      offhandAxe.dropModel = getDropModelForItem(offhandAxe);
-      this.equipment.shield = offhandAxe;
-    }
+    Object.assign(this.equipment, buildStarterEquipment(cid));
 
     if (cid === 'wizard') this.addItem(generateItem({ baseId: 'mp_potion_s', count: 3 }), { silent: true });
     this.addItem(generateItem({ baseId: 'hp_potion_s', count: 5 }), { silent: true });

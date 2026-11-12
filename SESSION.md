@@ -4,7 +4,7 @@
 - **Project Name:** `asj` (**ARKENVEIL: SIGILS & JOURNEYS**)
 - **Tech Stack:** Three.js (`^0.170.0`), Vite (`^6.0.0`), Vanilla ES Modules, WebAudio procedural SFX.
 - **Build & Test Status:**
-  - `npm test` (`node tests/run_tests.mjs`) -> **ALL 348 CHECKS PASSED**
+  - `npm test` (`node tests/run_tests.mjs`) -> **ALL 353 CHECKS PASSED**
   - `npm run build` (`vite build`) -> **27 modules transformed, 0 errors**
 
 ## Completed Work
@@ -32,6 +32,14 @@
      - **Curated Silkroad Mobs & Unique Bosses:** Added 18 Silkroad mobs (`mangyang`, `bigeye_ghost`, `gyo_weasel`, `water_ghost`, `stone_ghost`, `tombstone_ghost`, `yeoha`, `bandit`, `bandit_archer`, `tiger`, `white_tiger`, `blue_tiger`, `chakji`, `ghost_bug`, `devil_bug`, `hyungno`, `earth_ghost`, `gunpowder_ghost`) and 5 Unique Bosses (**Tiger Girl**, **Black Tiger Bandit Leader**, **Earth Taoist King**, **Blue Tiger Sovereign**, **Hyeongcheon the Immortal**) across Floors 1–15 with `THREE.AnimationMixer` animations.
      - **Normalized Gate & Environment Scaling + Performance Optimization:** Fixed village walking chair bug (`town/elder_m.glb`, `m01..m03.glb`, `w01..w02.glb`, `guard_spear.glb`, `guard_bow.glb`), normalized `cj_portal.glb`, `cj_jang_gate_dragon.glb`, `cj_portal_stone.glb`, `cj3_lion01.glb`, `cj_streetstall.glb`, and Silkroad 3D trees (`tre_maple01.glb`, `tre_pine01.glb`, `tre_willow01.glb`) to ground level (`min.y = 0`), rendered all non-gold item drops as Silkroad treasure chests (`drop_ch_equip*.glb`, `drop_ch_acc*.glb`, `drop_archemy.glb`), and eliminated per-clone material duplication and excessive shadow casting.
      - Replaced obsolete composing/upgrade tabs and crystals/stones with the authentic Silkroad Reinforcement Alchemy Workshop (`alcm_window_reinforcement.png` + 4×4 animated prepare/success/fail sprite sheets).
+
+6. **Class Gear Pass (all 4 classes):**
+   - Knight: Chinese `blade_1` (`blade_01..04` GLB) + shield + heavy armor. Wizard: European look (`europeman_adventurer.glb`) + procedural European staff (`createEuropeanStaffMesh`, `staff_01..04` + icons). Axeman: European dual axes (procedural, `createOffhandAxe`). Archer: Chinese bow + light armor.
+   - `buildStarterEquipment(classId)` in `inventory.js` drives both `grantStarterKit` and the creation preview; starter armor family per class (`STARTER_ARMOR_FAMILY`).
+   - `applyClassClipMap` maps RUN/ATTACK1–4/CAST1–2 to the weapon clips embedded in each class GLB (no separate `dual_axe_anims.glb` load). Combo stage 3 now reaches ATTACK3; long clips are time-scaled to the gameplay window.
+   - Save repair re-applies visual metadata (old wizard `spear_*` → `staff_*`). Fixed NPC weapon glow infinite traverse.
+   - Verified with a Playwright harness (local, untracked `.asj-harness/`): all classes mount their gear, 0 page/console errors, 0 missing assets.
+   - Limitation: no European item models exist upstream; staff/axes are procedural.
 
 ## Next Actions
 - Run `npm.cmd run dev` for live browser playtesting and fine-tuning combat balance or audio levels if desired.
