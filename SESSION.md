@@ -4,7 +4,7 @@
 - **Project Name:** `asj` (**ARKENVEIL: SIGILS & JOURNEYS**)
 - **Tech Stack:** Three.js (`^0.170.0`), Vite (`^6.0.0`), Vanilla ES Modules, WebAudio procedural SFX.
 - **Build & Test Status:**
-  - `npm test` (`node tests/run_tests.mjs`) -> **ALL 398 CHECKS PASSED**
+  - `npm test` (`node tests/run_tests.mjs`) -> **ALL 401 CHECKS PASSED**
   - `npm run build` (`vite build`) -> **27 modules transformed, 0 errors**
 
 ## Completed Work
@@ -45,6 +45,7 @@
 
 8. **Portal fixes:** gate pavilion `cj_portal.glb` grounded by its floor slab (was floating on its buried rock shaft, scale 0.32); Waystone selector uses `cj_portal_stone.glb` + rune ring and opens the map once; dungeon return portal moved out of spawn reach (no instant bounce to town); boss rift placed clear of props, visibly sealed until the boss dies; Return Scroll loads the village once; HUD/E-key reach unified (3.0). Verified by `.asj-harness/portal.mjs`.
 
+11. **Portal leftovers:** Return Scroll is refused (not consumed) in the village (`inventory.useItem` checks `progress.currentFloor`); switch/shrine/stele/chest/bell toasts no longer show twice (`hud.toast` already forwards to `showToast`); the floor 15 boss rift returns to Oakhaven instead of a non-existent floor 16.
 10. **Shift guard / slow walk (`playerController.js`, `models3d.js` `buildGuardPose`, `applyGuardArmSwing`):** Shift no longer dashes (Space still does). Holding Shift with a real shield equipped (`equipment.shield.subtype === 'shield'`) sets `block` / `block_walk` (0.38× speed): the left arm is layered with the `shield_wait` guard pose over STAND1/WALK, then swung forward (`GUARD_TUNE` yaw -1.0, pitch 0.5) so the shield sits in front of the chest. Without a shield Shift gives `walk_slow` (0.4× speed, WALK clip). While Shift is held, `_updateSkillPhase` gets no move input, so skills are not interrupted.
 9. **Gear +N / seal FX (`models3d.js` `gearFxProfile`, `buildWeaponGearFx`, `buildArmorGearFx`):** +3 and above get a breathing texture-following emissive glow plus a fresnel rim (+3/4 frost, +5/6 blue, +7/8 violet, +9+ gold); +5 and above weapons get small glints running along the blade. Seals add their own particles: Star = twinkle flashes, Moon = orbiting motes, Sun = rising embers. Both combine (colors blended, +N glints halved). Armor is skinned so it only uses glow + rim (old static shells removed). Updated per frame via `root.userData.gearFx`.
 

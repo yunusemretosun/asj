@@ -1282,7 +1282,6 @@ export class DungeonGenerator {
     this.setGateOpen(pz.gateId, true);
     const msg = 'A deep grinding echoes... the vault gate opens!';
     ctx?.hud?.showToast?.(msg, 'info');
-    ctx?.hud?.toast?.(msg, 'info');
     for (const a of this.puzzleProps) {
       if (a.mesh?.userData?.orb) a.mesh.userData.orb.scale?.set?.(1.8, 1.8, 1.8);
     }
@@ -1310,7 +1309,6 @@ export class DungeonGenerator {
     else if (typeof ctx?.gameState?.takeDamage === 'function') { ctx.gameState.takeDamage(dmg, { element: 'physical', source: bell }); hurt = true; }
     const msg = hurt ? 'A discordant clang! The sequence resets and a shockwave bites you.' : 'A discordant clang! The sequence resets.';
     ctx?.hud?.showToast?.(msg, 'warning');
-    ctx?.hud?.toast?.(msg, 'info');
     return { ok: true, type: 'bell', solved: false, wrong: true };
   }
 
@@ -1397,6 +1395,7 @@ export class DungeonGenerator {
     const bossChest = this._spawnChest(chestPos.x, chestPos.z, 'boss', `f${floorNum}_boss_chest`);
     bossChest.lockedByBoss = true;
 
+    const isFinalFloor = floorNum >= FLOOR_DEFINITIONS.length;
     const nextPortalMesh = (this.models3d?.createPortalMesh || createPortalMesh)(0xef4444, 'boss_exit');
     const portalPos = { x: bossRoom.centerX, y: 0, z: bossRoom.centerZ - 4.9 };
     nextPortalMesh.position.set(portalPos.x, 0, portalPos.z);
@@ -1406,15 +1405,15 @@ export class DungeonGenerator {
     this.portals.push({
       id: `boss_exit_f${floorNum}`,
       type: 'portal',
-      portalType: 'next_floor',
-      name: `Abyssal Rift to Floor ${floorNum + 1}`,
-      targetFloor: floorNum + 1,
+      portalType: isFinalFloor ? 'village' : 'next_floor',
+      name: isFinalFloor ? 'Abyssal Rift to Oakhaven' : `Abyssal Rift to Floor ${floorNum + 1}`,
+      targetFloor: isFinalFloor ? 0 : floorNum + 1,
       lockedByBoss: true,
       x: portalPos.x,
       y: 0,
       z: portalPos.z,
       position: portalPos,
-      prompt: `Enter Rift to Floor ${floorNum + 1} [E]`,
+      prompt: isFinalFloor ? 'Return to Oakhaven [E]' : `Enter Rift to Floor ${floorNum + 1} [E]`,
       mesh: nextPortalMesh
     });
   }
@@ -1890,7 +1889,6 @@ export class DungeonGenerator {
       this.setGateOpen(entity.targetGateId, true);
       if (this.puzzle && this.puzzle.gateId === entity.targetGateId) this.puzzle.solved = true;
       ctx.hud?.showToast?.('Ancient Gate Unlocked!', 'info');
-      ctx.hud?.toast?.('Ancient Gate Unlocked!', 'info');
       return { ok: true, type: 'switch', gateId: entity.targetGateId, message: 'Ancient Gate Unlocked!' };
     }
 
@@ -1907,7 +1905,6 @@ export class DungeonGenerator {
         ctx.gameState.hero.mp = stats.maxMp || ctx.gameState.hero.maxMp || 100;
       }
       ctx.hud?.showToast?.(`${entity.name}: Full HP & Mana Restored!`, 'heal');
-      ctx.hud?.toast?.(`${entity.name}: Full HP & Mana Restored!`, 'info');
       return { ok: true, type: 'shrine', entity };
     }
 
@@ -1915,7 +1912,6 @@ export class DungeonGenerator {
     if (type === 'puzzle_statue') return this._turnStatue(entity, ctx);
     if (type === 'stele') {
       ctx.hud?.showToast?.(entity.text, 'info');
-      ctx.hud?.toast?.(entity.text, 'info');
       return { ok: true, type: 'stele', text: entity.text };
     }
 
@@ -1966,7 +1962,6 @@ export class DungeonGenerator {
     if (!chest || chest.isOpen) return { ok: false, opened: false, drops: [], gold: 0 };
     if (chest.lockedByBoss) {
       ctx.hud?.showToast?.('The Boss Chest is sealed until the Floor Boss falls!', 'warning');
-      ctx.hud?.toast?.('The Boss Chest is sealed until the Floor Boss falls!', 'info');
       return { ok: false, opened: false, locked: true, drops: [], gold: 0 };
     }
 

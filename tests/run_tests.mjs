@@ -130,6 +130,10 @@ for (let f = 1; f <= 15; f++) {
   check(`Floor ${f} spawn is outside portal interaction reach`, atSpawn?.type !== 'portal');
   check(`Floor ${f} portals stand on walkable floor`, dungeon.portals.every((p) => dungeon.isWalkable(p.x, p.z, 0.35)));
   check(`Floor ${f} has rooms and atmosphere`, fData.rooms.length >= 4 && Boolean(fData.atmosphere));
+  if (f === 15) {
+    const finalRift = dungeon.portals.find((p) => p.lockedByBoss);
+    check('Floor 15 boss rift leads back to the village', finalRift?.targetFloor === 0 && finalRift?.portalType === 'village');
+  }
   if ([3, 6, 9, 12, 15].includes(f)) {
     check(`Boss floor ${f} has bossArena`, Boolean(fData.bossArena?.center && fData.bossArena?.radius > 5));
   }
@@ -347,4 +351,16 @@ const comboFx = gearFxProfile({ plus: 9, seal: 'star' });
 check('Sealed +N item keeps both effects with fewer +N glints', comboFx.seal === 'star' && comboFx.sealParticles > 0 && comboFx.sparkles < gearFxProfile({ plus: 9 }).sparkles && comboFx.glowHex !== gearFxProfile({ plus: 9 }).glowHex);
 check('Seal-only +0 item still gets its seal FX', gearFxProfile({ plus: 0, seal: 'moon' })?.seal === 'moon');
 
+{
+  const rg = createGame({});
+  const scrollUid = () => rg.inventory.bag.find((it) => it && it.baseId === 'scroll_return' && it.uid)?.uid;
+  const countScrolls = () => rg.inventory.bag.reduce((n, it) => n + (it && it.baseId === 'scroll_return' ? (it.count || 1) : 0), 0);
+  const startScrolls = countScrolls();
+  rg.progress.currentFloor = 0;
+  const inVillage = rg.inventory.useItem(scrollUid());
+  check('Return Scroll is refused in the village', inVillage.ok === false && countScrolls() === startScrolls);
+  rg.progress.currentFloor = 4;
+  const inDungeon = rg.inventory.useItem(scrollUid());
+  check('Return Scroll is consumed in the dungeon', inDungeon.ok === true && countScrolls() === startScrolls - 1);
+}
 console.log(`ALL ${passed} CHECKS PASSED.`);

@@ -1391,6 +1391,7 @@ export class Inventory {
     if (!g) return { ok: false, msg: 'No hero' };
     if (g.hero.dead) return { ok: false, msg: 'You are dead' };
     const e = it.effect;
+    if (e.townPortal && !(Number(g.progress?.currentFloor) > 0)) return { ok: false, msg: 'You are already in the village' };
     const base = ITEM_BASES[it.baseId] || {};
     if (base.potion && this.potionCooldown > 0) return { ok: false, msg: 'Potion on cooldown' };
     const s = g.getStats();
