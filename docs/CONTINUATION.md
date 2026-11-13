@@ -17,7 +17,7 @@ Read `SESSION.md` first. Open only the files relevant to your current task.
 | **World & Dungeons** | `src/world/dungeonGenerator.js`, `src/world/villageBuilder.js`, `src/world/dungeonDecor.js` | Silk-Road Village hub & outer forest grove (`buildVillage`), 15-floor procedural tomb dungeons (`generateFloor`), instanced decor, bell/statue puzzles, `bossArena`. |
 | **Enemy & Boss AI** | `src/world/enemyAI.js` | `createEnemyManager`, `AI_STATE` — Monster catalog, sleeping monster packs (`packId`, `wakePack`), status effects (`applyStatus`), elite affixes, boss phases & `bossArena` telegraphs. |
 | **HUD & Menus** | `src/ui/hud.js`, `src/ui/menus.js`, `src/ui/characterCreation.js`, `src/ui/styles.css` | `HUD`, `MenuManager`, `openCharacterCreation` — Title/character creation screen, HUD, minimap, Alchemy/Compose (`O`), Skills (`K`), Inventory (`B`/`I`), Quests (`Q`), Map (`M`). |
-| **Automated Tests** | `tests/run_tests.mjs` | Headless Node test suite (`npm.cmd test`) — 138 checks covering classes, sets, alchemy, village, all 15 dungeon floors, sleeping packs, boss telegraphs, and statuses. |
+| **Automated Tests** | `tests/run_tests.mjs` | Headless Node test suite (`node tests/run_tests.mjs`) — 922 checks covering classes, sets, alchemy, village layout/textures/river, all dungeon floors, sleeping packs, ranged projectiles, boss telegraphs, and statuses. |
 
 ---
 

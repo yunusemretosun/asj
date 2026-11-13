@@ -1,27 +1,24 @@
 # Session State — ASJ (ARKENVEIL: SIGILS & JOURNEYS)
 
 ## Current Snapshot
-- **Project Name:** `asj` (**ARKENVEIL: SIGILS & JOURNEYS**)
-- **Base Commit:** `9fe7515` (`HEAD -> main`, local working-tree changes uncommitted)
-- **Tech Stack:** Three.js (`^0.170.0`), Vite (`^6.0.0`), Vanilla ES Modules, WebAudio SFX.
-- **Build & Test Status (Fresh):**
-  - `node tests/run_tests.mjs` -> **ALL 922 CHECKS PASSED.**
-  - `npm run build` (`vite v6.4.6`) -> **29 modules transformed, built in 4.03s (`dist/index.html` 2.21 kB, `dist/assets/index-DxJjNJm6.css` 67.34 kB, `dist/assets/index-6wz_GeMZ.js` 1,831.65 kB)**
+- **Commit:** see `git log -2 --oneline` (village ground/river + SRO assets + main.js loop fixes committed on `main`, not pushed).
+- **Status:** `node tests/run_tests.mjs` -> **ALL 922 CHECKS PASSED**; `npm run build` clean (only >1500 kB chunk-size warning).
+- **Note:** Parallel subagents for the tasks below hit a quota limit (429) and made **no file edits**. All tasks below are still open.
 
-## Completed Changes
-- **RPG Town Ground, Stone Roads & Furnishing (`src/world/villageBuilder.js`, `public/assets/textures/village/`):**
-  - Integrated 13 verified local CC0/MIT 1K PBR diffuse + normal textures (`town_stone_*`, `cobble_road_*`, `plaza_stone_*`, `river_pebbles_*`, `outskirt_road_*`, `grass_diff.jpg`, `grass_nor.jpg`, `water_nor.jpg`) with world-space UV tiling (`scaleGroundUVs`, `applyPlanarXZUVs`) and cached `loadVillageTex`.
-  - Paved interior town (`111m x 111m`) with courtyard stone, cobblestone cardinal avenues and district paths, patterned plaza flagstones + marble medallions (`c_marble_jang_01.png`), `Village_curb` road curbs, and RPG furnishings (notice board, covered well, planters, benches, amphorae, weapons rack) verified clear of gates/roads.
-- **Outskirt Grasslands, Winding Stream & Instanced Nature (`src/world/villageBuilder.js`):**
-  - Textured outskirts with sunlit grass + normal relief, gravelly hunting camp clearings and outer highways.
-  - Added winding outskirt stream (`riverCurve` / `riverPoints`: `OutskirtRiverBed` pebble bed + animated `OutskirtRiverWater`), NE cliff waterfall cascade (`(45.5, -122)`), 2 flush bridges (`(0, 60.0)`, `(60.5, 0)`), 2 stepping-stone fords, and 4 `InstancedMesh` layers (`OutskirtGrassTufts`, `OutskirtWildflowers`, `RiverbankPebbles`, `RiverbankReeds`).
-  - Tuned SE river spline bend (`(59.2, 57.6)`, `(53.5, 58.8)`, `(44.0, 59.5)`) so all 181 stream samples clear town walls (`>= 2.7m`) and all 156 Jangan spawns (`>= 3.2m`).
-- **Prior Baseline Work in Working Tree:** Open gate mouths & room interiors, 16 Jangan outskirt camps (`156` mobs), ranged projectile swept collision & extended ranges, hybrid `6–9` hotbar slots, GLB T-pose prevention, and classic village layout restoration.
+## Done This Session
+- `villageBuilder.js`: 13 local PBR textures (`public/assets/textures/village/`), paved town, cobble avenues, plazas, curbs, winding stream (`riverPoints`), 2 flush bridges `(0,60)` / `(60.5,0)`, instanced grass/flowers/pebbles/reeds.
+- `main.js`: game loop now starts **after** the title screen; per-frame callback objects hoisted (`dungeonUpdateOpts`, `enemyUpdateOpts`); `countAliveEnemies()` / `countRemainingGiants()` replace `.filter().length`.
 
-## Verification
-- `node tests/run_tests.mjs`: `ALL 922 CHECKS PASSED.` (includes checks for all 13 village PBR texture assets >10KB, stream/bridge/curb/instanced foliage meshes, wall & camp clearance, unobstructed bridges `(0, 60.0)` / `(60.5, 0)`, and `vb.update()`).
-- `npm run build`: clean Vite bundle in `4.03s`.
+## Open Tasks (do in this order)
+1. **Mob attacks too ranged (user report, highest priority):** In `src/world/enemyAI.js` `isSkillInRange` (~L130), any skill in `RANGED_ENEMY_SKILLS` gets `rangedCap = max(13.5, attackRange + 2.5)` even for **melee** mobs, so melee creatures cast from 13.5m. Fix: gate ranged caps on `enemy.isRanged || enemy.isBoss`; melee mobs use `attackRange + 1.8`. Audit each catalog entry's `skills` against the SRO creature's real attack type (melee bite/claw vs. arrows/magic). Also check L1347 (`isRanged` multiplies `attackRange * 1.9`) and L1363/L1373 entries. Keep test 27 contracts (bowmen hold ≥6.5m; `frost_wave`/`curse_drain`/`venom_gaze` work at 11–12m on ranged mobs).
+2. **Village ground still looks bad** (`zemin.png`): grass on `PlaneGeometry` gets stretched ~245:1 because `scaleGroundUVs` reads the pre-rotation normal `(0,0,1)` — use `applyPlanarXZUVs`-style UVs or check `|nz|`. Replace sharp brown camp discs/straight dirt strips with noise-feathered splat blending; unify town floor (single texture family, remove white `curb` diamonds at avenue centers, avoid y-offset z-fighting 0.04/0.071/0.081).
+3. **Performance (user reports lag):** audit findings, by priority:
+   - renderer: fixed PointLight pool (no scene add/remove → no shader recompiles), cap DPR 1.5, fix `_updateAtmosphere` per-frame alloc, weather `needsUpdate`, instanced VFX particles, pooled FCT via `transform`.
+   - models3d: remove `PointLight` in `createEuropeanStaffMesh` / `applyWeaponGlow`; hit-flash via emissive not material swap; merge barrel (~23 meshes) / chest (~19) parts; skip procedural gear when `isGLBHero`. **Keep** `targetAction.clampWhenFinished = targetLoop === THREE.LoopOnce` and `actionSeq` (tested).
+   - enemyAI: spatial hash for separation (O(N²) now), cache alive counts, freeze mixer in SLEEP, shared HP-bar geos/mats, pool outskirt respawns.
+   - dungeonGenerator/Decor: spatial grid for `isWalkable`/`resolveCollision`, promise-dedupe `loadSROProp`, mark caches `isCachedGLB`, `wallInst.castShadow=false`, cache floor textures.
+   - hud/menus: remove `void el.offsetWidth` reflows, `scaleX` bars, dirty-checked DOM writes, dialogue typewriter rebuilds modal every 22ms.
+4. **Dungeon floor redesign:** per-`sroDungeon` decorators using unused `public/assets/sro/dun/props/*.glb` (jinsi_*, jupiter_*, pha_*, roc_*, wreck_*, togui_*); remove vines in Qin-Shi, skulls in Karakoram, terracotta statues on F13–F16; wire `SRO_DUNGEON_PROPS[*].bossGate`; fix trap-gallery fixed `safe=[2,1,2,3]`.
 
-## Known Limitations & Next Actions
-- **Limitation:** WebGL texture rendering, animated water UV scrolling, and live in-browser visuals were verified via Node logic/asset tests and Vite bundling rather than a live browser session.
-- **Next Action:** Run `npm run dev` to visually inspect the paved town plazas/streets, RPG props, grassy outskirts, bridges, and animated river in WebGL.
+## Verification Contract
+Run `node tests/run_tests.mjs && npm run build` after every change; add tests for new behavior. See `docs/CONTINUATION.md` for module ownership.
