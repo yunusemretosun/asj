@@ -9,6 +9,18 @@ function hexToCss(c) {
   return typeof c === 'number' ? `#${c.toString(16).padStart(6, '0')}` : String(c || '#ffffff');
 }
 
+const SOUND_COOLDOWN_MS = {
+  hit: 45,
+  crit: 55,
+  hurt: 70,
+  block: 60,
+  loot: 40,
+  coin: 40,
+  potion: 40,
+  skill: 50
+};
+const DEFAULT_SOUND_COOLDOWN_MS = 30;
+
 /**
  * Procedural WebAudio API Sound Synthesizer for ARKENVEIL: SIGILS & JOURNEYS
  */
@@ -17,6 +29,38 @@ export class SoundFX {
     this.ctx = null;
     this.enabled = true;
     this.masterVolume = 0.28;
+    this._lastPlayMs = Object.create(null);
+    this._activeVoices = 0;
+    this._maxVoices = 10;
+  }
+
+  _startVoice(node, startTime, stopTime) {
+    if (!node || this._activeVoices >= this._maxVoices) return false;
+    this._activeVoices++;
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
+      if (this._activeVoices > 0) this._activeVoices--;
+    };
+    try {
+      node.onended = release;
+    } catch {
+      // Ignore read-only onended in mocks
+    }
+    if (typeof setTimeout === 'function') {
+      const nowT = this.ctx?.currentTime ?? startTime;
+      const delayMs = Math.max(25, Math.ceil((stopTime - nowT) * 1000) + 50);
+      setTimeout(release, delayMs);
+    }
+    try {
+      node.start(startTime);
+      node.stop(stopTime);
+      return true;
+    } catch {
+      release();
+      return false;
+    }
   }
 
   _ensureContext() {
@@ -37,6 +81,15 @@ export class SoundFX {
     const ctx = this._ensureContext();
     if (!ctx) return;
 
+    const nowMs = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+      ? performance.now()
+      : Date.now();
+    const minCd = SOUND_COOLDOWN_MS[type] ?? DEFAULT_SOUND_COOLDOWN_MS;
+    const lastMs = this._lastPlayMs[type];
+    if (lastMs !== undefined && (nowMs - lastMs) < minCd) return;
+    if (this._activeVoices >= this._maxVoices) return;
+    this._lastPlayMs[type] = nowMs;
+
     const now = ctx.currentTime;
     try {
       if (type === 'slash') {
@@ -51,8 +104,7 @@ export class SoundFX {
         gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
         osc.connect(gain);
         gain.connect(ctx.destination);
-        osc.start(now);
-        osc.stop(now + 0.15);
+        this._startVoice(osc, now, now + 0.15);
       } else if (type === 'hit' || type === 'crit') {
         const isCrit = type === 'crit' || options.crit;
         const osc = ctx.createOscillator();
@@ -64,11 +116,12 @@ export class SoundFX {
         gain.gain.exponentialRampToValueAtTime(0.001, now + (isCrit ? 0.23 : 0.13));
         osc.connect(gain);
         gain.connect(ctx.destination);
-        osc.start(now);
-        osc.stop(now + (isCrit ? 0.23 : 0.13));
+        this._startVoice(osc, now, now + (isCrit ? 0.23 : 0.13));
       } else if (type === 'skill') {
         const freqs = [260, 390, 520];
-        freqs.forEach((f, idx) => {
+        for (let idx = 0; idx < freqs.length; idx++) {
+          if (this._activeVoices >= this._maxVoices) break;
+          const f = freqs[idx];
           const osc = ctx.createOscillator();
           const gain = ctx.createGain();
           osc.type = 'sine';
@@ -78,9 +131,8 @@ export class SoundFX {
           gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
           osc.connect(gain);
           gain.connect(ctx.destination);
-          osc.start(now + idx * 0.03);
-          osc.stop(now + 0.3);
-        });
+          this._startVoice(osc, now + idx * 0.03, now + 0.3);
+        }
       } else if (type === 'dash') {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
@@ -91,8 +143,7 @@ export class SoundFX {
         gain.gain.exponentialRampToValueAtTime(0.001, now + 0.17);
         osc.connect(gain);
         gain.connect(ctx.destination);
-        osc.start(now);
-        osc.stop(now + 0.17);
+        this._startVoice(osc, now, now + 0.17);
       } else if (type === 'block') {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
@@ -103,11 +154,12 @@ export class SoundFX {
         gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
         osc.connect(gain);
         gain.connect(ctx.destination);
-        osc.start(now);
-        osc.stop(now + 0.15);
+        this._startVoice(osc, now, now + 0.15);
       } else if (type === 'levelup') {
         const notes = [261.63, 329.63, 392.0, 523.25, 659.25];
-        notes.forEach((freq, i) => {
+        for (let i = 0; i < notes.length; i++) {
+          if (this._activeVoices >= this._maxVoices) break;
+          const freq = notes[i];
           const osc = ctx.createOscillator();
           const gain = ctx.createGain();
           osc.type = 'triangle';
@@ -116,9 +168,8 @@ export class SoundFX {
           gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.08 + 0.38);
           osc.connect(gain);
           gain.connect(ctx.destination);
-          osc.start(now + i * 0.08);
-          osc.stop(now + i * 0.08 + 0.39);
-        });
+          this._startVoice(osc, now + i * 0.08, now + i * 0.08 + 0.39);
+        }
       } else if (type === 'loot' || type === 'coin' || type === 'potion') {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
@@ -129,8 +180,7 @@ export class SoundFX {
         gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
         osc.connect(gain);
         gain.connect(ctx.destination);
-        osc.start(now);
-        osc.stop(now + 0.18);
+        this._startVoice(osc, now, now + 0.18);
       } else if (type === 'bow') {
         // Bowstring twang: plucked triangle with a fast pitch drop + low thump
         const osc = ctx.createOscillator();
@@ -142,24 +192,27 @@ export class SoundFX {
         gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
         osc.connect(gain);
         gain.connect(ctx.destination);
-        osc.start(now);
-        osc.stop(now + 0.16);
+        this._startVoice(osc, now, now + 0.16);
 
-        const thump = ctx.createOscillator();
-        const tGain = ctx.createGain();
-        thump.type = 'sine';
-        thump.frequency.setValueAtTime(130, now);
-        thump.frequency.exponentialRampToValueAtTime(60, now + 0.08);
-        tGain.gain.setValueAtTime(this.masterVolume * 0.4, now);
-        tGain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
-        thump.connect(tGain);
-        tGain.connect(ctx.destination);
-        thump.start(now);
-        thump.stop(now + 0.09);
+        if (this._activeVoices < this._maxVoices) {
+          const thump = ctx.createOscillator();
+          const tGain = ctx.createGain();
+          thump.type = 'sine';
+          thump.frequency.setValueAtTime(130, now);
+          thump.frequency.exponentialRampToValueAtTime(60, now + 0.08);
+          tGain.gain.setValueAtTime(this.masterVolume * 0.4, now);
+          tGain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+          thump.connect(tGain);
+          tGain.connect(ctx.destination);
+          this._startVoice(thump, now, now + 0.09);
+        }
       } else if (type === 'magic') {
         // Shimmering whoosh: detuned rising sines + a descending sparkle
         const big = Boolean(options.big);
-        [0, 7].forEach((detune, idx) => {
+        const detunes = [0, 7];
+        for (let idx = 0; idx < detunes.length; idx++) {
+          if (this._activeVoices >= this._maxVoices) break;
+          const detune = detunes[idx];
           const osc = ctx.createOscillator();
           const gain = ctx.createGain();
           osc.type = 'sine';
@@ -171,25 +224,27 @@ export class SoundFX {
           gain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
           osc.connect(gain);
           gain.connect(ctx.destination);
-          osc.start(now);
-          osc.stop(now + 0.25);
-        });
-        const sparkle = ctx.createOscillator();
-        const sGain = ctx.createGain();
-        sparkle.type = 'triangle';
-        sparkle.frequency.setValueAtTime(2200, now + 0.03);
-        sparkle.frequency.exponentialRampToValueAtTime(900, now + 0.2);
-        sGain.gain.setValueAtTime(this.masterVolume * 0.12, now + 0.03);
-        sGain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
-        sparkle.connect(sGain);
-        sGain.connect(ctx.destination);
-        sparkle.start(now + 0.03);
-        sparkle.stop(now + 0.23);
+          this._startVoice(osc, now, now + 0.25);
+        }
+        if (this._activeVoices < this._maxVoices) {
+          const sparkle = ctx.createOscillator();
+          const sGain = ctx.createGain();
+          sparkle.type = 'triangle';
+          sparkle.frequency.setValueAtTime(2200, now + 0.03);
+          sparkle.frequency.exponentialRampToValueAtTime(900, now + 0.2);
+          sGain.gain.setValueAtTime(this.masterVolume * 0.12, now + 0.03);
+          sGain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+          sparkle.connect(sGain);
+          sGain.connect(ctx.destination);
+          this._startVoice(sparkle, now + 0.03, now + 0.23);
+        }
       } else if (type === 'alchemy_success') {
         // Rising major arpeggio with a bright shimmer tail (bigger for +7 and up)
         const big = Boolean(options.big);
         const notes = big ? [392.0, 523.25, 659.25, 783.99, 1046.5] : [523.25, 659.25, 783.99];
-        notes.forEach((freq, i) => {
+        for (let i = 0; i < notes.length; i++) {
+          if (this._activeVoices >= this._maxVoices) break;
+          const freq = notes[i];
           const t = now + i * 0.07;
           const osc = ctx.createOscillator();
           const gain = ctx.createGain();
@@ -199,21 +254,21 @@ export class SoundFX {
           gain.gain.exponentialRampToValueAtTime(0.001, t + 0.32);
           osc.connect(gain);
           gain.connect(ctx.destination);
-          osc.start(t);
-          osc.stop(t + 0.33);
-        });
-        const end = now + notes.length * 0.07;
-        const shimmer = ctx.createOscillator();
-        const sGain = ctx.createGain();
-        shimmer.type = 'sine';
-        shimmer.frequency.setValueAtTime(1800, end);
-        shimmer.frequency.exponentialRampToValueAtTime(2600, end + 0.35);
-        sGain.gain.setValueAtTime(this.masterVolume * 0.15, end);
-        sGain.gain.exponentialRampToValueAtTime(0.001, end + 0.4);
-        shimmer.connect(sGain);
-        sGain.connect(ctx.destination);
-        shimmer.start(end);
-        shimmer.stop(end + 0.41);
+          this._startVoice(osc, t, t + 0.33);
+        }
+        if (this._activeVoices < this._maxVoices) {
+          const end = now + notes.length * 0.07;
+          const shimmer = ctx.createOscillator();
+          const sGain = ctx.createGain();
+          shimmer.type = 'sine';
+          shimmer.frequency.setValueAtTime(1800, end);
+          shimmer.frequency.exponentialRampToValueAtTime(2600, end + 0.35);
+          sGain.gain.setValueAtTime(this.masterVolume * 0.15, end);
+          sGain.gain.exponentialRampToValueAtTime(0.001, end + 0.4);
+          shimmer.connect(sGain);
+          sGain.connect(ctx.destination);
+          this._startVoice(shimmer, end, end + 0.41);
+        }
       } else if (type === 'alchemy_fail') {
         // Crack: short noise burst + falling low square "thud"
         const len = Math.floor(ctx.sampleRate * 0.12);
@@ -227,23 +282,25 @@ export class SoundFX {
         nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
         noise.connect(nGain);
         nGain.connect(ctx.destination);
-        noise.start(now);
-        noise.stop(now + 0.13);
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'square';
-        osc.frequency.setValueAtTime(180, now + 0.02);
-        osc.frequency.exponentialRampToValueAtTime(45, now + 0.35);
-        gain.gain.setValueAtTime(this.masterVolume * 0.45, now + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.36);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(now + 0.02);
-        osc.stop(now + 0.37);
+        this._startVoice(noise, now, now + 0.13);
+        if (this._activeVoices < this._maxVoices) {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'square';
+          osc.frequency.setValueAtTime(180, now + 0.02);
+          osc.frequency.exponentialRampToValueAtTime(45, now + 0.35);
+          gain.gain.setValueAtTime(this.masterVolume * 0.45, now + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.36);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          this._startVoice(osc, now + 0.02, now + 0.37);
+        }
       } else if (type === 'berserk') {
         // Dramatic rising power chord + electric hum
         const chord = [130.81, 196.0, 261.63, 392.0, 523.25];
-        chord.forEach((freq, idx) => {
+        for (let idx = 0; idx < chord.length; idx++) {
+          if (this._activeVoices >= this._maxVoices) break;
+          const freq = chord[idx];
           const osc = ctx.createOscillator();
           const gain = ctx.createGain();
           osc.type = 'sawtooth';
@@ -254,20 +311,20 @@ export class SoundFX {
           gain.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
           osc.connect(gain);
           gain.connect(ctx.destination);
-          osc.start(now + idx * 0.04);
-          osc.stop(now + 0.72);
-        });
-        const hum = ctx.createOscillator();
-        const hGain = ctx.createGain();
-        hum.type = 'sawtooth';
-        hum.frequency.setValueAtTime(80, now);
-        hum.frequency.linearRampToValueAtTime(160, now + 0.4);
-        hGain.gain.setValueAtTime(this.masterVolume * 0.45, now);
-        hGain.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
-        hum.connect(hGain);
-        hGain.connect(ctx.destination);
-        hum.start(now);
-        hum.stop(now + 0.65);
+          this._startVoice(osc, now + idx * 0.04, now + 0.72);
+        }
+        if (this._activeVoices < this._maxVoices) {
+          const hum = ctx.createOscillator();
+          const hGain = ctx.createGain();
+          hum.type = 'sawtooth';
+          hum.frequency.setValueAtTime(80, now);
+          hum.frequency.linearRampToValueAtTime(160, now + 0.4);
+          hGain.gain.setValueAtTime(this.masterVolume * 0.45, now);
+          hGain.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
+          hum.connect(hGain);
+          hGain.connect(ctx.destination);
+          this._startVoice(hum, now, now + 0.65);
+        }
       } else if (type === 'hurt') {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
@@ -278,8 +335,7 @@ export class SoundFX {
         gain.gain.exponentialRampToValueAtTime(0.001, now + 0.19);
         osc.connect(gain);
         gain.connect(ctx.destination);
-        osc.start(now);
-        osc.stop(now + 0.19);
+        this._startVoice(osc, now, now + 0.19);
       }
     } catch {
       // Ignore WebAudio autoplay restrictions before first interaction
@@ -351,7 +407,7 @@ const FALLBACK_SKILLS = [
 ];
 
 export class PlayerController {
-  constructor({ renderer, gameState, world, enemyManager, onInteract, onToast }) {
+  constructor({ renderer, gameState, world, enemyManager, onInteract, onToast, deferHeroMesh = false }) {
     this.renderer = renderer;
     this.gameState = gameState;
     this.world = world;
@@ -472,14 +528,12 @@ export class PlayerController {
     this.isRightMouseDown = false;
     this.inputEnabled = true;
 
-    // Create 3D Hero Mesh and add to scene
-    const initialEquip = this._getEquipment();
-    this.heroMesh = createHeroMesh(initialEquip, this._getLook());
-    this.mesh = this.heroMesh;
-    if (this.renderer?.scene?.add) {
-      this.renderer.scene.add(this.heroMesh);
+    // Create 3D Hero Mesh unless deferred (caller creates via ensureHeroMesh / applyHeroLook / update)
+    this.heroMesh = null;
+    if (!deferHeroMesh) {
+      this.ensureHeroMesh();
+      this.applyHeroLook();
     }
-    this.applyHeroLook();
 
     this._bindEvents();
     this._bindGameEvents();
@@ -493,12 +547,28 @@ export class PlayerController {
     this.heroMesh = val;
   }
 
+  /** Lazily instantiate and attach the 3D hero mesh when deferred at startup. */
+  ensureHeroMesh() {
+    if (this.heroMesh) return this.heroMesh;
+    const initialEquip = this._getEquipment();
+    const mesh = createHeroMesh(initialEquip, this._getLook());
+    this.heroMesh = mesh;
+    mesh.position.copy(this.position);
+    mesh.rotation.y = this.rotation;
+    if (this.renderer?.scene?.add) {
+      this.renderer.scene.add(mesh);
+    }
+    this._imbueSynced = undefined;
+    this._syncImbueVisual();
+    return mesh;
+  }
+
   tryActivateBerserk() {
     const res = this.gameState?.activateBerserk?.();
     if (res?.ok) {
       this.sound?.play('berserk');
       this._lastBerserk = true;
-      this.renderer?.setBerserkAura?.(this.mesh, true);
+      if (this.mesh) this.renderer?.setBerserkAura?.(this.mesh, true);
       this.renderer?.spawnLevelUpPillar?.(this.position);
       this.onToast?.('⚡ BERSERK MODE ACTIVATED! (2x DMG, +38% Speed)', 'levelup');
     } else if (res?.reason) {
@@ -573,6 +643,7 @@ export class PlayerController {
    * Call after character creation or a save load.
    */
   applyHeroLook() {
+    this.ensureHeroMesh();
     const look = this._getLook();
     const equipped = this._getEquipment();
     if (this.heroMesh?.userData?.setLook) {
@@ -591,6 +662,7 @@ export class PlayerController {
   }
 
   syncEquipment() {
+    this.ensureHeroMesh();
     if (this.heroMesh?.userData?.updateEquipment) {
       this.heroMesh.userData.updateEquipment(this._getEquipment());
     }
@@ -602,7 +674,9 @@ export class PlayerController {
     } else {
       this.position.set(Number(x) || 0, Number(y) || 0, Number(z) || 0);
     }
-    this.heroMesh.position.copy(this.position);
+    if (this.heroMesh) {
+      this.heroMesh.position.copy(this.position);
+    }
   }
 
   resetPosition(x = 0, y = 0, z = 0) {
@@ -960,25 +1034,29 @@ export class PlayerController {
       }
     }
 
-    // 2. Check enemies in arc
-    let hitEnemies = [];
-    if (this.enemyManager) {
-      if (typeof this.enemyManager.getEnemiesInArc === 'function') {
-        hitEnemies = this.enemyManager.getEnemiesInArc(this.position.x, this.position.z, this.rotation, range, arc) || [];
-      } else if (typeof this.enemyManager.getEnemiesInRange === 'function') {
-        hitEnemies = this.enemyManager.getEnemiesInRange(this.position.x, this.position.z, range) || [];
-      }
-    }
+    // 2. Check enemies in arc (allocation-free into reusable scratch array)
+    const hitEnemies = this._collectEnemiesInArc(this.position.x, this.position.z, this.rotation, range, arc, this._scratchHitArr);
+    const hitCount = hitEnemies.length;
+    const suppressImbueFct = hitCount > 3;
 
     let anyCrit = false;
     const rollDamageFn = this._basicRollFn(mult, false);
-    for (const enemy of hitEnemies) {
-      this._applyPlayerAttackToEnemy(enemy, { mult, element: 'physical', knockback, rollDamageFn });
+    for (let i = 0; i < hitCount; i++) {
+      const enemy = hitEnemies[i];
+      this._applyPlayerAttackToEnemy(enemy, {
+        mult,
+        element: 'physical',
+        knockback,
+        rollDamageFn,
+        targetCount: hitCount,
+        suppressImbueFct
+      });
       if (enemy._lastHitCrit) anyCrit = true;
     }
+    hitEnemies.length = 0;
 
-    if (hitEnemies.length > 0) {
-      this.comboCount += hitEnemies.length;
+    if (hitCount > 0) {
+      this.comboCount += hitCount;
       this.comboDecayTimer = 4.5;
       if (heavy) {
         this.renderer.shake(anyCrit || this.comboStage === 3 ? 0.45 : 0.26, 0.2);
@@ -988,6 +1066,80 @@ export class PlayerController {
     } else if (heavy && this.comboStage === 3) {
       this.renderer.shake(0.2, 0.15);
     }
+  }
+
+  /** Allocation-free collection of living enemies within `radius` into `out`. */
+  _collectEnemiesInRange(x, z, radius, out = this._scratchHitArr) {
+    out.length = 0;
+    const em = this.enemyManager;
+    if (!em) return out;
+    if (typeof em.forEachEnemyInRange === 'function' && out === this._scratchHitArr) {
+      em.forEachEnemyInRange(x, z, radius, this._onCollectHit);
+      return out;
+    }
+    if (Array.isArray(em.enemies)) {
+      const list = em.enemies;
+      for (let i = 0; i < list.length; i++) {
+        const e = list[i];
+        if (!e || e.dead) continue;
+        const dx = e.x - x;
+        const dz = e.z - z;
+        const maxR = radius + (e.radius || 0);
+        if (dx * dx + dz * dz <= maxR * maxR) out.push(e);
+      }
+      return out;
+    }
+    const fallback = em.getEnemiesInRange?.(x, z, radius);
+    if (Array.isArray(fallback)) {
+      for (let i = 0; i < fallback.length; i++) {
+        if (fallback[i] && !fallback[i].dead) out.push(fallback[i]);
+      }
+    }
+    return out;
+  }
+
+  /** Allocation-free collection of living enemies within a forward arc into `out`. */
+  _collectEnemiesInArc(x, z, yaw, range, arcAngle, out = this._scratchHitArr) {
+    out.length = 0;
+    const em = this.enemyManager;
+    if (!em) return out;
+    if (typeof em.forEachEnemyInArc === 'function' && out === this._scratchHitArr) {
+      em.forEachEnemyInArc(x, z, yaw, range, arcAngle, this._onCollectHit);
+      return out;
+    }
+    if (Array.isArray(em.enemies)) {
+      const fx = Math.sin(yaw);
+      const fz = Math.cos(yaw);
+      const halfCos = Math.cos(arcAngle * 0.5);
+      const list = em.enemies;
+      for (let i = 0; i < list.length; i++) {
+        const e = list[i];
+        if (!e || e.dead) continue;
+        const dx = e.x - x;
+        const dz = e.z - z;
+        const er = e.radius || 0;
+        const maxR = range + er;
+        const dSq = dx * dx + dz * dz;
+        if (dSq > maxR * maxR) continue;
+        const nearR = 0.75 + er * 0.5;
+        if (dSq < nearR * nearR) {
+          out.push(e);
+          continue;
+        }
+        const dist = Math.sqrt(dSq);
+        if ((dx / dist) * fx + (dz / dist) * fz >= halfCos) out.push(e);
+      }
+      return out;
+    }
+    const fallback = typeof em.getEnemiesInArc === 'function'
+      ? em.getEnemiesInArc(x, z, yaw, range, arcAngle)
+      : em.getEnemiesInRange?.(x, z, range);
+    if (Array.isArray(fallback)) {
+      for (let i = 0; i < fallback.length; i++) {
+        if (fallback[i] && !fallback[i].dead) out.push(fallback[i]);
+      }
+    }
+    return out;
   }
 
   /** Nearest living enemy within `range` and inside a forward cone of `cone` total radians. */
@@ -1246,22 +1398,26 @@ export class PlayerController {
     }
     if (p.aoeRadius > 0) {
       this.renderer.spawnShockwave?.({ x: at.x, y: 0, z: at.z }, p.aoeRadius, p.color, 0.4);
-      const em = this.enemyManager;
-      let targets;
-      if (em && typeof em.forEachEnemyInRange === 'function') {
-        this._scratchHitArr.length = 0;
-        em.forEachEnemyInRange(at.x, at.z, p.aoeRadius, this._onCollectHit);
-        targets = this._scratchHitArr;
-      } else {
-        targets = em?.getEnemiesInRange?.(at.x, at.z, p.aoeRadius) || [];
-      }
-      let n = 0;
+      const targets = this._collectEnemiesInRange(at.x, at.z, p.aoeRadius, this._scratchHitArr);
+      let writeIdx = 0;
       for (let i = 0; i < targets.length; i++) {
         const e = targets[i];
         if (!e || e.dead || e === enemyTarget || p.hit.has(e)) continue;
         p.hit.add(e);
-        this._applyPlayerAttackToEnemy(e, { mult: p.mult, element: p.element, knockback: p.knockback, rollDamageFn: p.rollDamageFn });
-        n++;
+        targets[writeIdx++] = e;
+      }
+      targets.length = writeIdx;
+      const n = writeIdx;
+      const suppressImbueFct = n > 3;
+      for (let i = 0; i < n; i++) {
+        this._applyPlayerAttackToEnemy(targets[i], {
+          mult: p.mult,
+          element: p.element,
+          knockback: p.knockback,
+          rollDamageFn: p.rollDamageFn,
+          targetCount: n,
+          suppressImbueFct
+        });
       }
       this._scratchHitArr.length = 0;
       if (n > 0) {
@@ -1406,7 +1562,7 @@ export class PlayerController {
     }
   }
 
-  _applyPlayerAttackToEnemy(enemy, { mult = 1.0, element = 'physical', knockback = 0.6, rollDamageFn = null, stun = 0 }) {
+  _applyPlayerAttackToEnemy(enemy, { mult = 1.0, element = 'physical', knockback = 0.6, rollDamageFn = null, stun = 0, targetCount = 1, suppressImbueFct = false }) {
     if (!enemy || enemy.dead) return;
     const defStats = { def: enemy.def || enemy.defense || 2, level: enemy.level || 1, dodge: 0 };
 
@@ -1435,11 +1591,10 @@ export class PlayerController {
     const imbue = roll.imbue && Number(roll.imbue.extra) > 0 ? roll.imbue : null;
     const imbueColor = imbue ? imbueColorOf(imbue) ?? ELEMENT_FX_COLORS[imbue.element] ?? 0xffffff : null;
     const sparkColor = roll.crit ? 0xfacc15 : imbueColor ?? 0xf8fafc;
-    this.renderer.spawnHitSparks(ePos, sparkColor, roll.crit ? 18 : 10);
-
-    if (enemy.mesh?.userData?.triggerHitFlash) {
-      enemy.mesh.userData.triggerHitFlash(0.15);
-    }
+    const sparkCount = targetCount > 1
+      ? Math.max(3, Math.round(16 / Math.sqrt(Math.max(1, targetCount))))
+      : (roll.crit ? 18 : 10);
+    this.renderer.spawnHitSparks(ePos, sparkColor, sparkCount);
 
     const kbDir = {
       x: (ePos.x || 0) - this.position.x,
@@ -1447,6 +1602,10 @@ export class PlayerController {
     };
 
     const em = this.enemyManager;
+    if ((!em || (typeof em.applyDamageToEnemy !== 'function' && typeof em.damageEnemy !== 'function')) && enemy.mesh?.userData?.triggerHitFlash) {
+      enemy.mesh.userData.triggerHitFlash(0.15);
+    }
+
     // Shock bonus is applied inside applyDamageToEnemy; preview it for the numbers when unavailable
     let dealt = roll.damage;
     let res = null;
@@ -1464,8 +1623,8 @@ export class PlayerController {
     }
     if (res && Number(res.damage) > 0) dealt = res.damage;
 
-    // Damage numbers: main hit + a smaller element-colored number for the imbue extra
-    if (imbue) {
+    // Damage numbers: main hit + a smaller element-colored number for the imbue extra (merged on >3 AoE targets)
+    if (imbue && !suppressImbueFct) {
       const total = Math.max(1, Number(roll.damage) || 1);
       const extraShown = Math.max(1, Math.round(dealt * (imbue.extra / total)));
       this.renderer.spawnFloatingText(ePos, Math.max(1, dealt - extraShown), { isCrit: roll.crit });
@@ -1732,6 +1891,15 @@ export class PlayerController {
     if (this.state === 'skill') this.state = 'idle';
   }
 
+  /** True when the active skill phase cannot be interrupted by enemy hits. */
+  _isSkillUninterruptible(ph = this.skillPhase) {
+    if (!ph) return false;
+    if (ph.desc?.interruptible === true) return false;
+    if (ph.desc?.interruptible === false || ph.desc?.uninterruptible === true) return true;
+    const style = this._getAttackStyle();
+    return style === 'melee' || style === 'melee_heavy';
+  }
+
   /** Cancel a skill wind-up (resources stay spent). */
   interruptSkill(reason = 'Interrupted') {
     const ph = this.skillPhase;
@@ -1863,20 +2031,29 @@ export class PlayerController {
       const hitSet = new Set();
       const applyDashImpact = (isLanding) => {
         const hitRad = isLanding ? radius : Math.max(1.8, radius * 0.75);
-        const list = this.enemyManager?.getEnemiesInRange?.(this.position.x, this.position.z, hitRad) || [];
-        let landedHits = 0;
-        for (const enemy of list) {
+        const list = this._collectEnemiesInRange(this.position.x, this.position.z, hitRad, this._scratchHitArr);
+        let writeIdx = 0;
+        for (let i = 0; i < list.length; i++) {
+          const enemy = list[i];
           if (!enemy || enemy.dead || hitSet.has(enemy)) continue;
           hitSet.add(enemy);
-          landedHits++;
-          this._applyPlayerAttackToEnemy(enemy, {
+          list[writeIdx++] = enemy;
+        }
+        list.length = writeIdx;
+        const landedHits = writeIdx;
+        const suppressImbueFct = landedHits > 3;
+        for (let i = 0; i < landedHits; i++) {
+          this._applyPlayerAttackToEnemy(list[i], {
             mult: desc.mult || 2.0,
             element,
             knockback: desc.knockback || 2.5,
             rollDamageFn: desc.rollDamage,
-            stun: desc.stun
+            stun: desc.stun,
+            targetCount: landedHits,
+            suppressImbueFct
           });
         }
+        list.length = 0;
         if (isLanding) {
           this.renderer?.spawnSkillEffect?.(desc.vfx || 'slam', this.position, this.rotation, { color, radius });
           this.renderer?.spawnShockwave?.(this.position, radius, color, 0.35);
@@ -1911,30 +2088,31 @@ export class PlayerController {
       : desc.rollDamage;
 
     const executePulse = (pulseIdx) => {
-      let targets = [];
-      if (this.enemyManager) {
-        if (kind === 'melee_arc' && typeof this.enemyManager.getEnemiesInArc === 'function') {
-          targets = this.enemyManager.getEnemiesInArc(
+      const targets = kind === 'melee_arc'
+        ? this._collectEnemiesInArc(
             this.position.x,
             this.position.z,
             this.rotation,
             desc.range || 3.2,
-            desc.angle || Math.PI * 1.15
-          ) || [];
-        } else if (typeof this.enemyManager.getEnemiesInRange === 'function') {
-          targets = this.enemyManager.getEnemiesInRange(this.position.x, this.position.z, radius) || [];
-        }
-      }
+            desc.angle || Math.PI * 1.15,
+            this._scratchHitArr
+          )
+        : this._collectEnemiesInRange(this.position.x, this.position.z, radius, this._scratchHitArr);
 
-      for (const enemy of targets) {
-        this._applyPlayerAttackToEnemy(enemy, {
+      const targetCount = targets.length;
+      const suppressImbueFct = targetCount > 3;
+      for (let i = 0; i < targetCount; i++) {
+        this._applyPlayerAttackToEnemy(targets[i], {
           mult: (desc.mult || 1.85) * novaScale,
           element,
           knockback: pulseIdx === hits - 1 ? (desc.knockback || 1.1) : 0.4,
           rollDamageFn: pulseRoll,
-          stun: pulseIdx === 0 ? desc.stun : 0
+          stun: pulseIdx === 0 ? desc.stun : 0,
+          targetCount,
+          suppressImbueFct
         });
       }
+      targets.length = 0;
 
       if (pulseIdx > 0) {
         this.sound.play('slash', { combo: (pulseIdx % 3) + 1 });
@@ -1952,8 +2130,8 @@ export class PlayerController {
         }
       }
 
-      if (targets.length > 0) {
-        this.comboCount += targets.length;
+      if (targetCount > 0) {
+        this.comboCount += targetCount;
         this.comboDecayTimer = 4.5;
         const shk = Math.min(0.38, Number(desc.shake) || 0.22);
         this.renderer?.shake?.(pulseIdx === 0 ? shk : shk * 0.55, 0.16);
@@ -2038,18 +2216,24 @@ export class PlayerController {
     }
 
     const hitOnce = (idx) => {
-      const targets = this.enemyManager?.getEnemiesInRange?.(tx, tz, radius) || [];
-      for (const enemy of targets) {
+      const targets = this._collectEnemiesInRange(tx, tz, radius, this._scratchHitArr);
+      const targetCount = targets.length;
+      const suppressImbueFct = targetCount > 3;
+      for (let i = 0; i < targetCount; i++) {
+        const enemy = targets[i];
         if (!enemy || enemy.dead) continue;
         this._applyPlayerAttackToEnemy(enemy, {
           mult: desc.mult || 1.85,
           element,
           knockback: idx === hits - 1 ? (desc.knockback || 1.1) : 0.2,
-          rollDamageFn: desc.rollDamage
+          rollDamageFn: desc.rollDamage,
+          targetCount,
+          suppressImbueFct
         });
       }
-      if (targets.length > 0) {
-        this.comboCount += targets.length;
+      targets.length = 0;
+      if (targetCount > 0) {
+        this.comboCount += targetCount;
         this.comboDecayTimer = 4.5;
       }
       if (idx === 0 && this.world?.getBreakablesInArc) {
@@ -2057,7 +2241,7 @@ export class PlayerController {
         for (const b of brks) this.world.damageBreakable?.(b, 40);
       }
       if (type !== 'meteor' && idx > 0) this.renderer.spawnShockwave?.({ x: tx, y: 0, z: tz }, radius * 0.6, color, 0.3);
-      if (targets.length > 0 || type === 'meteor') {
+      if (targetCount > 0 || type === 'meteor') {
         const shk = type === 'meteor' ? 0.32 : 0.18;
         this.renderer?.shake?.(shk, 0.16);
       }
@@ -2091,11 +2275,22 @@ export class PlayerController {
       return result;
     }
 
+    const lethal = Boolean(result.dead || this.gameState?.isDead);
+    if (lethal) {
+      this.cancelSkill();
+    }
+
     if (!this.isBlocking) {
       this.sound.play('hurt');
       this.renderer.spawnFloatingText(this.position, `-${result.damage}`, { type: 'player_hit' });
       this.renderer.shake(0.24, 0.16);
-      if (result.damage > 0 && this.skillPhase && (this.skillPhase.stage === 'prep' || this.skillPhase.stage === 'gap')) {
+      if (
+        !lethal &&
+        result.damage > 0 &&
+        this.skillPhase &&
+        (this.skillPhase.stage === 'prep' || this.skillPhase.stage === 'gap') &&
+        !this._isSkillUninterruptible(this.skillPhase)
+      ) {
         this.interruptSkill('Interrupted');
       }
     }
@@ -2279,6 +2474,7 @@ export class PlayerController {
     this._updateProjectiles(dt);
 
     // Sync 3D Hero mesh transform & animation
+    this.ensureHeroMesh();
     this.heroMesh.position.copy(this.position);
     this.heroMesh.rotation.y = this.rotation;
 

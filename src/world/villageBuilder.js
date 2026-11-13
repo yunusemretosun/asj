@@ -3,9 +3,10 @@
 import * as THREE from 'three';
 import { HOT_SPRINGS } from '../systems/mechanics.js';
 import { loadSROProp, loadSROSprite } from './dungeonDecor.js';
-import { createHeroMesh } from '../engine/models3d.js';
+import { createNPCMesh as defaultCreateNPCMesh } from '../engine/models3d.js';
 
 const WALL_TILE = 2; // TILE.WALL (kept local to avoid a circular import)
+const _splatDataCache = new Map();
 
 function makeRand(seed) {
   let s = seed >>> 0 || 1;
@@ -328,42 +329,66 @@ function evalWindingTrailWeight(x, z, n) {
 /** Builds a 256x256 RGBA terrain splat DataTexture (R=road, G=camp, B=pebble, A=city mask). */
 function buildVillageSplatTexture(span, halfWall, camps, riverDistSq) {
   const size = 256;
-  const data = new Uint8Array(size * size * 4);
   const halfSpan = span * 0.5;
-  for (let py = 0; py < size; py++) {
-    const wz = ((py + 0.5) / size - 0.5) * span;
-    for (let px = 0; px < size; px++) {
-      const wx = ((px + 0.5) / size - 0.5) * span;
-      const n = fbm2D(wx * 0.09, wz * 0.09);
-      const nFine = fbm2D(wx * 0.21 + 31.1, wz * 0.21 - 19.4);
+  const cacheKey = `${span}|${halfWall}|${camps.length}`;
+  let data = _splatDataCache.get(cacheKey);
+  if (!data) {
+    data = new Uint8Array(size * size * 4);
+    const invSize = 1 / size;
+    const campLen = camps.length;
+    const campX = new Float32Array(campLen);
+    const campZ = new Float32Array(campLen);
+    for (let c = 0; c < campLen; c++) {
+      campX[c] = camps[c].center.x;
+      campZ[c] = camps[c].center.z;
+    }
+    const citySolidBound = halfWall - 0.6;
+    for (let py = 0; py < size; py++) {
+      const wz = ((py + 0.5) * invSize - 0.5) * span;
+      const absWz = Math.abs(wz);
+      const rowOffset = py * size * 4;
+      for (let px = 0; px < size; px++) {
+        const wx = ((px + 0.5) * invSize - 0.5) * span;
+        const absWx = Math.abs(wx);
+        const cityDist = absWx > absWz ? absWx : absWz;
+        const idx = rowOffset + px * 4;
+        if (cityDist <= citySolidBound) {
+          data[idx + 3] = 255;
+          continue;
+        }
 
-      const cityDist = Math.max(Math.abs(wx), Math.abs(wz));
-      const cityMask = 1.0 - smoothstep(halfWall - 0.6, halfWall + 0.8, cityDist);
+        const n = fbm2D(wx * 0.09, wz * 0.09);
+        const nFine = fbm2D(wx * 0.21 + 31.1, wz * 0.21 - 19.4);
+        const cityMask = 1.0 - smoothstep(citySolidBound, halfWall + 0.8, cityDist);
 
-      const rDist = Math.sqrt(riverDistSq(wx, wz));
-      const pebbleW = (1.0 - smoothstep(2.4, 5.4 + (n - 0.5) * 2.2, rDist)) * (1.0 - cityMask);
+        const rDist = Math.sqrt(riverDistSq(wx, wz));
+        const pebbleW = (1.0 - smoothstep(2.4, 5.4 + (n - 0.5) * 2.2, rDist)) * (1.0 - cityMask);
 
-      let campW = 0;
-      if (cityMask < 0.5 && rDist > 3.6) {
-        for (let c = 0; c < camps.length; c++) {
-          const ctr = camps[c].center;
-          const dc = Math.hypot(wx - ctr.x, wz - ctr.z);
-          if (dc > 12.0) continue;
+        let campW = 0;
+        if (cityMask < 0.5 && rDist > 3.6) {
+          const riverFade = smoothstep(3.6, 5.4, rDist);
           const innerR = 4.8 + (nFine - 0.5) * 1.8;
           const outerR = 9.8 + (n - 0.5) * 2.6;
-          const w = (1.0 - smoothstep(innerR, outerR, dc)) * smoothstep(3.6, 5.4, rDist);
-          if (w > campW) campW = w;
+          for (let c = 0; c < campLen; c++) {
+            const cdx = wx - campX[c];
+            const cdz = wz - campZ[c];
+            const dc2 = cdx * cdx + cdz * cdz;
+            if (dc2 > 144.0) continue;
+            const dc = Math.sqrt(dc2);
+            const w = (1.0 - smoothstep(innerR, outerR, dc)) * riverFade;
+            if (w > campW) campW = w;
+          }
         }
+
+        const roadW = cityMask < 0.5 ? evalWindingTrailWeight(wx, wz, n) * (1.0 - pebbleW * 0.75) : 0;
+
+        data[idx + 0] = Math.round(clamp01(roadW) * 255);
+        data[idx + 1] = Math.round(clamp01(campW) * 255);
+        data[idx + 2] = Math.round(clamp01(pebbleW) * 255);
+        data[idx + 3] = Math.round(clamp01(cityMask) * 255);
       }
-
-      const roadW = cityMask < 0.5 ? evalWindingTrailWeight(wx, wz, n) * (1.0 - pebbleW * 0.75) : 0;
-
-      const idx = (py * size + px) * 4;
-      data[idx + 0] = Math.round(clamp01(roadW) * 255);
-      data[idx + 1] = Math.round(clamp01(campW) * 255);
-      data[idx + 2] = Math.round(clamp01(pebbleW) * 255);
-      data[idx + 3] = Math.round(clamp01(cityMask) * 255);
     }
+    _splatDataCache.set(cacheKey, data);
   }
   const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
   tex.magFilter = THREE.LinearFilter;
@@ -487,6 +512,60 @@ export function buildVillage(ctx = {}) {
   } = ctx;
 
   const rand = makeRand(1337);
+  const npcMeshFactory = typeof createNPCMesh === 'function' ? createNPCMesh : defaultCreateNPCMesh;
+  let disposed = false;
+  const pendingPropTasks = [];
+  let propCursor = 0;
+  let propFlushScheduled = false;
+  const flushPropTasks = () => {
+    propFlushScheduled = false;
+    if (disposed) {
+      pendingPropTasks.length = 0;
+      return;
+    }
+    const batchEnd = Math.min(propCursor + 4, pendingPropTasks.length);
+    for (; propCursor < batchEnd; propCursor++) {
+      if (disposed) {
+        pendingPropTasks.length = 0;
+        return;
+      }
+      const task = pendingPropTasks[propCursor];
+      if (task.kind === 'sprite') {
+        loadSROSprite(task.url, task.opts);
+      } else {
+        loadSROProp(task.url, task.opts);
+      }
+    }
+    if (!disposed && propCursor < pendingPropTasks.length) {
+      propFlushScheduled = true;
+      requestAnimationFrame(flushPropTasks);
+    } else {
+      pendingPropTasks.length = 0;
+      propCursor = 0;
+    }
+  };
+  const queueSROProp = (url, opts) => {
+    if (typeof window === 'undefined' || typeof requestAnimationFrame !== 'function') {
+      return loadSROProp(url, opts);
+    }
+    pendingPropTasks.push({ kind: 'prop', url, opts });
+    if (!propFlushScheduled) {
+      propFlushScheduled = true;
+      requestAnimationFrame(flushPropTasks);
+    }
+    return null;
+  };
+  const queueSROSprite = (url, opts) => {
+    if (typeof window === 'undefined' || typeof requestAnimationFrame !== 'function') {
+      return loadSROSprite(url, opts);
+    }
+    pendingPropTasks.push({ kind: 'sprite', url, opts });
+    if (!propFlushScheduled) {
+      propFlushScheduled = true;
+      requestAnimationFrame(flushPropTasks);
+    }
+    return null;
+  };
   const group = new THREE.Group();
   group.name = 'JanganMetropolis';
   const S = new Batcher();
@@ -746,11 +825,42 @@ export function buildVillage(ctx = {}) {
   ];
   const riverCurve = new THREE.CatmullRomCurve3(riverCtrlPts);
   const riverSamples = riverCurve.getSpacedPoints(180);
+  const RIVER_CELL = 8;
+  const RIVER_INV_CELL = 1 / RIVER_CELL;
+  const RIVER_GRID_MIN = -144;
+  const RIVER_GRID_COLS = 36;
+  const riverGrid = new Array(RIVER_GRID_COLS * RIVER_GRID_COLS).fill(null);
+  for (let i = 0; i < riverSamples.length; i++) {
+    const sx = riverSamples[i].x;
+    const sz = riverSamples[i].z;
+    const cgx = Math.floor((sx - RIVER_GRID_MIN) * RIVER_INV_CELL);
+    const cgz = Math.floor((sz - RIVER_GRID_MIN) * RIVER_INV_CELL);
+    for (let dz = -1; dz <= 1; dz++) {
+      const gz = cgz + dz;
+      if (gz < 0 || gz >= RIVER_GRID_COLS) continue;
+      for (let dx = -1; dx <= 1; dx++) {
+        const gx = cgx + dx;
+        if (gx < 0 || gx >= RIVER_GRID_COLS) continue;
+        const cellIdx = gz * RIVER_GRID_COLS + gx;
+        let bucket = riverGrid[cellIdx];
+        if (!bucket) {
+          bucket = [];
+          riverGrid[cellIdx] = bucket;
+        }
+        bucket.push(sx, sz);
+      }
+    }
+  }
   const riverDistSq = (x, z) => {
+    const gx = Math.floor((x - RIVER_GRID_MIN) * RIVER_INV_CELL);
+    const gz = Math.floor((z - RIVER_GRID_MIN) * RIVER_INV_CELL);
+    if (gx < 0 || gx >= RIVER_GRID_COLS || gz < 0 || gz >= RIVER_GRID_COLS) return 64;
+    const bucket = riverGrid[gz * RIVER_GRID_COLS + gx];
+    if (!bucket) return 64;
     let best = Infinity;
-    for (let i = 0; i < riverSamples.length; i++) {
-      const dx = x - riverSamples[i].x;
-      const dz = z - riverSamples[i].z;
+    for (let i = 0; i < bucket.length; i += 2) {
+      const dx = x - bucket[i];
+      const dz = z - bucket[i + 1];
       const d2 = dx * dx + dz * dz;
       if (d2 < best) best = d2;
     }
@@ -1003,7 +1113,7 @@ diffuseColor.rgb *= terrainRgb;`
     [18.8, 0.115, -6.9, 0.95],
     [17.9, 0.115, -8.3, 0.9]
   ].forEach(([fx, fy, fz, size]) => {
-    loadSROSprite('/assets/sro/sprites/c_pondflower-28ab3d2d@1x.png', {
+    queueSROSprite('/assets/sro/sprites/c_pondflower-28ab3d2d@1x.png', {
       width: size, height: size, position: [fx, fy, fz], isFlat: true, parent: group
     });
   });
@@ -1215,7 +1325,7 @@ diffuseColor.rgb *= terrainRgb;`
     [-17.2, 0.215, -15.0, 1.2], [-14.5, 0.215, -13.2, 1.1],
     [-16.0, 0.215, -12.2, 1.25], [-18.0, 0.215, -13.6, 1.05]
   ].forEach(([fx, fy, fz, size]) => {
-    loadSROSprite('/assets/sro/sprites/c_pondflower-28ab3d2d@1x.png', {
+    queueSROSprite('/assets/sro/sprites/c_pondflower-28ab3d2d@1x.png', {
       width: size, height: size, position: [fx, fy, fz], isFlat: true, parent: group
     });
   });
@@ -1225,7 +1335,7 @@ diffuseColor.rgb *= terrainRgb;`
     { x: -16.5, z: -20.5, ry: -0.4 },
     { x: -8.5, z: 36.0, ry: 0.6 }
   ].forEach(({ x, z, ry }) => {
-    loadSROProp('/assets/sro/props/cj_table01.glb', { scale: 0.72, targetHeight: 0.78, position: [x, 0, z], rotationY: ry, autoGround: true, parent: group });
+    queueSROProp('/assets/sro/props/cj_table01.glb', { scale: 0.72, targetHeight: 0.78, position: [x, 0, z], rotationY: ry, autoGround: true, parent: group });
     obs(x, z, 0.9);
   });
 
@@ -1255,10 +1365,10 @@ diffuseColor.rgb *= terrainRgb;`
   });
   hangs.push([PAG.x - 2.4, 3.1, PAG.z + 2.6, 0.2], [PAG.x + 2.4, 3.1, PAG.z + 2.6, 2.1], [PAG.x - 2.4, 3.1, PAG.z - 2.6, 4.2], [PAG.x + 2.4, 3.1, PAG.z - 2.6, 1.3]);
 
-  loadSROProp('/assets/sro/props/cj3_lion01.glb', { targetHeight: 1.88, position: [PAG.x - 1.8, 0, PAG.z + 2.5], rotationY: 0, autoGround: true, parent: group });
-  loadSROProp('/assets/sro/props/cj3_lion01.glb', { targetHeight: 1.88, position: [PAG.x + 1.8, 0, PAG.z + 2.5], rotationY: 0, autoGround: true, parent: group });
-  loadSROProp('/assets/sro/props/cj_lamp01.glb', { scale: 0.55, targetHeight: 3.37, position: [PAG.x - 2.6, 0, PAG.z + 3.8], rotationY: 0, autoGround: true, parent: group });
-  loadSROProp('/assets/sro/props/cj_lamp01.glb', { scale: 0.55, targetHeight: 3.37, position: [PAG.x + 2.6, 0, PAG.z + 3.8], rotationY: 0, autoGround: true, parent: group });
+  queueSROProp('/assets/sro/props/cj3_lion01.glb', { targetHeight: 1.88, position: [PAG.x - 1.8, 0, PAG.z + 2.5], rotationY: 0, autoGround: true, parent: group });
+  queueSROProp('/assets/sro/props/cj3_lion01.glb', { targetHeight: 1.88, position: [PAG.x + 1.8, 0, PAG.z + 2.5], rotationY: 0, autoGround: true, parent: group });
+  queueSROProp('/assets/sro/props/cj_lamp01.glb', { scale: 0.55, targetHeight: 3.37, position: [PAG.x - 2.6, 0, PAG.z + 3.8], rotationY: 0, autoGround: true, parent: group });
+  queueSROProp('/assets/sro/props/cj_lamp01.glb', { scale: 0.55, targetHeight: 3.37, position: [PAG.x + 2.6, 0, PAG.z + 3.8], rotationY: 0, autoGround: true, parent: group });
   obs(PAG.x - 1.8, PAG.z + 2.5, 0.6); obs(PAG.x + 1.8, PAG.z + 2.5, 0.6);
   obs(PAG.x - 2.6, PAG.z + 3.8, 0.4); obs(PAG.x + 2.6, PAG.z + 3.8, 0.4);
 
@@ -1317,7 +1427,7 @@ diffuseColor.rgb *= terrainRgb;`
 
   /* ---------------- classic South Market stalls, props & caravan animals ---------------- */
   const stall = (x, z, awnIdx, goods) => {
-    loadSROProp('/assets/sro/props/cj_streetstall.glb', {
+    queueSROProp('/assets/sro/props/cj_streetstall.glb', {
       scale: 0.42,
       targetHeight: 2.42,
       rotationY: Math.PI,
@@ -1380,16 +1490,16 @@ diffuseColor.rgb *= terrainRgb;`
   sacks(14.5, 31.0);
   crates(-22.5, 16.0, 2);
 
-  loadSROProp('/assets/sro/props/cj_strawcart.glb', { scale: 0.9, autoGround: true, position: [9.5, 0, 32.5], rotationY: 0.5, parent: group });
+  queueSROProp('/assets/sro/props/cj_strawcart.glb', { scale: 0.9, autoGround: true, position: [9.5, 0, 32.5], rotationY: 0.5, parent: group });
   obs(9.5, 32.5, 1.25);
-  loadSROProp('/assets/sro/props/cj_strawcart.glb', { scale: 0.9, autoGround: true, position: [-29.0, 0, 25.0], rotationY: -0.4, parent: group });
+  queueSROProp('/assets/sro/props/cj_strawcart.glb', { scale: 0.9, autoGround: true, position: [-29.0, 0, 25.0], rotationY: -0.4, parent: group });
   obs(-29.0, 25.0, 1.25);
   [[-12.0, 29.0], [10.0, 29.0], [-20.5, 22.0], [18.5, 24.5]].forEach(([bx, bz]) => {
-    loadSROProp('/assets/sro/props/cj_potato_basket.glb', { scale: 1.0, autoGround: true, position: [bx, 0, bz], parent: group });
+    queueSROProp('/assets/sro/props/cj_potato_basket.glb', { scale: 1.0, autoGround: true, position: [bx, 0, bz], parent: group });
     obs(bx, bz, 0.45);
   });
   [[-22.0, 35.0], [-27.5, 34.0], [-29.5, 31.0]].forEach(([dx, dz], idx) => {
-    loadSROProp('/assets/sro/props/cj_dummy_01.glb', { scale: 0.88, autoGround: true, position: [dx, 0, dz], rotationY: idx % 2 ? 0.4 : -0.35, parent: group });
+    queueSROProp('/assets/sro/props/cj_dummy_01.glb', { scale: 0.88, autoGround: true, position: [dx, 0, dz], rotationY: idx % 2 ? 0.4 : -0.35, parent: group });
     obs(dx, dz, 0.5);
   });
 
@@ -1410,9 +1520,9 @@ diffuseColor.rgb *= terrainRgb;`
   };
   camel(-11.0, 35.5, Math.PI / 2 + 0.2);
   camel(12.0, 22.0, -Math.PI / 2 - 0.2);
-  loadSROProp('/assets/sro/town/horse.glb', { position: [-36.5, 0, 31.0], targetHeight: 2.15, autoGround: true, rotationY: 0.4, parent: group });
-  loadSROProp('/assets/sro/town/horse.glb', { position: [-39.0, 0, 27.0], targetHeight: 2.05, autoGround: true, rotationY: 1.0, parent: group });
-  loadSROProp('/assets/sro/town/dog.glb', { position: [-5.2, 0, 11.5], targetHeight: 0.85, autoGround: true, rotationY: 0.8, parent: group });
+  queueSROProp('/assets/sro/town/horse.glb', { position: [-36.5, 0, 31.0], targetHeight: 2.15, autoGround: true, rotationY: 0.4, parent: group });
+  queueSROProp('/assets/sro/town/horse.glb', { position: [-39.0, 0, 27.0], targetHeight: 2.05, autoGround: true, rotationY: 1.0, parent: group });
+  queueSROProp('/assets/sro/town/dog.glb', { position: [-5.2, 0, 11.5], targetHeight: 0.85, autoGround: true, rotationY: 0.8, parent: group });
   obs(-36.5, 31.0, 0.9); obs(-39.0, 27.0, 0.9); obs(-5.2, 11.5, 0.4);
 
   // Stone lantern posts (city boulevards + 4 outer frontier highway milestones)
@@ -1874,63 +1984,23 @@ diffuseColor.rgb *= terrainRgb;`
     pigeons.push({ mesh, home: { x, z }, state: 'ground', t: 0, timer: 0, dir: { x: 1, z: 0 }, from: { x: 0, y: 0, z: 0 }, cool: 0, phase: i * 1.7, yaw: rand() * 6.28 });
   });
 
-  /* ---------------- classic SOS gate guards & town adventurers (distance-culled) ---------------- */
+  /* ---------------- lightweight town NPC crowd & guards (distance-culled) ---------------- */
   const villagers = [];
-  const SOS_TOWN_BUILDS = {
-    knight_sos: {
-      classId: 'knight',
-      eq: {
-        weapon: { slot: 'weapon', subtype: 'blade', visualModel: 'blade_04', tier: 7, plus: 9, seal: 'star', rarity: 'unique' },
-        shield: { slot: 'shield', subtype: 'shield', visualModel: 'shield_04', tier: 7, plus: 9, seal: 'star', rarity: 'unique' },
-        armor: { slot: 'armor', visualSet: 'heavy_04', tier: 7, rarity: 'epic' },
-        boots: { slot: 'boots', visualSet: 'heavy_04', tier: 7, rarity: 'epic' },
-        helmet: { slot: 'helmet', visualSet: 'heavy_04', tier: 7, rarity: 'epic' }
-      }
-    },
-    axeman_sos: {
-      classId: 'axeman',
-      eq: {
-        weapon: { slot: 'weapon', subtype: 'axe', visualModel: 'axe_04', tier: 7, plus: 9, seal: 'star', rarity: 'unique' },
-        shield: { slot: 'shield', subtype: 'axe', visualModel: 'axe_04', tier: 7, plus: 9, seal: 'star', rarity: 'unique' },
-        armor: { slot: 'armor', visualSet: 'light_04', tier: 7, rarity: 'epic' },
-        boots: { slot: 'boots', visualSet: 'light_04', tier: 7, rarity: 'epic' }
-      }
-    },
-    wizard_sos: {
-      classId: 'wizard',
-      eq: {
-        weapon: { slot: 'weapon', subtype: 'staff', visualModel: 'staff_04', tier: 7, plus: 10, seal: 'star', rarity: 'unique' },
-        armor: { slot: 'armor', visualSet: 'clothes_04', tier: 7, rarity: 'epic' },
-        boots: { slot: 'boots', visualSet: 'clothes_04', tier: 7, rarity: 'epic' }
-      }
-    },
-    archer_sos: {
-      classId: 'archer',
-      eq: {
-        weapon: { slot: 'weapon', subtype: 'bow', visualModel: 'bow_04', tier: 7, plus: 9, seal: 'star', rarity: 'unique' },
-        armor: { slot: 'armor', visualSet: 'light_03', tier: 5, rarity: 'epic' },
-        boots: { slot: 'boots', visualSet: 'light_03', tier: 5, rarity: 'epic' }
-      }
-    }
-  };
 
-  const spawnVillager = (role, x, z, route, speed, scale = 1, buildKey = 'knight_sos', initialYaw = null) => {
-    const preset = SOS_TOWN_BUILDS[buildKey] || SOS_TOWN_BUILDS.knight_sos;
+  const spawnVillager = (role, x, z, route, speed, scale = 1, _buildKey = null, initialYaw = null) => {
     let mesh = null;
-    try {
-      mesh = createHeroMesh(preset.eq, {
-        classId: preset.classId,
-        lightweightCrowd: true,
-        disableWeaponLight: true,
-        disableGearSprites: true,
-        disableRimGlow: true
-      });
-    } catch (e) {
-      if (createNPCMesh) {
-        try { mesh = createNPCMesh(role); } catch (_) { return; }
+    if (typeof npcMeshFactory === 'function') {
+      try {
+        mesh = npcMeshFactory(role, { lightweightCrowd: true, isCrowdVillager: true });
+      } catch (_) {
+        mesh = null;
       }
     }
-    if (!mesh) return;
+    if (!mesh) {
+      mesh = new THREE.Group();
+      mesh.name = `NPC_${String(role || 'villager').toLowerCase()}`;
+      mesh.userData.animate = () => {};
+    }
     const staleLights = [];
     mesh.traverse((c) => {
       if (c.name === 'HeroClassRing' || c.name === 'NpcRing' || c.name === 'QuestMarker') {
@@ -2101,7 +2171,7 @@ diffuseColor.rgb *= terrainRgb;`
             v.yaw = angleLerp(v.yaw, Math.atan2(dx, dz), Math.min(1, dt * 6));
             m.position.set(v.x, gy, v.z);
             m.rotation.set(0, v.yaw, 0);
-            if (animDt > 0) m.userData?.animate?.('stroll', t + v.phase, animDt);
+            if (animDt > 0) m.userData?.animate?.('walk', t + v.phase, animDt);
           }
         } else {
           if (!v.isGuard) {
@@ -2114,6 +2184,8 @@ diffuseColor.rgb *= terrainRgb;`
   }
 
   function dispose() {
+    disposed = true;
+    pendingPropTasks.length = 0;
     const mats = new Set();
     group.traverse((o) => {
       if (o.geometry && !o.geometry.userData?.isCachedGLB) o.geometry.dispose();

@@ -11,8 +11,32 @@ const glbCache = new Map();
 const _sroSpriteTexCache = new Map();
 const _breakableAssetCache = new Map();
 const _chestAssetCache = new Map();
+const _arrowGeoCache = new Map();
+const _arrowMatCache = new Map();
+const _lootGeoCache = new Map();
+const _lootMatCache = new Map();
 let _sroSpriteLoader = null;
 let gltfLoader = null;
+
+function _markShared(asset) {
+  if (!asset) return asset;
+  asset.userData = asset.userData || {};
+  asset.userData.sharedAsset = true;
+  asset.userData.isSharedAsset = true;
+  asset.userData.isCachedGLB = true;
+  return asset;
+}
+
+function getCachedAsset(cache, key, factory, maxSize = 128) {
+  let asset = cache.get(key);
+  if (asset) return asset;
+  asset = factory();
+  if (cache.size < maxSize) {
+    _markShared(asset);
+    cache.set(key, asset);
+  }
+  return asset;
+}
 
 function mergeStaticGeometries(geos, useGroups = false) {
   if (!geos || geos.length === 0) return null;
@@ -466,6 +490,7 @@ export function disposeObject3D(obj, keepMaterials = null) {
       child.geometry &&
       !child.geometry.userData?.isCachedGLB &&
       !child.geometry.userData?.isSharedAsset &&
+      !child.geometry.userData?.sharedAsset &&
       typeof child.geometry.dispose === 'function'
     ) {
       child.geometry.dispose();
@@ -476,6 +501,7 @@ export function disposeObject3D(obj, keepMaterials = null) {
         m &&
         !m.userData?.isCachedGLB &&
         !m.userData?.isSharedAsset &&
+        !m.userData?.sharedAsset &&
         (!keepMaterials || !keepMaterials.has(m)) &&
         typeof m.dispose === 'function'
       ) {
@@ -533,20 +559,26 @@ function buildArrowMesh(color = 0xe5e7eb, headColor = 0x94a3b8, length = 0.7) {
   // Arrow pointing along local +X, nock at x = 0
   const g = new THREE.Group();
   g.name = 'Arrow';
-  const shaftMat = new THREE.MeshStandardMaterial({ color: 0x8b5a2b, roughness: 0.6 });
-  const headMat = new THREE.MeshStandardMaterial({ color: headColor, metalness: 0.8, roughness: 0.25 });
-  const fletchMat = new THREE.MeshStandardMaterial({ color, roughness: 0.5, side: THREE.DoubleSide });
-  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, length, 5), shaftMat);
+  const shaftMat = getCachedAsset(_arrowMatCache, 'shaft', () => new THREE.MeshStandardMaterial({ color: 0x8b5a2b, roughness: 0.6 }));
+  const headMat = getCachedAsset(_arrowMatCache, `head:${headColor}`, () => new THREE.MeshStandardMaterial({ color: headColor, metalness: 0.8, roughness: 0.25 }));
+  const fletchMat = getCachedAsset(_arrowMatCache, `fletch:${color}`, () => new THREE.MeshStandardMaterial({ color, roughness: 0.5, side: THREE.DoubleSide }));
+
+  const shaftGeo = getCachedAsset(_arrowGeoCache, `shaft:${length}`, () => new THREE.CylinderGeometry(0.012, 0.012, length, 5));
+  const headGeo = getCachedAsset(_arrowGeoCache, 'head', () => new THREE.ConeGeometry(0.03, 0.09, 5));
+  const fletchAGeo = getCachedAsset(_arrowGeoCache, 'fletchA', () => new THREE.BoxGeometry(0.12, 0.05, 0.004));
+  const fletchBGeo = getCachedAsset(_arrowGeoCache, 'fletchB', () => new THREE.BoxGeometry(0.12, 0.004, 0.05));
+
+  const shaft = new THREE.Mesh(shaftGeo, shaftMat);
   shaft.rotation.z = Math.PI / 2;
   shaft.position.x = length * 0.5;
   g.add(shaft);
-  const head = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.09, 5), headMat);
+  const head = new THREE.Mesh(headGeo, headMat);
   head.rotation.z = -Math.PI / 2;
   head.position.x = length + 0.04;
   g.add(head);
-  const fletchA = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.05, 0.004), fletchMat);
+  const fletchA = new THREE.Mesh(fletchAGeo, fletchMat);
   fletchA.position.x = 0.07;
-  const fletchB = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.004, 0.05), fletchMat);
+  const fletchB = new THREE.Mesh(fletchBGeo, fletchMat);
   fletchB.position.x = 0.07;
   g.add(fletchA, fletchB);
   return g;
@@ -1163,6 +1195,10 @@ export function createEuropeanAxeMesh(weaponItem = null, tierStr = '01', isOffha
       c.userData._origMat = c.material;
     }
   });
+  if (isOffhand) {
+    // Bip01 L Hand carries ~180deg Z-axis roll relative to Bip01 R HandMid in europeman_adventurer.glb
+    g.rotation.z = Math.PI;
+  }
   return g;
 }
 
@@ -1633,6 +1669,8 @@ export function buildGuardPose(clips, skeletonRoot) {
   return pose.length ? pose : null;
 }
 
+const HERO_BASELINE_CLIPS = ['STAND1', 'WALK', 'RUN', 'DAMAGE1', 'DIE1'];
+
 /** Point logical action slots (RUN, ATTACK1..4, CAST1/2, DEFENCE) at the class weapon clips. */
 export function applyClassClipMap(actions, classId) {
   const map = CLASS_CLIP_MAP[classId];
@@ -1644,18 +1682,79 @@ export function applyClassClipMap(actions, classId) {
   return actions;
 }
 
+function createLazyActionMap(mixer, clips, classId, prebindNames, uniqueActions) {
+  const clipsByName = new Map();
+  for (const clip of clips || []) {
+    if (clip && clip.name && !clipsByName.has(clip.name)) {
+      clipsByName.set(clip.name, clip);
+    }
+  }
+  const slotToClip = new Map();
+  const classMap = CLASS_CLIP_MAP[classId];
+  if (classMap) {
+    for (const [slot, candidates] of Object.entries(classMap)) {
+      const hitName = candidates.find((n) => clipsByName.has(n));
+      if (hitName) slotToClip.set(slot, clipsByName.get(hitName));
+    }
+  }
+
+  const clipToAction = new Map();
+  const rawActions = {};
+
+  const getOrCreateAction = (name) => {
+    if (!name || typeof name !== 'string') return undefined;
+    if (Object.prototype.hasOwnProperty.call(rawActions, name)) {
+      return rawActions[name];
+    }
+    const clip = slotToClip.get(name) || clipsByName.get(name);
+    if (!clip) return undefined;
+    let act = clipToAction.get(clip);
+    if (!act) {
+      act = mixer.clipAction(clip);
+      clipToAction.set(clip, act);
+      if (!uniqueActions.includes(act)) {
+        uniqueActions.push(act);
+      }
+    }
+    rawActions[name] = act;
+    return act;
+  };
+
+  for (const name of prebindNames) {
+    getOrCreateAction(name);
+  }
+
+  const actions = new Proxy(rawActions, {
+    get(target, prop) {
+      if (typeof prop === 'string') {
+        if (Object.prototype.hasOwnProperty.call(target, prop)) return target[prop];
+        if (slotToClip.has(prop) || clipsByName.has(prop)) return getOrCreateAction(prop);
+      }
+      return Reflect.get(target, prop);
+    },
+    has(target, prop) {
+      if (typeof prop === 'string' && (slotToClip.has(prop) || clipsByName.has(prop))) return true;
+      return Reflect.has(target, prop);
+    }
+  });
+
+  return { actions, getOrCreateAction };
+}
+
 /**
  * Create articulated 3D Hero mesh with dynamic equipment, class look & procedural combat animations.
  * @param {object} equipment equipped items map ({weapon, shield, armor, helmet, boots, ...})
  * @param {{classId?: string, appearance?: object}} look hero class + appearance (optional)
  */
 export function createHeroMesh(equipment = {}, look = {}, opts = {}) {
+  const isBrowser = typeof window !== 'undefined' && typeof document !== 'undefined';
   const isLightweightCrowd = Boolean(look?.lightweightCrowd || opts?.lightweightCrowd);
   const root = new THREE.Group();
   root.name = 'Hero';
 
   const bodyPivot = new THREE.Group();
   bodyPivot.position.y = 0.72;
+  bodyPivot.visible = !isBrowser;
   root.add(bodyPivot);
 
   // Shared, recolorable materials (owned by this hero instance)
@@ -2667,6 +2766,49 @@ export function createHeroMesh(equipment = {}, look = {}, opts = {}) {
 
   let glbLoadVer = 0;
   let glbEquipVer = 0;
+  let activeEquipPromise = Promise.resolve();
+  let readyResolve = null;
+  let readyPromise = Promise.resolve();
+  const resetReadyBarrier = () => {
+    if (readyResolve) {
+      const prev = readyResolve;
+      readyResolve = null;
+      prev();
+    }
+    readyPromise = new Promise((resolve) => {
+      readyResolve = resolve;
+    });
+    return readyResolve;
+  };
+  root.userData.whenReady = () => readyPromise;
+
+  const clearGLBHeroState = () => {
+    if (root.userData.glbHero) {
+      root.remove(root.userData.glbHero);
+      disposeObject3D(root.userData.glbHero);
+      root.userData.glbHero = null;
+    }
+    root.userData.isGLBHero = false;
+    root.userData.mixer = null;
+    root.userData.actions = null;
+    root.userData.getOrCreateAction = null;
+    root.userData.heroBonesByName = null;
+    root.userData.bodyMeshes = null;
+    root.userData.naturalHairMesh = null;
+    root.userData.hwanHair = null;
+    root.userData.glbArmorGroup = null;
+    root.userData.glbNeckMount = null;
+    root.userData.glbRightWeaponMount = null;
+    root.userData.glbLeftWeaponMount = null;
+    root.userData.glbShieldMount = null;
+    root.userData.glbHeadMount = null;
+    root.userData.currentAction = null;
+    root.userData.currentActionName = '';
+    root.userData.uniqueActions = null;
+    root.userData.actionWeights = null;
+    root.userData.guardPose = null;
+    refreshFlashMaterials();
+  };
 
   function applyGLBWeaponGlow(modelClone, item) {
     if (isLightweightCrowd) return;
@@ -2718,7 +2860,7 @@ export function createHeroMesh(equipment = {}, look = {}, opts = {}) {
   }
 
   function applyGLBEquipment(equipped = {}) {
-    if (!root.userData.isGLBHero || !root.userData.heroBonesByName) return;
+    if (!root.userData.isGLBHero || !root.userData.heroBonesByName) return Promise.resolve();
     const version = ++glbEquipVer;
     const heroBonesByName = root.userData.heroBonesByName;
     const bodyMeshes = root.userData.bodyMeshes;
@@ -2763,109 +2905,164 @@ export function createHeroMesh(equipment = {}, look = {}, opts = {}) {
 
     root.userData.helmetEquipped = Boolean(helmSet);
 
-    // Start with all base body parts visible; hide only covered body slices once each armor GLB binds
-    const allBodyParts = ['man_torso_upper', 'man_torso_lower', 'man_arm_upper', 'man_pelvis', 'man_thigh', 'man_calf', 'man_arm_lower'];
-    if (bodyMeshes) {
-      for (const name of allBodyParts) {
-        const mesh = bodyMeshes.get(name);
-        if (mesh) {
-          mesh.visible = true;
-          mesh.frustumCulled = false;
-        }
+    const setBodySliceVisible = (name, vis) => {
+      const m = bodyMeshes?.get(name);
+      if (m) {
+        m.visible = vis;
+        if (vis) enableSafeFrustumCulling(m, 2.8);
       }
-      if (root.userData.naturalHairMesh) {
-        root.userData.naturalHairMesh.visible = !helmSet;
+    };
+
+    // Reveal unequipped base slices immediately, but defer covered slices until their armor GLB binds (or fails)
+    if (bodyMeshes) {
+      if (!chestSet) {
+        setBodySliceVisible('man_torso_upper', true);
+        setBodySliceVisible('man_torso_lower', true);
+        setBodySliceVisible('man_arm_upper', true);
+        setBodySliceVisible('man_pelvis', true);
+        setBodySliceVisible('man_thigh', true);
+      }
+      if (!glovesSet) {
+        setBodySliceVisible('man_arm_lower', true);
+      }
+      if (!bootsSet) {
+        setBodySliceVisible('man_calf', true);
+      }
+      if (!helmSet && root.userData.naturalHairMesh) {
+        root.userData.naturalHairMesh.visible = !root.userData.isBerserk;
       }
     }
 
-    const hideBodySlice = (name) => {
-      const m = bodyMeshes?.get(name);
-      if (m) m.visible = false;
-    };
+    const pendingLoads = [];
 
-    const bindArmor = (url, itemForLook = null, onBound = null, socketTarget = null) => {
-      loadGLB(url).then((entry) => {
-        if (!entry || !entry.scene || version !== glbEquipVer || !armorGroup || !armorGroup.parent) return;
-        const clonedArmor = SkeletonUtils.clone(entry.scene);
-        let hasSkinned = false;
-        clonedArmor.traverse((child) => {
-          if (child.isMesh) {
-            child.frustumCulled = false;
-            child.castShadow = true;
-            child.receiveShadow = true;
-            if (child.material) {
-              if (child.material.map) child.material.map.colorSpace = THREE.SRGBColorSpace;
-              child.material.transparent = false;
-              child.material.alphaTest = 0;
-              child.material.depthWrite = true;
-              child.material.side = THREE.DoubleSide;
+    const bindArmor = (url, itemForLook = null, onBound = null, onFail = null, socketTarget = null) => {
+      const p = loadGLB(url)
+        .then((entry) => {
+          if (version !== glbEquipVer || !armorGroup || !armorGroup.parent) return;
+          if (!entry || !entry.scene) {
+            if (typeof onFail === 'function') onFail();
+            return;
+          }
+          const clonedArmor = SkeletonUtils.clone(entry.scene);
+          let hasSkinned = false;
+          clonedArmor.traverse((child) => {
+            if (child.isMesh) {
+              child.castShadow = true;
+              child.receiveShadow = true;
+              if (child.material) {
+                if (child.material.map) child.material.map.colorSpace = THREE.SRGBColorSpace;
+                child.material.transparent = false;
+                child.material.alphaTest = 0;
+                child.material.depthWrite = true;
+                child.material.side = THREE.DoubleSide;
+              }
+              child.userData._origMat = child.material;
             }
-            child.userData._origMat = child.material;
+            if (child.isSkinnedMesh) {
+              hasSkinned = true;
+              const armorSkeleton = child.skeleton;
+              const newBones = armorSkeleton.bones.map(
+                (b) => heroBonesByName.get(b.name) || heroBonesByName.get(b.name.replace(/_/g, ' ')) || b
+              );
+              const newSkeleton = new THREE.Skeleton(newBones, armorSkeleton.boneInverses);
+              child.bind(newSkeleton, child.bindMatrix);
+            }
+          });
+          enableSafeFrustumCulling(clonedArmor, 2.8);
+          applyGLBArmorLook(clonedArmor, itemForLook);
+          clonedArmor.traverse((child) => {
+            if (!child.isMesh || child.userData.isGlowShell || child.userData.noFlash) return;
+            patchMeshHitFlash(child, 0xffffff);
+            if (root.userData.flashMeshes && !root.userData.flashMeshes.includes(child)) {
+              root.userData.flashMeshes.push(child);
+            }
+          });
+          if (!hasSkinned && socketTarget) {
+            socketTarget.add(clonedArmor);
+          } else {
+            armorGroup.add(clonedArmor);
           }
-          if (child.isSkinnedMesh) {
-            hasSkinned = true;
-            const armorSkeleton = child.skeleton;
-            const newBones = armorSkeleton.bones.map(
-              (b) => heroBonesByName.get(b.name) || heroBonesByName.get(b.name.replace(/_/g, ' ')) || b
-            );
-            const newSkeleton = new THREE.Skeleton(newBones, armorSkeleton.boneInverses);
-            child.bind(newSkeleton, child.bindMatrix);
-          }
+          if (typeof onBound === 'function') onBound();
+        })
+        .catch(() => {
+          if (version === glbEquipVer && typeof onFail === 'function') onFail();
         });
-        applyGLBArmorLook(clonedArmor, itemForLook);
-        clonedArmor.traverse((child) => {
-          if (!child.isMesh || child.userData.isGlowShell || child.userData.noFlash) return;
-          patchMeshHitFlash(child, 0xffffff);
-          if (root.userData.flashMeshes && !root.userData.flashMeshes.includes(child)) {
-            root.userData.flashMeshes.push(child);
-          }
-        });
-        if (!hasSkinned && socketTarget) {
-          socketTarget.add(clonedArmor);
-        } else {
-          armorGroup.add(clonedArmor);
-        }
-        if (typeof onBound === 'function') onBound();
-      });
+      pendingLoads.push(p);
     };
 
     // Bind chest, shoulders, legs when armorItem is equipped
     if (chestSet) {
-      bindArmor(`/assets/sro/equipment/${chestSet}_ba.glb`, armorItem, () => {
-        hideBodySlice('man_torso_lower');
-        if (chestSet !== 'light_02') hideBodySlice('man_torso_upper');
-        if (chestSet.startsWith('heavy_')) hideBodySlice('man_arm_upper');
-      });
+      bindArmor(
+        `/assets/sro/equipment/${chestSet}_ba.glb`,
+        armorItem,
+        () => {
+          setBodySliceVisible('man_torso_lower', false);
+          setBodySliceVisible('man_torso_upper', chestSet === 'light_02');
+          setBodySliceVisible('man_arm_upper', !chestSet.startsWith('heavy_'));
+        },
+        () => {
+          setBodySliceVisible('man_torso_lower', true);
+          setBodySliceVisible('man_torso_upper', true);
+          setBodySliceVisible('man_arm_upper', true);
+        }
+      );
 
-      bindArmor(`/assets/sro/equipment/${chestSet}_sa.glb`, armorItem, null, neckMount);
+      bindArmor(`/assets/sro/equipment/${chestSet}_sa.glb`, armorItem, null, null, neckMount);
 
-      bindArmor(`/assets/sro/equipment/${chestSet}_la.glb`, armorItem, () => {
-        hideBodySlice('man_pelvis');
-        hideBodySlice('man_thigh');
-      });
+      bindArmor(
+        `/assets/sro/equipment/${chestSet}_la.glb`,
+        armorItem,
+        () => {
+          setBodySliceVisible('man_pelvis', false);
+          setBodySliceVisible('man_thigh', false);
+        },
+        () => {
+          setBodySliceVisible('man_pelvis', true);
+          setBodySliceVisible('man_thigh', true);
+        }
+      );
     }
 
     // Bind gauntlets/bracers when glovesSet is present
     if (glovesSet) {
-      bindArmor(`/assets/sro/equipment/${glovesSet}_aa.glb`, glovesItem, () => {
-        if (glovesSet.startsWith('heavy_') || glovesSet === 'clothes_04') {
-          hideBodySlice('man_arm_lower');
+      bindArmor(
+        `/assets/sro/equipment/${glovesSet}_aa.glb`,
+        glovesItem,
+        () => {
+          setBodySliceVisible('man_arm_lower', !(glovesSet.startsWith('heavy_') || glovesSet === 'clothes_04'));
+        },
+        () => {
+          setBodySliceVisible('man_arm_lower', true);
         }
-      });
+      );
     }
 
     // Bind boots when bootsItem is equipped
     if (bootsSet) {
-      bindArmor(`/assets/sro/equipment/${bootsSet}_fa.glb`, bootsItem, () => {
-        hideBodySlice('man_calf');
-      });
+      bindArmor(
+        `/assets/sro/equipment/${bootsSet}_fa.glb`,
+        bootsItem,
+        () => {
+          setBodySliceVisible('man_calf', false);
+        },
+        () => {
+          setBodySliceVisible('man_calf', true);
+        }
+      );
     }
 
     // Bind helm when helmItem is equipped
     if (helmSet) {
-      bindArmor(`/assets/sro/equipment/${helmSet}_ha.glb`, helmItem, () => {
-        if (root.userData.naturalHairMesh) root.userData.naturalHairMesh.visible = false;
-      });
+      bindArmor(
+        `/assets/sro/equipment/${helmSet}_ha.glb`,
+        helmItem,
+        () => {
+          if (root.userData.naturalHairMesh) root.userData.naturalHairMesh.visible = false;
+        },
+        () => {
+          if (root.userData.naturalHairMesh) root.userData.naturalHairMesh.visible = !root.userData.isBerserk;
+        }
+      );
     }
 
     // 2. Weapons & Shields (only render weapons/shields that are actually equipped)
@@ -2876,7 +3073,6 @@ export function createHeroMesh(equipment = {}, look = {}, opts = {}) {
     const prepWeaponMaterials = (obj) => {
       obj.traverse((child) => {
         if (child.isMesh && !child.userData.isGlowShell) {
-          child.frustumCulled = false;
           child.castShadow = true;
           child.receiveShadow = true;
           const mats = Array.isArray(child.material) ? child.material : child.material ? [child.material] : [];
@@ -2891,6 +3087,7 @@ export function createHeroMesh(equipment = {}, look = {}, opts = {}) {
           }
         }
       });
+      enableSafeFrustumCulling(obj, 2.8);
     };
 
     let isBow = false;
@@ -2908,17 +3105,20 @@ export function createHeroMesh(equipment = {}, look = {}, opts = {}) {
         if (rWeaponMount) rWeaponMount.add(staffMesh);
       } else {
         const mainWeaponUrl = `/assets/sro/equipment/${weaponInfo.file}`;
-        loadGLB(mainWeaponUrl).then((entry) => {
-          if (!entry || !entry.scene || version !== glbEquipVer) return;
-          const wClone = SkeletonUtils.clone(entry.scene);
-          prepWeaponMaterials(wClone);
-          applyGLBWeaponGlow(wClone, weaponItem);
-          if (isBow) {
-            if (lWeaponMount) lWeaponMount.add(wClone);
-          } else {
-            if (rWeaponMount) rWeaponMount.add(wClone);
-          }
-        });
+        const wp = loadGLB(mainWeaponUrl)
+          .then((entry) => {
+            if (!entry || !entry.scene || version !== glbEquipVer) return;
+            const wClone = SkeletonUtils.clone(entry.scene);
+            prepWeaponMaterials(wClone);
+            applyGLBWeaponGlow(wClone, weaponItem);
+            if (isBow) {
+              if (lWeaponMount) lWeaponMount.add(wClone);
+            } else {
+              if (rWeaponMount) rWeaponMount.add(wClone);
+            }
+          })
+          .catch(() => {});
+        pendingLoads.push(wp);
       }
     }
 
@@ -2937,147 +3137,184 @@ export function createHeroMesh(equipment = {}, look = {}, opts = {}) {
       } else {
         const shieldTier = getEquipmentGlbTier(shieldItem);
         const shieldUrl = `/assets/sro/equipment/shield_${shieldTier}.glb`;
-        loadGLB(shieldUrl).then((entry) => {
-          if (!entry || !entry.scene || version !== glbEquipVer) return;
-          const shClone = SkeletonUtils.clone(entry.scene);
-          prepWeaponMaterials(shClone);
-          applyGLBWeaponGlow(shClone, shieldItem);
-          if (shieldMount) shieldMount.add(shClone);
-        });
+        const shp = loadGLB(shieldUrl)
+          .then((entry) => {
+            if (!entry || !entry.scene || version !== glbEquipVer) return;
+            const shClone = SkeletonUtils.clone(entry.scene);
+            prepWeaponMaterials(shClone);
+            applyGLBWeaponGlow(shClone, shieldItem);
+            if (shieldMount) shieldMount.add(shClone);
+          })
+          .catch(() => {});
+        pendingLoads.push(shp);
       }
     }
+
+    const equipPromise = Promise.all(pendingLoads);
+    activeEquipPromise = equipPromise;
+    return equipPromise;
   }
 
   function loadGLBCharacter(classId) {
-    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+    if (!isBrowser) return Promise.resolve();
     const version = ++glbLoadVer;
+    const resolveReady = resetReadyBarrier();
+    clearGLBHeroState();
+    bodyPivot.visible = false;
+
     const url = SRO_CHAR_GLB_MAP[classId] || SRO_CHAR_GLB_MAP.knight;
 
-    loadGLB(url).then((entry) => {
-      if (!entry || !entry.scene || version !== glbLoadVer) return;
-      if (root.userData.glbHero) {
-        root.remove(root.userData.glbHero);
-        disposeObject3D(root.userData.glbHero);
-        root.userData.glbHero = null;
-      }
-
-      const charClone = SkeletonUtils.clone(entry.scene);
-      charClone.name = 'GLBHero_' + classId;
-      charClone.scale.setScalar(1.0);
-      charClone.position.set(0, 0, 0);
-
-      const heroBonesByName = new Map();
-      charClone.traverse((b) => {
-        if (b.isBone) {
-          heroBonesByName.set(b.name, b);
-          heroBonesByName.set(b.name.replace(/_/g, ' '), b);
+    return loadGLB(url)
+      .then(async (entry) => {
+        if (version !== glbLoadVer) return;
+        if (!entry || !entry.scene) {
+          bodyPivot.visible = true;
+          return;
         }
-        if (b.isMesh) {
-          b.frustumCulled = false;
-          b.castShadow = true;
-          b.receiveShadow = true;
-          b.userData._origMat = b.material;
-          if (b.material && b.material.map) b.material.map.colorSpace = THREE.SRGBColorSpace;
-          patchMeshHitFlash(b, 0xffffff);
-          if (root.userData.flashMeshes && !root.userData.flashMeshes.includes(b)) {
-            root.userData.flashMeshes.push(b);
+
+        const charClone = SkeletonUtils.clone(entry.scene);
+        charClone.name = 'GLBHero_' + classId;
+        charClone.visible = false;
+        charClone.scale.setScalar(1.0);
+        charClone.position.set(0, 0, 0);
+
+        const heroBonesByName = new Map();
+        charClone.traverse((b) => {
+          if (b.isBone) {
+            heroBonesByName.set(b.name, b);
+            heroBonesByName.set(b.name.replace(/_/g, ' '), b);
           }
-        }
-      });
-      root.userData.heroBonesByName = heroBonesByName;
-
-      const bodyMeshes = new Map();
-      charClone.traverse((m) => {
-        if (m.isMesh) {
-          bodyMeshes.set(m.name, m);
-          if (m.name.includes('_hair') && !m.name.includes('hwan')) {
-            root.userData.naturalHairMesh = m;
-          }
-        }
-      });
-      root.userData.bodyMeshes = bodyMeshes;
-
-      // SRO socket attach rule: compute bind-pose world rotation BEFORE starting any animation
-      // and cancel the bone's bind-pose world rotation on each socket mount.
-      charClone.updateMatrixWorld(true);
-      const createSocketMount = (bone, mountName) => {
-        const mount = new THREE.Group();
-        mount.name = mountName;
-        if (bone) {
-          const bindQuat = new THREE.Quaternion();
-          bone.getWorldQuaternion(bindQuat);
-          mount.quaternion.copy(bindQuat).invert();
-          bone.add(mount);
-        }
-        return mount;
-      };
-
-      const rHandMid = heroBonesByName.get('Bip01 R HandMid') || heroBonesByName.get('Bip01 R Hand');
-      const lHand = heroBonesByName.get('Bip01 L Hand') || heroBonesByName.get('Bip01 L HandMid');
-      const lForearm = heroBonesByName.get('Bip01 L Forearm') || lHand;
-      const neckBone = heroBonesByName.get('Bip01 Neck1') || heroBonesByName.get('Bip01 Neck');
-      const headBone = heroBonesByName.get('Bip01 Head');
-
-      root.userData.glbRightWeaponMount = createSocketMount(rHandMid, 'GLBRightWeaponMount');
-      root.userData.glbLeftWeaponMount = createSocketMount(lHand, 'GLBLeftWeaponMount');
-      root.userData.glbShieldMount = createSocketMount(lHand || lForearm, 'GLBShieldMount');
-      root.userData.glbNeckMount = createSocketMount(neckBone, 'GLBNeckMount');
-      const glbHeadMount = createSocketMount(headBone, 'GLBHeadMount');
-      root.userData.glbHeadMount = glbHeadMount;
-
-      const glbArmorGroup = new THREE.Group();
-      glbArmorGroup.name = 'GLBArmorGroup';
-      charClone.add(glbArmorGroup);
-      root.userData.glbArmorGroup = glbArmorGroup;
-
-      const mixer = new THREE.AnimationMixer(charClone);
-      const actions = {};
-      for (const clip of entry.animations || []) {
-        actions[clip.name] = mixer.clipAction(clip);
-      }
-      root.userData.mixer = mixer;
-      root.userData.actions = actions;
-      root.userData.currentAction = null;
-      root.userData.currentActionName = '';
-
-      // Swap the generic (unarmed) base clips for the class weapon clips embedded in the GLB
-      applyClassClipMap(actions, classId);
-      root.userData.uniqueActions = Array.from(new Set(Object.values(actions).filter(Boolean)));
-      root.userData.actionWeights = new Map();
-      root.userData.guardPose = buildGuardPose(entry.animations, charClone);
-      root.userData.guardWeight = 0;
-
-      // Spiky Hwan Hair for Berserk
-      if (!isLightweightCrowd) {
-        loadGLB('/assets/sro/char/chinaman_hwan_hair.glb').then((hwanEntry) => {
-          if (!hwanEntry || !hwanEntry.scene || version !== glbLoadVer) return;
-          const hwanClone = SkeletonUtils.clone(hwanEntry.scene);
-          hwanClone.name = 'HwanHair';
-          hwanClone.visible = false;
-          if (glbHeadMount) {
-            glbHeadMount.add(hwanClone);
-            root.userData.hwanHair = hwanClone;
+          if (b.isMesh) {
+            b.castShadow = true;
+            b.receiveShadow = true;
+            b.userData._origMat = b.material;
+            if (b.material && b.material.map) b.material.map.colorSpace = THREE.SRGBColorSpace;
+            patchMeshHitFlash(b, 0xffffff);
+            if (root.userData.flashMeshes && !root.userData.flashMeshes.includes(b)) {
+              root.userData.flashMeshes.push(b);
+            }
           }
         });
-      }
+        enableSafeFrustumCulling(charClone, 2.8);
+        root.userData.heroBonesByName = heroBonesByName;
 
-      bodyPivot.visible = false;
-      root.userData.isGLBHero = true;
-      root.add(charClone);
-      root.userData.glbHero = charClone;
+        const bodyMeshes = new Map();
+        charClone.traverse((m) => {
+          if (m.isMesh) {
+            bodyMeshes.set(m.name, m);
+            if (m.name.includes('_hair') && !m.name.includes('hwan')) {
+              root.userData.naturalHairMesh = m;
+            }
+          }
+        });
+        root.userData.bodyMeshes = bodyMeshes;
 
-      if (actions['STAND1']) {
-        actions['STAND1'].enabled = true;
-        actions['STAND1'].setEffectiveWeight(1);
-        actions['STAND1'].play();
-        root.userData.actionWeights.set(actions['STAND1'], 1);
-        mixer.update(0.001);
-        root.userData.currentAction = actions['STAND1'];
-        root.userData.currentActionName = 'STAND1';
-      }
+        // SRO socket attach rule: compute bind-pose world rotation BEFORE starting any animation
+        // and cancel the bone's bind-pose world rotation on each socket mount.
+        charClone.updateMatrixWorld(true);
+        const createSocketMount = (bone, mountName) => {
+          const mount = new THREE.Group();
+          mount.name = mountName;
+          if (bone) {
+            const bindQuat = new THREE.Quaternion();
+            bone.getWorldQuaternion(bindQuat);
+            mount.quaternion.copy(bindQuat).invert();
+            bone.add(mount);
+          }
+          return mount;
+        };
 
-      applyGLBEquipment(lookState.equipped);
-    });
+        const rHandMid = heroBonesByName.get('Bip01 R HandMid') || heroBonesByName.get('Bip01 R Hand');
+        const lHand = heroBonesByName.get('Bip01 L Hand') || heroBonesByName.get('Bip01 L HandMid');
+        const lForearm = heroBonesByName.get('Bip01 L Forearm') || lHand;
+        const neckBone = heroBonesByName.get('Bip01 Neck1') || heroBonesByName.get('Bip01 Neck');
+        const headBone = heroBonesByName.get('Bip01 Head');
+
+        root.userData.glbRightWeaponMount = createSocketMount(rHandMid, 'GLBRightWeaponMount');
+        root.userData.glbLeftWeaponMount = createSocketMount(lHand, 'GLBLeftWeaponMount');
+        root.userData.glbShieldMount = createSocketMount(lHand || lForearm, 'GLBShieldMount');
+        root.userData.glbNeckMount = createSocketMount(neckBone, 'GLBNeckMount');
+        const glbHeadMount = createSocketMount(headBone, 'GLBHeadMount');
+        root.userData.glbHeadMount = glbHeadMount;
+
+        const glbArmorGroup = new THREE.Group();
+        glbArmorGroup.name = 'GLBArmorGroup';
+        charClone.add(glbArmorGroup);
+        root.userData.glbArmorGroup = glbArmorGroup;
+
+        const mixer = new THREE.AnimationMixer(charClone);
+        const uniqueActions = [];
+        const prebindNames = isLightweightCrowd
+          ? HERO_BASELINE_CLIPS
+          : [...HERO_BASELINE_CLIPS, ...Object.keys(CLASS_CLIP_MAP[classId] || {})];
+        const { actions, getOrCreateAction } = createLazyActionMap(
+          mixer,
+          entry.animations,
+          classId,
+          prebindNames,
+          uniqueActions
+        );
+        root.userData.mixer = mixer;
+        root.userData.actions = actions;
+        root.userData.getOrCreateAction = getOrCreateAction;
+        root.userData.currentAction = null;
+        root.userData.currentActionName = '';
+        root.userData.uniqueActions = uniqueActions;
+        root.userData.actionWeights = new Map();
+        root.userData.guardPose = buildGuardPose(entry.animations, charClone);
+        root.userData.guardWeight = 0;
+
+        // Spiky Hwan Hair for Berserk
+        if (!isLightweightCrowd) {
+          loadGLB('/assets/sro/char/chinaman_hwan_hair.glb').then((hwanEntry) => {
+            if (!hwanEntry || !hwanEntry.scene || version !== glbLoadVer) return;
+            const hwanClone = SkeletonUtils.clone(hwanEntry.scene);
+            hwanClone.name = 'HwanHair';
+            hwanClone.visible = false;
+            if (glbHeadMount) {
+              glbHeadMount.add(hwanClone);
+              root.userData.hwanHair = hwanClone;
+            }
+          });
+        }
+
+        bodyPivot.visible = false;
+        root.userData.isGLBHero = true;
+        root.add(charClone);
+        root.userData.glbHero = charClone;
+
+        if (actions['STAND1']) {
+          actions['STAND1'].enabled = true;
+          actions['STAND1'].setEffectiveWeight(1);
+          actions['STAND1'].play();
+          root.userData.actionWeights.set(actions['STAND1'], 1);
+          mixer.update(0.001);
+          root.userData.currentAction = actions['STAND1'];
+          root.userData.currentActionName = 'STAND1';
+        }
+
+        await applyGLBEquipment(lookState.equipped);
+        while (root.userData.isGLBHero && version === glbLoadVer && root.userData.glbHero === charClone) {
+          const settledVer = glbEquipVer;
+          await activeEquipPromise;
+          if (settledVer === glbEquipVer) break;
+        }
+        if (version === glbLoadVer && root.userData.glbHero === charClone) {
+          charClone.visible = true;
+        }
+      })
+      .catch((err) => {
+        if (version === glbLoadVer) {
+          console.warn('[models3d] Failed to load GLB hero:', err);
+          bodyPivot.visible = true;
+        }
+      })
+      .finally(() => {
+        if (readyResolve === resolveReady) {
+          readyResolve = null;
+          resolveReady();
+        }
+      });
   }
 
   root.userData.updateEquipment = (equipped = {}) => {
@@ -3112,8 +3349,13 @@ export function createHeroMesh(equipment = {}, look = {}, opts = {}) {
       const shieldSub = String(shield?.subtype || shield?.subType || '').toLowerCase();
       if (shieldSub === 'axe' || shield?.type === 'weapon') {
         const offAxe = createWeaponMesh(shield);
+        offAxe.scale.x = -1;
+        shieldMount.position.set(0, -0.34, 0.08);
+        shieldMount.rotation.set(MOUNT_BASE_X, 0, 0);
         shieldMount.add(offAxe);
       } else {
+        shieldMount.position.set(0.08, -0.24, 0.12);
+        shieldMount.rotation.set(0, Math.PI / 3, 0);
         shieldMount.add(createShieldMesh(shield));
       }
     }
@@ -3165,6 +3407,11 @@ export function createHeroMesh(equipment = {}, look = {}, opts = {}) {
     root.userData.attackStyle = cls.attackStyle || 'melee';
     root.userData.appearance = { ...app };
 
+    const classChanged = prevClassId !== cls.id;
+    if (classChanged) {
+      clearGLBHeroState();
+    }
+
     // Colors
     skinMat.color.setHex(app.skin);
     hairMat.color.setHex(app.hairColor);
@@ -3184,7 +3431,7 @@ export function createHeroMesh(equipment = {}, look = {}, opts = {}) {
     root.userData.updateEquipment(lookState.equipped);
 
     // Load or reload GLB base model if class changed or not loaded yet
-    if (!root.userData.isGLBHero || prevClassId !== cls.id) {
+    if (!root.userData.isGLBHero || classChanged) {
       loadGLBCharacter(cls.id);
     }
   };
@@ -3805,12 +4052,9 @@ function _getProjectileSharedAssets(color) {
     const glowGeo = new THREE.SphereGeometry(0.2, 10, 8);
     const trailGeo = new THREE.ConeGeometry(0.16, 0.8, 8, 1, true);
     for (const g of [arrowTrailGeo, coreGeo, glowGeo, trailGeo]) {
-      g.userData.isSharedAsset = true;
-      g.userData.isCachedGLB = true;
+      _markShared(g);
     }
-    const coreMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    coreMat.userData.isSharedAsset = true;
-    coreMat.userData.isCachedGLB = true;
+    const coreMat = _markShared(new THREE.MeshBasicMaterial({ color: 0xffffff }));
     _projectileAssetCache.geos = { arrowTrailGeo, coreGeo, glowGeo, trailGeo };
     _projectileAssetCache.coreMat = coreMat;
   }
@@ -3819,13 +4063,14 @@ function _getProjectileSharedAssets(color) {
     const arrowTrailMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false });
     const glowMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false });
     const trailMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false });
-    for (const m of [arrowTrailMat, glowMat, trailMat]) {
-      m.userData.isSharedAsset = true;
-      m.userData.isCachedGLB = true;
-    }
-    cMats = { arrowTrailMat, glowMat, trailMat };
     if (_projectileAssetCache.colorMats.size < 64) {
+      for (const m of [arrowTrailMat, glowMat, trailMat]) {
+        _markShared(m);
+      }
+      cMats = { arrowTrailMat, glowMat, trailMat };
       _projectileAssetCache.colorMats.set(color, cMats);
+    } else {
+      cMats = { arrowTrailMat, glowMat, trailMat };
     }
   }
   return { geos: _projectileAssetCache.geos, coreMat: _projectileAssetCache.coreMat, cMats };
@@ -5825,14 +6070,6 @@ export function createNPCMesh(npcOrRole = 'chief') {
 /**
  * Create interactive 3D Treasure Chest with hinged lid (Silkroad iron-bound wooden/golden treasure coffer)
  */
-function _markShared(asset) {
-  if (!asset) return asset;
-  asset.userData = asset.userData || {};
-  asset.userData.isSharedAsset = true;
-  asset.userData.isCachedGLB = true;
-  return asset;
-}
-
 function _getChestAssets(tierKey) {
   let cached = _chestAssetCache.get(tierKey);
   if (cached) return cached;
@@ -6328,14 +6565,14 @@ export function createLootMesh(itemOrType = 'bag', rarity = 'normal') {
 
   if (isGold) {
     // Pile of 3-5 golden coins/ingots (0xfacc15)
-    const coinMat = new THREE.MeshStandardMaterial({
+    const coinMat = getCachedAsset(_lootMatCache, 'goldCoin', () => new THREE.MeshStandardMaterial({
       color: 0xfacc15,
       emissive: new THREE.Color(0xfacc15),
       emissiveIntensity: 0.45,
       roughness: 0.25,
       metalness: 0.85
-    });
-    const coinGeo = new THREE.CylinderGeometry(0.14, 0.14, 0.045, 12);
+    }));
+    const coinGeo = getCachedAsset(_lootGeoCache, 'goldCoin', () => new THREE.CylinderGeometry(0.14, 0.14, 0.045, 12));
 
     const c1 = new THREE.Mesh(coinGeo, coinMat);
     c1.position.set(-0.06, 0.025, 0.04);
@@ -6350,7 +6587,7 @@ export function createLootMesh(itemOrType = 'bag', rarity = 'normal') {
     c3.rotation.x = 0.12;
     c3.rotation.z = -0.15;
 
-    const ingotGeo = new THREE.BoxGeometry(0.2, 0.05, 0.1);
+    const ingotGeo = getCachedAsset(_lootGeoCache, 'goldIngot', () => new THREE.BoxGeometry(0.2, 0.05, 0.1));
     const c4 = new THREE.Mesh(ingotGeo, coinMat);
     c4.position.set(-0.02, 0.10, -0.02);
     c4.rotation.y = 0.55;
@@ -6361,31 +6598,34 @@ export function createLootMesh(itemOrType = 'bag', rarity = 'normal') {
     // Silkroad Treasure Chest / Coffer geometry as the instant synchronous placeholder for all dropped items
     const rawRar = String(item.rarity || rarity || 'normal');
     const rarColor = item.seal ? (SEALS?.[item.seal]?.color ? cssToHex(SEALS[item.seal].color) : 0xf59e0b) : getRarityColor(rawRar);
-    const chestMat = new THREE.MeshStandardMaterial({
+    const chestMat = getCachedAsset(_lootMatCache, `chest:${rarColor}`, () => new THREE.MeshStandardMaterial({
       color: rarColor,
       emissive: new THREE.Color(rarColor),
       emissiveIntensity: 0.42,
       roughness: 0.35,
       metalness: 0.45
-    });
-    const trimMat = new THREE.MeshStandardMaterial({
+    }));
+    const trimMat = getCachedAsset(_lootMatCache, 'chestTrim', () => new THREE.MeshStandardMaterial({
       color: 0xfbbf24,
       roughness: 0.25,
       metalness: 0.85
-    });
+    }));
 
-    const box = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.18, 0.22), chestMat);
+    const boxGeo = getCachedAsset(_lootGeoCache, 'chestBox', () => new THREE.BoxGeometry(0.32, 0.18, 0.22));
+    const box = new THREE.Mesh(boxGeo, chestMat);
     box.position.y = 0.10;
 
-    const lidGeo = new THREE.CylinderGeometry(0.11, 0.11, 0.322, 14, 1, false, 0, Math.PI);
+    const lidGeo = getCachedAsset(_lootGeoCache, 'chestLid', () => new THREE.CylinderGeometry(0.11, 0.11, 0.322, 14, 1, false, 0, Math.PI));
     const lid = new THREE.Mesh(lidGeo, chestMat);
     lid.position.set(0, 0.19, 0);
     lid.rotation.z = Math.PI / 2;
 
-    const lock = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.06, 0.04), trimMat);
+    const lockGeo = getCachedAsset(_lootGeoCache, 'chestLock', () => new THREE.BoxGeometry(0.05, 0.06, 0.04));
+    const lock = new THREE.Mesh(lockGeo, trimMat);
     lock.position.set(0, 0.14, 0.115);
 
-    const band = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.19, 0.23), trimMat);
+    const bandGeo = getCachedAsset(_lootGeoCache, 'chestBand', () => new THREE.BoxGeometry(0.045, 0.19, 0.23));
+    const band = new THREE.Mesh(bandGeo, trimMat);
     band.position.y = 0.10;
 
     coreGroup.add(box, lid, lock, band);
@@ -6402,40 +6642,43 @@ export function createLootMesh(itemOrType = 'bag', rarity = 'normal') {
 
   if (beamSpec) {
     // Tall vertical translucent additive light cylinder
-    const cylGeo = new THREE.CylinderGeometry(
-      (beamSpec.radius || 0.25) * 0.45,
-      beamSpec.radius || 0.25,
-      beamSpec.height || 2.8,
+    const beamRadius = beamSpec.radius || 0.25;
+    const beamHeight = beamSpec.height || 2.8;
+    const beamOpacity = beamSpec.opacity || 0.38;
+    const cylGeo = getCachedAsset(_lootGeoCache, `beamCyl:${beamRadius}:${beamHeight}`, () => new THREE.CylinderGeometry(
+      beamRadius * 0.45,
+      beamRadius,
+      beamHeight,
       12,
       1,
       true
-    );
-    const cylMat = new THREE.MeshBasicMaterial({
+    ));
+    const cylMat = getCachedAsset(_lootMatCache, `beamCyl:${beamSpec.color}:${beamOpacity}`, () => new THREE.MeshBasicMaterial({
       color: beamSpec.color,
       side: THREE.DoubleSide,
       transparent: true,
-      opacity: beamSpec.opacity || 0.38,
+      opacity: beamOpacity,
       blending: THREE.AdditiveBlending,
       depthWrite: false
-    });
+    }));
     const beamMesh = new THREE.Mesh(cylGeo, cylMat);
     beamMesh.name = 'LootBeam';
     beamMesh.userData.keepWithGLB = true;
     beamMesh.userData.isRarityBeam = true;
-    beamMesh.position.y = (beamSpec.height || 2.8) / 2;
+    beamMesh.position.y = beamHeight / 2;
     group.userData.rarityBeam = beamMesh;
     group.add(beamMesh);
 
     // Ground ripple ring at y = 0.04
-    const ringGeo = new THREE.RingGeometry(beamSpec.ringRadius * 0.7, beamSpec.ringRadius, 24);
-    const ringMat = new THREE.MeshBasicMaterial({
+    const ringGeo = getCachedAsset(_lootGeoCache, `beamRing:${beamSpec.ringRadius}`, () => new THREE.RingGeometry(beamSpec.ringRadius * 0.7, beamSpec.ringRadius, 24));
+    const ringMat = getCachedAsset(_lootMatCache, `beamRing:${beamSpec.color}`, () => new THREE.MeshBasicMaterial({
       color: beamSpec.color,
       side: THREE.DoubleSide,
       transparent: true,
       opacity: 0.6,
       blending: THREE.AdditiveBlending,
       depthWrite: false
-    });
+    }));
     rippleRing = new THREE.Mesh(ringGeo, ringMat);
     rippleRing.name = 'RarityRing';
     rippleRing.userData.keepWithGLB = true;
@@ -6451,14 +6694,14 @@ export function createLootMesh(itemOrType = 'bag', rarity = 'normal') {
     group.userData.orbitGroup = orbitGroup;
 
     const shardRadius = beamSpec.ringRadius * 0.75;
-    const shardGeo = new THREE.OctahedronGeometry(0.08, 0);
-    const shardMat = new THREE.MeshBasicMaterial({
+    const shardGeo = getCachedAsset(_lootGeoCache, 'beamShard', () => new THREE.OctahedronGeometry(0.08, 0));
+    const shardMat = getCachedAsset(_lootMatCache, `beamShard:${beamSpec.color}`, () => new THREE.MeshBasicMaterial({
       color: beamSpec.color,
       side: THREE.DoubleSide,
       transparent: true,
       opacity: 0.9,
       blending: THREE.AdditiveBlending
-    });
+    }));
     for (let i = 0; i < beamSpec.orbitCount; i++) {
       const angle = (i / beamSpec.orbitCount) * Math.PI * 2;
       const shard = new THREE.Mesh(shardGeo, shardMat);
@@ -6473,16 +6716,15 @@ export function createLootMesh(itemOrType = 'bag', rarity = 'normal') {
   } else {
     // Non-celestial items: simple beacon
     const col = isGold ? 0xfacc15 : getRarityColor(item.rarity || rarity || 'normal');
-    const simpleBeam = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.04, 0.14, 0.9, 8),
-      new THREE.MeshBasicMaterial({
-        color: col,
-        transparent: true,
-        opacity: 0.32,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false
-      })
-    );
+    const simpleBeamGeo = getCachedAsset(_lootGeoCache, 'simpleBeam', () => new THREE.CylinderGeometry(0.04, 0.14, 0.9, 8));
+    const simpleBeamMat = getCachedAsset(_lootMatCache, `simpleBeam:${col}`, () => new THREE.MeshBasicMaterial({
+      color: col,
+      transparent: true,
+      opacity: 0.32,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    }));
+    const simpleBeam = new THREE.Mesh(simpleBeamGeo, simpleBeamMat);
     simpleBeam.name = 'LootBeam';
     simpleBeam.userData.keepWithGLB = true;
     simpleBeam.position.y = 0.45;

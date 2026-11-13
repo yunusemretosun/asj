@@ -67,6 +67,7 @@ async function bootstrap() {
     gameState,
     world: dungeon,
     enemyManager,
+    deferHeroMesh: true,
     onInteract: () => handlePlayerInteract(),
     onToast: (msg, type) => gameContext.hud?.toast?.(msg, type)
   });
@@ -741,6 +742,27 @@ async function bootstrap() {
 
   window.__ASJ_GAME__ = gameContext;
 
+  function showLoadingOverlay() {
+    const el = document.getElementById('asj-loading-overlay');
+    if (!el) return null;
+    el.classList.remove('is-fading');
+    el.classList.add('is-visible');
+    el.setAttribute('aria-hidden', 'false');
+    return el;
+  }
+
+  function hideLoadingOverlay() {
+    const el = document.getElementById('asj-loading-overlay');
+    if (!el) return;
+    el.setAttribute('aria-hidden', 'true');
+    if (!el.classList.contains('is-visible')) return;
+    el.classList.remove('is-visible');
+    el.classList.add('is-fading');
+    setTimeout(() => {
+      el.classList.remove('is-fading');
+    }, 380);
+  }
+
   // 12. Title screen first (avoids wasting 60fps simulation & double hub builds behind overlay)
   await runTitleScreen();
   lastTime = performance.now();
@@ -751,36 +773,74 @@ async function bootstrap() {
     const readSaves = () => [0, 1, 2].map((slot) => (gameState.getSaveInfo ? gameState.getSaveInfo(slot) : null));
     let choice = null;
     try {
-      choice = await openCharacterCreation(overlayRoot, {
+      const choicePromise = openCharacterCreation(overlayRoot, {
         saves: readSaves(),
-        createPreview: (canvas) => createHeroPreview(canvas),
+        createPreview: (canvas, initialLook) => createHeroPreview(canvas, initialLook),
         onDeleteSave: (slot) => gameState.deleteSave?.(slot)
       });
+      document.getElementById('asj-boot-splash')?.remove();
+      choice = await choicePromise;
     } catch (err) {
+      document.getElementById('asj-boot-splash')?.remove();
       console.error('[ASJ] Character creation failed, starting default hero:', err);
     }
 
-    if (choice?.mode === 'continue') {
-      const res = gameState.load(choice.slot);
-      if (res && res.ok === false) hud.toast?.(res.msg || 'Load failed', 'warn');
-    } else if (choice?.mode === 'new') {
-      gameState.newCharacter({
-        name: choice.name,
-        classId: choice.classId,
-        appearance: choice.appearance,
-        slot: choice.slot
-      });
-      gameState.save(choice.slot);
-    }
+    showLoadingOverlay();
+    try {
+      let lookApplied = false;
+      if (choice?.mode === 'continue') {
+        const res = gameState.load(choice.slot);
+        if (res && res.ok === false) {
+          hud.toast?.(res.msg || 'Load failed', 'warn');
+        } else {
+          lookApplied = true;
+        }
+      } else if (choice?.mode === 'new') {
+        gameState.newCharacter({
+          name: choice.name,
+          classId: choice.classId,
+          appearance: choice.appearance,
+          slot: choice.slot
+        });
+        gameState.save(choice.slot);
+        lookApplied = true;
+      }
 
-    player.applyHeroLook?.();
-    player.syncEquipment?.();
-    returnToVillage();
-    const cls = gameState.heroClass;
-    if (cls) hud.toast?.(`${cls.icon} ${gameState.hero.name} the ${cls.name} arrives in Oakhaven.`, 'info');
+      if (!lookApplied) {
+        player.applyHeroLook?.();
+        player.syncEquipment?.();
+      }
+
+      returnToVillage();
+
+      try {
+        const readyPromise = player.heroMesh?.userData?.whenReady?.();
+        if (readyPromise) {
+          await Promise.race([
+            Promise.resolve(readyPromise).catch(() => {}),
+            new Promise((r) => setTimeout(r, 4500))
+          ]);
+        }
+      } catch (err) {
+        console.warn('[ASJ] Hero readiness wait failed:', err);
+      }
+
+      try {
+        await Promise.resolve(renderer.precompileScene?.()).catch(() => {});
+      } catch (err) {
+        console.warn('[ASJ] Scene precompile failed:', err);
+      }
+
+      const cls = gameState.heroClass;
+      if (cls) hud.toast?.(`${cls.icon} ${gameState.hero.name} the ${cls.name} arrives in Oakhaven.`, 'info');
+    } finally {
+      hideLoadingOverlay();
+    }
   }
 }
 
 bootstrap().catch((err) => {
+  document.getElementById('asj-boot-splash')?.remove();
+  document.getElementById('asj-loading-overlay')?.classList.remove('is-visible', 'is-fading');
   console.error('[ASJ] Bootstrap error:', err);
 });

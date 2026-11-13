@@ -116,7 +116,7 @@ export class HUD {
     this._lastBerserkKey = null; this._lastBerserkActive = null; this._lastBerserkReady = null; this._lastLitOrbs = -1;
     this._lastBossOn = null; this._lastBossName = null; this._lastBossPhase = null; this._lastBossBadgeKey = null;
     this._promptOn = false; this._fctHost = null;
-    this._last = { level: null, hp: null, buffKey: '', imbue: '', zone: '', zoneLine: '', heroName: null, heroTitle: null, goldInt: null, lowHp: false, combo: 0, comboOn: false, expCur: null, expMax: null, expLv: null, expText: '' };
+    this._last = { level: null, hp: null, buffKey: '', imbue: '', zone: '', zoneLine: '', heroName: null, heroTitle: null, goldInt: null, lowHp: false, combo: 0, comboOn: false, comboText: '', expCur: null, expMax: null, expLv: null, expText: '' };
     this._build();
     this._bindHost(ctx);
     document.documentElement.classList.add('arc-ui');
@@ -189,6 +189,9 @@ export class HUD {
     this.elPetBadge.addEventListener('click', () => this._menuClick('pet'));
     this.elChallenge = h('div', 'challenge-hud-banner');
     this.elCombo = h('div', 'hud-combo');
+    this.elComboCount = h('span', 'hud-combo-count');
+    this.elComboLabel = h('small', null, 'HIT COMBO');
+    this.elCombo.append(this.elComboCount, this.elComboLabel);
     this.elBuffs = h('div', 'hud-buffs');
     R.append(hero, this.elPetBadge, this.elChallenge, this.elCombo, this.elBuffs);
 
@@ -590,7 +593,11 @@ export class HUD {
     const comboOn = combo > 1;
     if (comboOn) {
       if (combo !== L.combo) {
-        this.elCombo.innerHTML = `${combo}<small>HIT COMBO</small>`;
+        const comboText = String(combo);
+        if (comboText !== L.comboText) {
+          L.comboText = comboText;
+          this.elComboCount.textContent = comboText;
+        }
         this._retriggerAnim(this.elCombo, 'pop', [{ transform: 'scale(1.5)' }, { transform: 'scale(1)' }], { duration: 180, easing: 'ease-out' });
       }
       if (!L.comboOn) {

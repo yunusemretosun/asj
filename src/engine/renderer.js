@@ -242,6 +242,7 @@ export class Renderer {
     this.particles = [];
     this.floatingTexts = [];
     this._fctPool = [];
+    this._fctFrameCount = 0;
 
     this.vfxGroup = new THREE.Group();
     this.vfxGroup.name = 'VFXGroup';
@@ -262,12 +263,16 @@ export class Renderer {
     this._unitCircleUnitGeo = new THREE.CircleGeometry(1, 32);
     this._unitPlaneGeo = new THREE.PlaneGeometry(1, 1);
     this._slashGeoCache = new Map();
+    this._vfxGeoCache = new Map();
+    this._vfxMatPoolDouble = [];
+    this._vfxMatPoolFront = [];
     for (const g of [
       this._unitBoxGeo, this._unitSphereGeo, this._unitShockwaveGeo, this._unitImpactGeo,
       this._unitRainStreakGeo, this._unitMeteorGeo, this._unitPillarGeo,
       this._unitRingUnitGeo, this._unitCircleUnitGeo, this._unitPlaneGeo
     ]) {
       g.userData.isSharedGeo = true;
+      g.userData.sharedAsset = true;
     }
 
     // Single InstancedMesh for hit sparks & aura motes (1 draw call, zero per-hit GC)
@@ -292,6 +297,7 @@ export class Renderer {
     this.vfxGroup.add(this._particleInstanced);
 
     this._pActiveCount = 0;
+    this._particleCursor = 0;
     this._px = new Float32Array(PARTICLE_POOL_CAP);
     this._py = new Float32Array(PARTICLE_POOL_CAP);
     this._pz = new Float32Array(PARTICLE_POOL_CAP);
@@ -890,9 +896,84 @@ export class Renderer {
     if (!geo) {
       geo = new THREE.RingGeometry(outerRadius * innerRatio, outerRadius, 20, 1, -arcAngle * 0.5, arcAngle);
       geo.userData.isSharedGeo = true;
+      geo.userData.sharedAsset = true;
       this._slashGeoCache.set(key, geo);
     }
     return geo;
+  }
+
+  _getCachedCircleGeo(radius, segments = 24, thetaStart = 0, thetaLength = Math.PI * 2) {
+    const cache = this._vfxGeoCache || (this._vfxGeoCache = new Map());
+    const key = `circle_${Math.round(radius * 100)}_${segments}_${Math.round(thetaStart * 1000)}_${Math.round(thetaLength * 1000)}`;
+    let geo = cache.get(key);
+    if (!geo) {
+      geo = new THREE.CircleGeometry(radius, segments, thetaStart, thetaLength);
+      geo.userData.isSharedGeo = true;
+      geo.userData.sharedAsset = true;
+      cache.set(key, geo);
+    }
+    return geo;
+  }
+
+  _getCachedRingGeo(innerRadius, outerRadius, thetaSegments = 20, phiSegments = 1, thetaStart = 0, thetaLength = Math.PI * 2) {
+    const cache = this._vfxGeoCache || (this._vfxGeoCache = new Map());
+    const key = `ring_${Math.round(innerRadius * 100)}_${Math.round(outerRadius * 100)}_${thetaSegments}_${phiSegments}_${Math.round(thetaStart * 1000)}_${Math.round(thetaLength * 1000)}`;
+    let geo = cache.get(key);
+    if (!geo) {
+      geo = new THREE.RingGeometry(innerRadius, outerRadius, thetaSegments, phiSegments, thetaStart, thetaLength);
+      geo.userData.isSharedGeo = true;
+      geo.userData.sharedAsset = true;
+      cache.set(key, geo);
+    }
+    return geo;
+  }
+
+  _getCachedCylinderGeo(radiusTop, radiusBottom, height, radialSegments = 20, heightSegments = 1, openEnded = false) {
+    const cache = this._vfxGeoCache || (this._vfxGeoCache = new Map());
+    const key = `cyl_${Math.round(radiusTop * 100)}_${Math.round(radiusBottom * 100)}_${Math.round(height * 100)}_${radialSegments}_${heightSegments}_${openEnded ? 1 : 0}`;
+    let geo = cache.get(key);
+    if (!geo) {
+      geo = new THREE.CylinderGeometry(radiusTop, radiusBottom, height, radialSegments, heightSegments, openEnded);
+      geo.userData.isSharedGeo = true;
+      geo.userData.sharedAsset = true;
+      cache.set(key, geo);
+    }
+    return geo;
+  }
+
+  _acquireVfxMat(color = 0xffffff, opacity = 1, doubleSide = true) {
+    const pool = doubleSide
+      ? (this._vfxMatPoolDouble || (this._vfxMatPoolDouble = []))
+      : (this._vfxMatPoolFront || (this._vfxMatPoolFront = []));
+    let mat = pool.pop();
+    if (!mat) {
+      mat = new THREE.MeshBasicMaterial({
+        color,
+        side: doubleSide ? THREE.DoubleSide : THREE.FrontSide,
+        transparent: true,
+        opacity,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      });
+      mat.userData._poolDouble = doubleSide;
+    } else {
+      mat.color.set(color);
+      mat.opacity = opacity;
+    }
+    return mat;
+  }
+
+  _releaseVfxMat(mat) {
+    if (!mat) return;
+    const doubleSide = Boolean(mat.userData?._poolDouble);
+    const pool = doubleSide
+      ? (this._vfxMatPoolDouble || (this._vfxMatPoolDouble = []))
+      : (this._vfxMatPoolFront || (this._vfxMatPoolFront = []));
+    if (pool.length < 48) {
+      pool.push(mat);
+    } else {
+      mat.dispose();
+    }
   }
 
   /**
@@ -1154,16 +1235,9 @@ export class Renderer {
     if (idx < PARTICLE_POOL_CAP) {
       this._pActiveCount = idx + 1;
     } else {
-      // Overwrite the particle closest to expiration
-      let maxRatio = -1;
-      idx = 0;
-      for (let i = 0; i < PARTICLE_POOL_CAP; i++) {
-        const r = this._pAge[i] / this._pLife[i];
-        if (r > maxRatio) {
-          maxRatio = r;
-          idx = i;
-        }
-      }
+      const cursor = this._particleCursor | 0;
+      idx = cursor;
+      this._particleCursor = (cursor + 1) % PARTICLE_POOL_CAP;
     }
     this._px[idx] = x;
     this._py[idx] = y;
@@ -1212,21 +1286,13 @@ export class Renderer {
     const x = pos.x || 0;
     const z = pos.z || 0;
 
-    const cylMat = new THREE.MeshBasicMaterial({
-      color: 0xfacc15,
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.75,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false
-    });
+    const cylMat = this._acquireVfxMat(0xfacc15, 0.75, true);
     const beam = new THREE.Mesh(this._unitPillarGeo, cylMat);
     beam.position.set(x, 3.75, z);
     this.vfxGroup.add(beam);
 
     this.vfxList.push({
       mesh: beam,
-      mat: cylMat,
       age: 0,
       life: 1.25,
       update: (p) => {
@@ -1234,6 +1300,10 @@ export class Renderer {
         beam.position.z = this.cameraTarget.z;
         beam.scale.set(1 + p * 0.5, 1, 1 + p * 0.5);
         cylMat.opacity = (1 - p) * 0.75;
+      },
+      onExpire: () => {
+        this.vfxGroup.remove(beam);
+        this._releaseVfxMat(cylMat);
       }
     });
 
@@ -1417,14 +1487,7 @@ export class Renderer {
     const z = pos?.z || 0;
 
     // Ground target marker (unit ring scaled by radius)
-    const markMat = new THREE.MeshBasicMaterial({
-      color,
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.8,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false
-    });
+    const markMat = this._acquireVfxMat(color, 0.8, true);
     const mark = new THREE.Mesh(this._unitRingUnitGeo, markMat);
     mark.scale.set(radius, radius, 1);
     mark.rotation.x = -Math.PI / 2;
@@ -1432,25 +1495,27 @@ export class Renderer {
     this.vfxGroup.add(mark);
     this.vfxList.push({
       mesh: mark,
-      mat: markMat,
       age: 0,
       life: 0.75,
       update: (t) => {
         markMat.opacity = (1 - t) * 0.8;
         mark.rotation.z = t * 1.5;
+      },
+      onExpire: () => {
+        this.vfxGroup.remove(mark);
+        this._releaseVfxMat(markMat);
       }
     });
 
     if (kind.includes('meteor')) {
       // A falling fireball that impacts the center
-      const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false });
+      const mat = this._acquireVfxMat(color, 0.95, false);
       const rock = new THREE.Mesh(this._unitMeteorGeo, mat);
       rock.position.set(x - 2, 9, z - 2);
       this.vfxGroup.add(rock);
       let impacted = false;
       this.vfxList.push({
         mesh: rock,
-        mat,
         age: 0,
         life: 0.32,
         update: (t) => {
@@ -1462,6 +1527,10 @@ export class Renderer {
             this.spawnHitSparks({ x, y: 0, z }, color, 26);
             this.shake(0.4, 0.25);
           }
+        },
+        onExpire: () => {
+          this.vfxGroup.remove(rock);
+          this._releaseVfxMat(mat);
         }
       });
     } else if (kind.includes('rain') || kind.includes('arrow')) {
@@ -1555,9 +1624,10 @@ export class Renderer {
     const expireGroup = () => {
       this.vfxGroup.remove(group);
       for (let i = 0; i < geos.length; i++) {
-        if (!geos[i].userData?.isSharedGeo) geos[i].dispose();
+        const g = geos[i];
+        if (!g.userData?.sharedAsset && !g.userData?.isSharedGeo) g.dispose();
       }
-      for (let i = 0; i < mats.length; i++) mats[i].dispose();
+      for (let i = 0; i < mats.length; i++) this._releaseVfxMat(mats[i]);
     };
 
     if (kind === 'charge') {
@@ -1570,22 +1640,8 @@ export class Renderer {
       const actualLen = Math.max(1.8, Math.hypot(endPt.x - ox, endPt.z - oz));
       const yaw = Math.atan2(endPt.x - ox, endPt.z - oz);
 
-      const borderMat = new THREE.MeshBasicMaterial({
-        color,
-        side: THREE.DoubleSide,
-        transparent: true,
-        opacity: 0.55,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false
-      });
-      const fillMat = new THREE.MeshBasicMaterial({
-        color,
-        side: THREE.DoubleSide,
-        transparent: true,
-        opacity: 0.25,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false
-      });
+      const borderMat = this._acquireVfxMat(color, 0.55, true);
+      const fillMat = this._acquireVfxMat(color, 0.25, true);
       mats.push(borderMat, fillMat);
 
       const border = new THREE.Mesh(this._unitPlaneGeo, borderMat);
@@ -1622,14 +1678,7 @@ export class Renderer {
       ];
       const rGeo = this._getSlashGeo(0.65 / 0.95, 0.95, Math.PI * 2);
       for (const sp of spots) {
-        const rMat = new THREE.MeshBasicMaterial({
-          color: 0xc084fc,
-          side: THREE.DoubleSide,
-          transparent: true,
-          opacity: 0.75,
-          blending: THREE.AdditiveBlending,
-          depthWrite: false
-        });
+        const rMat = this._acquireVfxMat(0xc084fc, 0.75, true);
         mats.push(rMat);
         const rMesh = new THREE.Mesh(rGeo, rMat);
         rMesh.rotation.x = -Math.PI / 2;
@@ -1657,22 +1706,8 @@ export class Renderer {
     // Default: 'shockwave' / 'nova' circular arena telegraph
     const maxR = arena?.radius ? Math.min(Number(options.radius) || 4.0, arena.radius - 0.4) : (Number(options.radius) || 4.0);
     const center = clampToArena(ox, oz, 0.5);
-    const outerMat = new THREE.MeshBasicMaterial({
-      color,
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.8,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false
-    });
-    const fillMat = new THREE.MeshBasicMaterial({
-      color,
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.22,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false
-    });
+    const outerMat = this._acquireVfxMat(color, 0.8, true);
+    const fillMat = this._acquireVfxMat(color, 0.22, true);
     mats.push(outerMat, fillMat);
 
     const outerRing = new THREE.Mesh(this._unitRingUnitGeo, outerMat);
@@ -1723,39 +1758,19 @@ export class Renderer {
     const expireGroup = () => {
       this.vfxGroup.remove(group);
       for (let i = 0; i < geos.length; i++) {
-        if (!geos[i].userData?.isSharedGeo) geos[i].dispose();
+        const g = geos[i];
+        if (!g.userData?.sharedAsset && !g.userData?.isSharedGeo) g.dispose();
       }
-      for (let i = 0; i < mats.length; i++) mats[i].dispose();
+      for (let i = 0; i < mats.length; i++) this._releaseVfxMat(mats[i]);
     };
 
     if (k.includes('circle') || k.includes('aoe') || k.includes('nova') || k.includes('ring')) {
       const radius = Number(options.radius || options.range) || 3.5;
       const runeGeo = this._getSlashGeo(0.65 / 0.72, 0.72, Math.PI * 2);
 
-      const borderMat = new THREE.MeshBasicMaterial({
-        color,
-        side: THREE.DoubleSide,
-        transparent: true,
-        opacity: 0.8,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false
-      });
-      const fillMat = new THREE.MeshBasicMaterial({
-        color,
-        side: THREE.DoubleSide,
-        transparent: true,
-        opacity: 0.2,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false
-      });
-      const runeMat = new THREE.MeshBasicMaterial({
-        color: 0xffffff,
-        side: THREE.DoubleSide,
-        transparent: true,
-        opacity: 0.45,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false
-      });
+      const borderMat = this._acquireVfxMat(color, 0.8, true);
+      const fillMat = this._acquireVfxMat(color, 0.2, true);
+      const runeMat = this._acquireVfxMat(0xffffff, 0.45, true);
 
       mats.push(borderMat, fillMat, runeMat);
 
@@ -1795,22 +1810,8 @@ export class Renderer {
       const len = Number(options.range || options.length) || 5.5;
       const width = Number(options.width) || 1.6;
 
-      const borderMat = new THREE.MeshBasicMaterial({
-        color,
-        side: THREE.DoubleSide,
-        transparent: true,
-        opacity: 0.75,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false
-      });
-      const fillMat = new THREE.MeshBasicMaterial({
-        color,
-        side: THREE.DoubleSide,
-        transparent: true,
-        opacity: 0.22,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false
-      });
+      const borderMat = this._acquireVfxMat(color, 0.75, true);
+      const fillMat = this._acquireVfxMat(color, 0.22, true);
 
       mats.push(borderMat, fillMat);
 
@@ -1848,26 +1849,11 @@ export class Renderer {
     const segments = 24;
 
     const arcBorderGeo = this._getSlashGeo(0.94, range, arcAngle);
-    const arcFillGeo = new THREE.CircleGeometry(range * 0.93, segments, -arcAngle * 0.5, arcAngle);
+    const arcFillGeo = this._getCachedCircleGeo(range * 0.93, segments, -arcAngle * 0.5, arcAngle);
 
-    const borderMat = new THREE.MeshBasicMaterial({
-      color,
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.8,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false
-    });
-    const fillMat = new THREE.MeshBasicMaterial({
-      color,
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.22,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false
-    });
+    const borderMat = this._acquireVfxMat(color, 0.8, true);
+    const fillMat = this._acquireVfxMat(color, 0.22, true);
 
-    geos.push(arcFillGeo);
     mats.push(borderMat, fillMat);
 
     const border = new THREE.Mesh(arcBorderGeo, borderMat);
@@ -1917,9 +1903,20 @@ export class Renderer {
    */
   spawnFloatingText(worldPos, text, options = {}) {
     if (!this.fctContainer || typeof document === 'undefined') return;
+    const isCrit = Boolean(options.isCrit || options.crit);
+    const type = options.type;
+    const isPriority = isCrit
+      || type === 'player_hit'
+      || type === 'level_up'
+      || type === 'levelup'
+      || type === 'warning'
+      || Boolean(options.priority || options.isWarning || options.isLevelUp);
+    const frameCap = this.floatingTexts.length > 20 ? 3 : 6;
+    if (!isPriority && (this._fctFrameCount | 0) >= frameCap) return;
+    this._fctFrameCount = (this._fctFrameCount | 0) + 1;
+
     const ft = this._acquireFctEntry();
     const el = ft.el;
-    const isCrit = Boolean(options.isCrit || options.crit);
     el.className = isCrit ? 'fct-item fct-crit' : 'fct-item';
     el.textContent = isCrit ? `💥 ${text}!` : String(text);
 
@@ -2036,7 +2033,7 @@ export class Renderer {
           item.onExpire();
         } else {
           this.vfxGroup.remove(item.mesh);
-          if (item.geo && !item.geo.userData?.isSharedGeo) item.geo.dispose();
+          if (item.geo && !item.geo.userData?.sharedAsset && !item.geo.userData?.isSharedGeo) item.geo.dispose();
           if (item.mat) item.mat.dispose();
         }
         const last = this.vfxList.length - 1;
@@ -2150,9 +2147,26 @@ export class Renderer {
         aura.userData.innerRing.scale.set(p2, p2, 1);
       }
     }
+
+    this._fctFrameCount = 0;
+  }
+
+  async precompileScene() {
+    const gl = this.webglRenderer;
+    if (!gl || !this.scene || !this.camera) return;
+    try {
+      if (typeof gl.compileAsync === 'function') {
+        await gl.compileAsync(this.scene, this.camera);
+      } else if (typeof gl.compile === 'function') {
+        gl.compile(this.scene, this.camera);
+      }
+    } catch {
+      // Safe no-op in headless/unsupported contexts
+    }
   }
 
   render() {
+    this._fctFrameCount = 0;
     this._shadowFrame = (this._shadowFrame + 1) & 1;
     if (this._shadowDirty || this._shadowFrame === 0) {
       this.webglRenderer.shadowMap.needsUpdate = true;

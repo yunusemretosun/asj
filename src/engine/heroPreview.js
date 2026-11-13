@@ -4,8 +4,9 @@ import { getClass } from '../systems/classes.js';
 import { buildStarterEquipment } from '../systems/inventory.js';
 
 // Preview wears exactly the gear the class starts the game with
-function previewEquipment(cls) {
-  return buildStarterEquipment(cls?.id);
+function previewEquipment(clsOrId) {
+  const id = typeof clsOrId === 'string' ? clsOrId : clsOrId?.id;
+  return buildStarterEquipment(id);
 }
 
 function attackStateFor(style) {
@@ -17,17 +18,18 @@ function attackStateFor(style) {
 /**
  * Small self-contained turntable preview of the hero (character creation screen).
  * @param {HTMLCanvasElement} canvas
+ * @param {{ classId?: string, appearance?: object } | null} [initialLook=null]
  * @returns {{ setLook: (look: {classId?: string, appearance?: object}) => void, resize: () => void, dispose: () => void }}
  */
-export function createHeroPreview(canvas) {
+export function createHeroPreview(canvas, initialLook = null) {
   if (!canvas) throw new Error('createHeroPreview: canvas is required');
 
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: false });
-  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  renderer.setPixelRatio(Math.min(1.5, window.devicePixelRatio || 1));
   renderer.setClearColor(0x000000, 0);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 50);
@@ -39,7 +41,7 @@ export function createHeroPreview(canvas) {
   const key = new THREE.DirectionalLight(0xfff7e0, 2.4);
   key.position.set(2.5, 4.5, 3.5);
   key.castShadow = true;
-  key.shadow.mapSize.set(1024, 1024);
+  key.shadow.mapSize.set(512, 512);
   key.shadow.camera.left = -2;
   key.shadow.camera.right = 2;
   key.shadow.camera.top = 3;
@@ -69,11 +71,22 @@ export function createHeroPreview(canvas) {
   ring.position.y = 0.005;
   scene.add(ring);
 
-  // Hero
-  const hero = createHeroMesh({}, { classId: 'knight' });
+  // Hero initialized directly with initialLook (never hardcodes knight when another class is selected)
+  const initClsObj = getClass(initialLook?.classId || 'knight');
+  const initCls = initClsObj.id;
+  const initAppearance = initialLook?.appearance ? { ...initialLook.appearance } : null;
+  const initCol = initClsObj.color ?? 0x38bdf8;
+  ringMat.color.setHex(initCol);
+  accent.color.setHex(initCol);
+
+  const hero = createHeroMesh(
+    previewEquipment(initCls),
+    { classId: initCls, appearance: initAppearance, isPreview: true }
+  );
   scene.add(hero);
 
-  let attackStyle = 'melee';
+  let currentClassId = initCls;
+  let attackStyle = hero.userData.attackStyle || initClsObj.attackStyle || 'melee';
   let disposed = false;
   let rafId = 0;
   let lastT = performance.now();
@@ -94,17 +107,22 @@ export function createHeroPreview(canvas) {
 
   const setLook = ({ classId, appearance } = {}) => {
     if (disposed) return;
-    const cls = getClass(classId);
-    hero.userData.setLook?.({ classId: cls.id, appearance });
-    hero.userData.updateEquipment?.(previewEquipment(cls));
+    const cls = getClass(classId || currentClassId);
+    const nextCls = cls.id;
+    const classChanged = nextCls !== currentClassId;
+    hero.userData.setLook?.({ classId: nextCls, appearance });
+    if (classChanged) {
+      currentClassId = nextCls;
+      hero.userData.updateEquipment?.(previewEquipment(cls));
+      const col = cls.color ?? 0x38bdf8;
+      ringMat.color.setHex(col);
+      accent.color.setHex(col);
+      // Show off the new class with a quick attack
+      attackT = 0;
+      comboStep = 1;
+      nextAttackAt = elapsed + 3.5;
+    }
     attackStyle = hero.userData.attackStyle || cls.attackStyle || 'melee';
-    const col = cls.color ?? 0x38bdf8;
-    ringMat.color.setHex(col);
-    accent.color.setHex(col);
-    // Show off the new class with a quick attack
-    attackT = 0;
-    comboStep = 1;
-    nextAttackAt = elapsed + 3.5;
   };
 
   const loop = (now) => {

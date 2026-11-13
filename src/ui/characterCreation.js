@@ -168,8 +168,9 @@ export function openCharacterCreation(root, opts = {}) {
       const cw = screen.querySelector('.cc-canvas-wrap');
       if (typeof opts.createPreview === 'function') {
         const canvas = mk('canvas', 'cc-canvas'); cw.appendChild(canvas);
-        try { preview = opts.createPreview(canvas); } catch (e) { console.error(e); preview = null; }
-        if (preview) { look(); requestAnimationFrame(onResize); }
+        const initialLook = { classId: S.classId, appearance: { ...S.appearance } };
+        try { preview = opts.createPreview(canvas, initialLook); } catch (e) { console.error(e); preview = null; }
+        if (preview) { requestAnimationFrame(onResize); }
       }
       if (!preview) cw.innerHTML = `<div class="cc-placeholder"><span>${esc(c.icon)}</span></div>`;
       updatePlaceholder();

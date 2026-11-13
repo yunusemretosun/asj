@@ -1924,6 +1924,7 @@ function getSharedEnemyUi() {
     obj.userData = obj.userData || {};
     obj.userData.isCachedGLB = true;
     obj.userData.isSharedAsset = true;
+    obj.userData.sharedAsset = true;
     return obj;
   };
   const bgGeo = markShared(new THREE.PlaneGeometry(1, 1));
@@ -1942,6 +1943,8 @@ function getSharedEnemyUi() {
     transparent: true,
     opacity: 0.0
   }));
+  const statusRingMobGeo = markShared(new THREE.RingGeometry(0.42, 0.54, 20));
+  const statusRingBossGeo = markShared(new THREE.RingGeometry(0.8, 0.92, 20));
   _sharedEnemyUi = {
     bgGeo,
     bgMat,
@@ -1949,11 +1952,29 @@ function getSharedEnemyUi() {
     fillMats: new Map(),
     telegraphGeo,
     telegraphMat,
+    statusRingMobGeo,
+    statusRingBossGeo,
+    statusRingMats: new Map(),
     getFillMat(color) {
       let mat = this.fillMats.get(color);
       if (!mat) {
         mat = markShared(new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide }));
         this.fillMats.set(color, mat);
+      }
+      return mat;
+    },
+    getStatusRingMat(color) {
+      const key = Number(color) || 0xffffff;
+      let mat = this.statusRingMats.get(key);
+      if (!mat) {
+        mat = markShared(new THREE.MeshBasicMaterial({
+          color: key,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 0.6,
+          depthWrite: false
+        }));
+        this.statusRingMats.set(key, mat);
       }
       return mat;
     }
@@ -2071,6 +2092,8 @@ export class EnemyAI {
     this._returningHome = false;
     this._leashTimer = 0;
     this._lastAlertAt = -99;
+    this._wakeStamp = 0;
+    this._lastHitFlashAt = 0;
     this.stunTimer = 0;
     // Active status effects keyed by STATUS id: { id, remaining, duration, tick, tickTimer, dotPerTick, slowPct, root, dmgTakenPct, color }
     this.statuses = {};
@@ -2183,6 +2206,13 @@ export class EnemyManager {
     this._cellPool = [];
     this._cellPoolUsed = 0;
     this._validSkillsScratch = [];
+    this._projectilePool = [];
+    this._projectileMeshPool = new Map();
+    this._wakeFrameId = 1;
+    this._killStagger = 0;
+    this._frameMobShockwaves = 0;
+    this._frameMobSparks = 0;
+    this._anyStatusRingVisible = false;
     this._aliveNonBossDirty = true;
     this._aliveNonBossCached = null;
     this._aliveNonBossDungeonRef = null;
@@ -2350,23 +2380,56 @@ export class EnemyManager {
         }
       }
     }
+    if (this._projectileMeshPool) {
+      for (const bucket of this._projectileMeshPool.values()) {
+        for (const mesh of bucket) {
+          if (!mesh) continue;
+          if (typeof mesh.userData?.dispose === 'function') mesh.userData.dispose();
+          if (mesh.parent) mesh.parent.remove(mesh);
+          else if (this.scene) this.scene.remove(mesh);
+        }
+      }
+      this._projectileMeshPool.clear();
+    }
+    if (this._projectilePool) this._projectilePool.length = 0;
     this.projectiles = [];
   }
 
   _removeEnemyProjectile(index) {
     if (!this.projectiles || index < 0 || index >= this.projectiles.length) return;
     const p = this.projectiles[index];
-    if (p?.mesh) {
-      if (typeof p.mesh.userData?.dispose === 'function') {
-        p.mesh.userData.dispose();
+    const last = this.projectiles.length - 1;
+    if (index !== last) this.projectiles[index] = this.projectiles[last];
+    this.projectiles.pop();
+
+    const mesh = p?.mesh;
+    if (mesh) {
+      let bucket = p.meshKey ? this._projectileMeshPool.get(p.meshKey) : null;
+      if (!bucket && p.meshKey) {
+        bucket = [];
+        this._projectileMeshPool.set(p.meshKey, bucket);
       }
-      if (p.mesh.parent) {
-        p.mesh.parent.remove(p.mesh);
-      } else if (this.scene) {
-        this.scene.remove(p.mesh);
+      if (bucket && bucket.length < 24) {
+        mesh.visible = false;
+        bucket.push(mesh);
+      } else {
+        if (typeof mesh.userData?.dispose === 'function') {
+          mesh.userData.dispose();
+        }
+        if (mesh.parent) {
+          mesh.parent.remove(mesh);
+        } else if (this.scene) {
+          this.scene.remove(mesh);
+        }
       }
     }
-    this.projectiles.splice(index, 1);
+    if (p) {
+      p.mesh = null;
+      p.sourceEnemy = null;
+      if (this._projectilePool.length < 64) {
+        this._projectilePool.push(p);
+      }
+    }
   }
 
   _spawnEnemyProjectile(enemy, targetX, targetZ, kind = 'arrow', damage = 10, element = 'physical', callbacks = {}, opts = {}) {
@@ -2379,31 +2442,42 @@ export class EnemyManager {
 
     let mesh = null;
     const color = opts.color || (kind === 'arrow' ? 0xca8a04 : 0xef4444);
+    const meshKey = `${kind}_${color}`;
     if (this.scene && typeof this.models3d?.createProjectileMesh === 'function') {
-      mesh = this.models3d.createProjectileMesh(kind, color, kind === 'arrow' ? 1.0 : 0.85);
+      const bucket = this._projectileMeshPool.get(meshKey);
+      if (bucket && bucket.length > 0) {
+        mesh = bucket.pop();
+        mesh.visible = true;
+        if (mesh.userData?.glow) mesh.userData.glow.scale.setScalar(1);
+        if (mesh.userData?.core) mesh.userData.core.rotation.x = 0;
+      } else {
+        mesh = this.models3d.createProjectileMesh(kind, color, kind === 'arrow' ? 1.0 : 0.85);
+      }
       mesh.position.set(enemy.x, originY, enemy.z);
       mesh.rotation.y = Math.atan2(dirX, dirZ);
-      this.scene.add(mesh);
+      if (mesh.parent !== this.scene) {
+        this.scene.add(mesh);
+      }
     }
 
-    const proj = {
-      id: `eproj_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      kind,
-      x: enemy.x,
-      y: originY,
-      z: enemy.z,
-      dirX,
-      dirZ,
-      speed: opts.speed || (kind === 'arrow' ? 17.5 : 14.5),
-      damage: Math.round(damage),
-      element,
-      range: Math.max(18.5, enemy.attackRange ? enemy.attackRange * 1.65 : 18.5),
-      traveled: 0,
-      radius: kind === 'arrow' ? 0.38 : 0.48,
-      mesh,
-      sourceEnemy: enemy,
-      isPoison: Boolean(opts.isPoison || element === 'poison')
-    };
+    const proj = this._projectilePool.length > 0 ? this._projectilePool.pop() : {};
+    proj.id = `eproj_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    proj.kind = kind;
+    proj.meshKey = meshKey;
+    proj.x = enemy.x;
+    proj.y = originY;
+    proj.z = enemy.z;
+    proj.dirX = dirX;
+    proj.dirZ = dirZ;
+    proj.speed = opts.speed || (kind === 'arrow' ? 17.5 : 14.5);
+    proj.damage = Math.round(damage);
+    proj.element = element;
+    proj.range = Math.max(18.5, enemy.attackRange ? enemy.attackRange * 1.65 : 18.5);
+    proj.traveled = 0;
+    proj.radius = kind === 'arrow' ? 0.38 : 0.48;
+    proj.mesh = mesh;
+    proj.sourceEnemy = enemy;
+    proj.isPoison = Boolean(opts.isPoison || element === 'poison');
 
     if (!Array.isArray(this.projectiles)) this.projectiles = [];
     this.projectiles.push(proj);
@@ -2777,6 +2851,12 @@ export class EnemyManager {
   wakePack(enemyOrPackId, opts = {}) {
     const trigger = typeof enemyOrPackId === 'object' ? enemyOrPackId : null;
     const packId = typeof enemyOrPackId === 'string' ? enemyOrPackId : (trigger?.packId || null);
+    const stamp = opts.aoeWakeId ?? this._wakeFrameId;
+    if (trigger && trigger._wakeStamp === stamp) {
+      return [];
+    }
+    if (trigger) trigger._wakeStamp = stamp;
+
     const time = this._lastTime;
     const allowTriggerAlert = opts.allowTriggerAlert !== false;
     const woken = [];
@@ -2789,6 +2869,7 @@ export class EnemyManager {
       const inSamePack = packId && m.packId === packId;
       const nearbyTrigger = trigger && ((m.x - trigger.x) * (m.x - trigger.x) + (m.z - trigger.z) * (m.z - trigger.z)) <= 6.5 * 6.5;
       if (m === trigger || inSamePack || nearbyTrigger) {
+        m._wakeStamp = stamp;
         const wasUnengaged = m.sleeping || m.state === AI_STATE.SLEEP || m.state === AI_STATE.IDLE || m.state === AI_STATE.PATROL;
         const wasAlerted = Boolean(m.isAlerted);
         if (wasUnengaged) {
@@ -3115,6 +3196,66 @@ export class EnemyManager {
     }
   }
 
+  /**
+   * Allocation-free spatial iteration over alive enemies inside a melee/skill arc.
+   * Return false from fn to stop early.
+   */
+  forEachEnemyInArc(originOrX, dirOrZ, rotOrRange = 0, rangeOrArc = 2.5, maybeArc = Math.PI, maybeFn = null) {
+    let ox = 0;
+    let oz = 0;
+    let forwardX = 0;
+    let forwardZ = 1;
+    let range = 2.5;
+    let arcAngle = Math.PI;
+    let fn = null;
+
+    if (typeof originOrX === 'object' && originOrX !== null) {
+      ox = Number(originOrX.x || 0);
+      oz = Number(originOrX.z || 0);
+      range = Number(rotOrRange || 2.5);
+      arcAngle = Number(rangeOrArc || Math.PI);
+      fn = typeof maybeArc === 'function' ? maybeArc : maybeFn;
+      if (typeof dirOrZ === 'number') {
+        forwardX = Math.sin(dirOrZ);
+        forwardZ = Math.cos(dirOrZ);
+      } else if (typeof dirOrZ === 'object' && dirOrZ !== null) {
+        const len = Math.hypot(dirOrZ.x || 0, dirOrZ.z || 0) || 1;
+        forwardX = (dirOrZ.x || 0) / len;
+        forwardZ = (dirOrZ.z || 0) / len;
+      }
+    } else {
+      ox = Number(originOrX || 0);
+      oz = Number(dirOrZ || 0);
+      const yaw = Number(rotOrRange || 0);
+      forwardX = Math.sin(yaw);
+      forwardZ = Math.cos(yaw);
+      range = Number(rangeOrArc || 2.5);
+      arcAngle = Number(maybeArc || Math.PI);
+      fn = maybeFn;
+    }
+    if (typeof fn !== 'function') return;
+
+    const halfCos = Math.cos(arcAngle * 0.5);
+    for (let i = 0; i < this.enemies.length; i++) {
+      const e = this.enemies[i];
+      if (e.dead) continue;
+      const dx = e.x - ox;
+      const dz = e.z - oz;
+      const maxR = range + e.radius;
+      const dSq = dx * dx + dz * dz;
+      if (dSq > maxR * maxR) continue;
+      const nearR = 0.75 + e.radius * 0.5;
+      if (dSq < nearR * nearR) {
+        if (fn(e) === false) break;
+        continue;
+      }
+      const dist = Math.sqrt(dSq);
+      if ((dx / dist) * forwardX + (dz / dist) * forwardZ >= halfCos) {
+        if (fn(e) === false) break;
+      }
+    }
+  }
+
   /** Allocation-free scan for the active alive Nemesis enemy. */
   getActiveNemesis() {
     for (let i = 0; i < this.enemies.length; i++) {
@@ -3255,7 +3396,15 @@ export class EnemyManager {
     const takenMult = options.statusScaled ? 1 : this.getDamageTakenMult(enemy);
     const dmg = Math.max(1, Math.round(rawDamage * takenMult));
     enemy.hp = Math.max(0, enemy.hp - dmg);
-    if (!options.isDot) enemy.mesh?.userData?.triggerHitFlash?.(0.15);
+    if (!options.isDot && enemy.mesh?.userData?.triggerHitFlash) {
+      const nowMs = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+        ? performance.now()
+        : Date.now();
+      if ((nowMs - (enemy._lastHitFlashAt || 0)) >= 70) {
+        enemy._lastHitFlashAt = nowMs;
+        enemy.mesh.userData.triggerHitFlash(0.15);
+      }
+    }
 
     const wasUnengaged = enemy.sleeping || enemy.state === AI_STATE.SLEEP || enemy.state === AI_STATE.IDLE || enemy.state === AI_STATE.PATROL;
     const wasAlertedBefore = Boolean(enemy.isAlerted);
@@ -3582,7 +3731,7 @@ export class EnemyManager {
     enemy.dead = true;
     enemy.isDead = true;
     enemy.state = AI_STATE.DEAD;
-    enemy.deathTimer = 1.05;
+    enemy.deathTimer = 1.05 + (this._killStagger++ % 6) * 0.08;
     enemy._deferredMeshCfg = null;
     this._aliveNonBossDirty = true;
     if (enemy.isOutskirtMob && !enemy.spawnOnce) {
@@ -3843,6 +3992,10 @@ export class EnemyManager {
       callbacks = worldOrCallbacks || {};
     }
     this._lastTime = time;
+    this._wakeFrameId++;
+    this._frameMobShockwaves = 0;
+    this._frameMobSparks = 0;
+    this._anyStatusRingVisible = false;
     if (callbacks && Object.keys(callbacks).length > 0) {
       this.lastCallbacks = callbacks;
     }
@@ -3882,11 +4035,16 @@ export class EnemyManager {
     }
 
     // Build reusable spatial hash grid (CELL = 4m) once per frame for O(1) neighbor separation
+    // Also count active non-boss special telegraphs/skills so regular mobs rate-limit cleanly
     this._spatialCells.clear();
     this._cellPoolUsed = 0;
+    let activeRegularTelegraphs = 0;
     for (let i = 0; i < this.enemies.length; i++) {
       const em = this.enemies[i];
       if (em.dead) continue;
+      if (!em.isBoss && (em.state === AI_STATE.TELEGRAPH || (em.state === AI_STATE.SKILL && em.pendingSkill))) {
+        activeRegularTelegraphs++;
+      }
       const ddx = px - em.x;
       const ddz = pz - em.z;
       const activeMover = em.state === AI_STATE.CHASE || em.state === AI_STATE.SKILL || em._returningHome || em.isBoss;
@@ -3912,6 +4070,8 @@ export class EnemyManager {
     this._updatePendingStrikes(dt, px, pz, playerController, callbacks);
 
     let hydratedThisFrame = 0;
+    let disposedThisFrame = 0;
+    let anyTelegraphVisible = false;
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
       if (!e.dead && e.reflectShieldTimer > 0) {
@@ -3923,18 +4083,21 @@ export class EnemyManager {
         e.mesh?.userData?.animate?.('dead', time, dt);
         if (e.deathTimer <= 0 && e.mesh) {
           e.mesh.visible = false;
-          this.rootGroup.remove(e.mesh);
-          disposeObject3D(e.mesh);
-          e.mesh = null;
+          if (disposedThisFrame < 3) {
+            this.rootGroup.remove(e.mesh);
+            disposeObject3D(e.mesh);
+            e.mesh = null;
+            disposedThisFrame++;
+          }
         }
         if (e.isOutskirtMob) {
           if (e.spawnOnce) {
-            if (e.deathTimer <= 0) {
+            if (e.deathTimer <= 0 && !e.mesh) {
               this.enemies.splice(i, 1);
             }
           } else {
             e.respawnTimer -= dt;
-            if (e.respawnTimer <= 0) {
+            if (e.respawnTimer <= 0 && !e.mesh) {
               const lvl = e.campLevel || e.level || 1;
               const respawned = this.spawnMonster({
                 type: e.type,
@@ -4099,43 +4262,55 @@ export class EnemyManager {
         e.skillCooldown <= 0 &&
         e.state === AI_STATE.CHASE
       ) {
-        const validSkills = this._validSkillsScratch;
-        validSkills.length = 0;
-        for (let si = 0; si < e.skills.length; si++) {
-          const sk = e.skills[si];
-          if (isSkillInRange(sk, e, distToPlayer)) validSkills.push(sk);
-        }
-        if (validSkills.length > 0) {
-          const chosenSkill = validSkills[Math.floor(Math.random() * validSkills.length)];
-          e.pendingSkill = chosenSkill;
-          e.state = AI_STATE.TELEGRAPH;
-          e.stateTimer = e.isBoss ? Math.max(0.45, 0.72 - e.phase * 0.08) : (e.isElite ? 0.52 : 0.42);
-          e.skillCooldown = e.isBoss ? Math.max(2.3, 4.6 - e.phase * 0.7) : (e.isElite ? 4.5 + Math.random() * 2 : 6.5 + Math.random() * 3);
-          if (e.mesh?.userData) {
-            e.mesh.userData.phaseLevel = e.phase;
-            const isCasterSkill = /curse|breath|meteor|thunder|blizzard|summon|pack|volley|barrage|storm|drain|siphon|mirror|petrify|eruption/i.test(chosenSkill);
-            e.mesh.userData.attackVariant = isCasterSkill ? 'ATTACK3' : 'ATTACK2';
+        if (!e.isBoss && !e.isElite && !e.isGiant && activeRegularTelegraphs >= 2) {
+          // Stagger regular-mob specials when >= 2 non-boss mobs are already telegraphing
+          e.skillCooldown = 0.3 + Math.random() * 0.4;
+        } else {
+          const validSkills = this._validSkillsScratch;
+          validSkills.length = 0;
+          for (let si = 0; si < e.skills.length; si++) {
+            const sk = e.skills[si];
+            if (isSkillInRange(sk, e, distToPlayer)) validSkills.push(sk);
           }
-          if (chosenSkill === 'charge' || chosenSkill === 'pounce' || chosenSkill === 'flame_claw_leap' || chosenSkill === 'dash_strike' || chosenSkill === 'tiger_claw_frenzy' || chosenSkill === 'quick_lunge' || chosenSkill === 'ram_tackle') {
-            const len = distToPlayer > 0.05 ? distToPlayer : 1;
-            e.chargeDir = { x: dx / len, z: dz / len };
-            e.skillTravelDist = 0;
-          }
-          if (UNIQUE_SKILL_LABELS[chosenSkill] && this.renderer?.spawnFloatingText && (e.isBoss || e.isElite || e.isGiant || distToPlayer < 14)) {
-            this.renderer.spawnFloatingText(
-              { x: e.x, y: e.isBoss ? 2.3 : 1.7, z: e.z },
-              UNIQUE_SKILL_LABELS[chosenSkill],
-              { color: e.element === 'ice' ? '#7dd3fc' : e.element === 'poison' ? '#4ade80' : e.element === 'lightning' ? '#fde047' : '#fb923c', isCrit: e.isBoss || e.isGiant }
-            );
-          }
-          const bossArena = world?.bossArena || this.gameContext?.dungeon?.bossArena || null;
-          if (e.isBoss && this.renderer?.spawnBossTelegraph) {
-            this.renderer.spawnBossTelegraph(chosenSkill, e.position, e.chargeDir, {
-              radius: chosenSkill.includes('nova') || chosenSkill.includes('blizzard') || chosenSkill.includes('sandstorm') || chosenSkill.includes('hurricane') ? 5.2 : 4.2,
-              duration: e.stateTimer,
-              arena: bossArena,
-              color: e.element === 'fire' ? 0xff4400 : e.element === 'lightning' ? 0xfacc15 : e.element === 'ice' ? 0x38bdf8 : e.element === 'poison' ? 0x22c55e : 0xef4444
-            });
+          if (validSkills.length > 0) {
+            const chosenSkill = validSkills[Math.floor(Math.random() * validSkills.length)];
+            e.pendingSkill = chosenSkill;
+            e.state = AI_STATE.TELEGRAPH;
+            e.stateTimer = e.isBoss ? Math.max(0.45, 0.72 - e.phase * 0.08) : (e.isElite ? 0.52 : 0.42);
+            e.skillCooldown = e.isBoss ? Math.max(2.3, 4.6 - e.phase * 0.7) : (e.isElite ? 4.5 + Math.random() * 2 : 6.5 + Math.random() * 3);
+            if (e.mesh?.userData) {
+              e.mesh.userData.phaseLevel = e.phase;
+              const isCasterSkill = /curse|breath|meteor|thunder|blizzard|summon|pack|volley|barrage|storm|drain|siphon|mirror|petrify|eruption/i.test(chosenSkill);
+              e.mesh.userData.attackVariant = isCasterSkill ? 'ATTACK3' : 'ATTACK2';
+            }
+            if (chosenSkill === 'charge' || chosenSkill === 'pounce' || chosenSkill === 'flame_claw_leap' || chosenSkill === 'dash_strike' || chosenSkill === 'tiger_claw_frenzy' || chosenSkill === 'quick_lunge' || chosenSkill === 'ram_tackle') {
+              const len = distToPlayer > 0.05 ? distToPlayer : 1;
+              e.chargeDir = { x: dx / len, z: dz / len };
+              e.skillTravelDist = 0;
+            }
+            if (
+              UNIQUE_SKILL_LABELS[chosenSkill] &&
+              this.renderer?.spawnFloatingText &&
+              (e.isBoss || e.isElite || e.isGiant || (distToPlayer < 14 && activeRegularTelegraphs < 2))
+            ) {
+              this.renderer.spawnFloatingText(
+                { x: e.x, y: e.isBoss ? 2.3 : 1.7, z: e.z },
+                UNIQUE_SKILL_LABELS[chosenSkill],
+                { color: e.element === 'ice' ? '#7dd3fc' : e.element === 'poison' ? '#4ade80' : e.element === 'lightning' ? '#fde047' : '#fb923c', isCrit: e.isBoss || e.isGiant }
+              );
+            }
+            if (!e.isBoss) {
+              activeRegularTelegraphs++;
+            }
+            const bossArena = world?.bossArena || this.gameContext?.dungeon?.bossArena || null;
+            if (e.isBoss && this.renderer?.spawnBossTelegraph) {
+              this.renderer.spawnBossTelegraph(chosenSkill, e.position, e.chargeDir, {
+                radius: chosenSkill.includes('nova') || chosenSkill.includes('blizzard') || chosenSkill.includes('sandstorm') || chosenSkill.includes('hurricane') ? 5.2 : 4.2,
+                duration: e.stateTimer,
+                arena: bossArena,
+                color: e.element === 'fire' ? 0xff4400 : e.element === 'lightning' ? 0xfacc15 : e.element === 'ice' ? 0x38bdf8 : e.element === 'poison' ? 0x22c55e : 0xef4444
+              });
+            }
           }
         }
       }
@@ -4308,7 +4483,7 @@ export class EnemyManager {
           }
           if (e.telegraphMesh) {
             e.telegraphMesh.visible = true;
-            e.telegraphMesh.material.opacity = 0.35 + Math.sin(time * 18) * 0.2;
+            anyTelegraphVisible = true;
           }
           if (animDt > 0) e.mesh?.userData?.animate?.('telegraph', time, animDt);
 
@@ -4388,7 +4563,9 @@ export class EnemyManager {
             if (Math.hypot(px - e.x, pz - e.z) <= e.radius + 0.95) {
               const dmgMult = e.pendingSkill === 'charge' ? 1.5 : 1.32;
               this._dealDamageToPlayer(e, Math.round(e.atk * dmgMult), e.element, callbacks);
-              this.renderer?.spawnHitSparks?.(e.position, e.color || 0xf97316, 12);
+              if (this._canEmitMobSparks(e)) {
+                this.renderer?.spawnHitSparks?.(e.position, e.color || 0xf97316, 12);
+              }
               if (e.pendingSkill === 'charge' || e.pendingSkill === 'ram_tackle') {
                 this._nudgePlayer(e.x, e.z, 0.9, world);
               }
@@ -4422,6 +4599,16 @@ export class EnemyManager {
       if (shouldRender) {
         this._applyStatusTint(e, dt);
         e.syncHealthBar(cam);
+      }
+    }
+
+    if (anyTelegraphVisible) {
+      getSharedEnemyUi().telegraphMat.opacity = 0.35 + Math.sin(time * 18) * 0.2;
+    }
+    if (this._anyStatusRingVisible) {
+      const statusPulse = 0.55 + Math.sin(time * 8) * 0.15;
+      for (const mat of getSharedEnemyUi().statusRingMats.values()) {
+        mat.opacity = statusPulse;
       }
     }
 
@@ -4581,8 +4768,7 @@ export class EnemyManager {
     if (changed) this._refreshStatusRing(enemy);
     if (enemy.statusRing) {
       enemy.statusRing.rotation.z = time * 2.4;
-      const pulse = 0.55 + Math.sin(time * 8) * 0.15;
-      enemy.statusRing.material.opacity = pulse;
+      this._anyStatusRingVisible = true;
     }
   }
 
@@ -4601,27 +4787,31 @@ export class EnemyManager {
       return;
     }
     if (!enemy.mesh) return;
+    const ui = getSharedEnemyUi();
+    const mat = ui.getStatusRingMat(top.color);
     if (!enemy.statusRing) {
-      const inner = enemy.isBoss ? 0.8 : 0.42;
-      const ring = new THREE.Mesh(
-        new THREE.RingGeometry(inner, inner + 0.12, 20),
-        new THREE.MeshBasicMaterial({ color: top.color, side: THREE.DoubleSide, transparent: true, opacity: 0.6, depthWrite: false })
-      );
+      const geo = enemy.isBoss ? ui.statusRingBossGeo : ui.statusRingMobGeo;
+      const ring = new THREE.Mesh(geo, mat);
       ring.rotation.x = -Math.PI / 2;
       ring.position.y = 0.05;
       ring.userData.noFlash = true;
       enemy.mesh.add(ring);
       enemy.statusRing = ring;
+    } else if (enemy.statusRing.material !== mat) {
+      enemy.statusRing.material = mat;
     }
-    enemy.statusRing.material.color.setHex(top.color);
   }
 
   _removeStatusRing(enemy) {
     const ring = enemy?.statusRing;
     if (!ring) return;
     ring.parent?.remove(ring);
-    ring.geometry?.dispose?.();
-    ring.material?.dispose?.();
+    if (ring.geometry && !ring.geometry.userData?.isSharedAsset && !ring.geometry.userData?.sharedAsset) {
+      ring.geometry.dispose?.();
+    }
+    if (ring.material && !ring.material.userData?.isSharedAsset && !ring.material.userData?.sharedAsset) {
+      ring.material.dispose?.();
+    }
     enemy.statusRing = null;
   }
 
@@ -4767,6 +4957,11 @@ export class EnemyManager {
   _nudgePlayer(originX, originZ, distance, world = null) {
     const player = this.gameContext?.player;
     if (!player?.position || !Number.isFinite(distance) || Math.abs(distance) < 0.05) return;
+    if (
+      player.invulnerableTimer > 0 ||
+      this.gameContext?.gameState?.isInvulnerable ||
+      player._isSkillUninterruptible?.()
+    ) return;
     const dx = player.position.x - originX;
     const dz = player.position.z - originZ;
     const len = Math.hypot(dx, dz) || 1;
@@ -4896,6 +5091,20 @@ export class EnemyManager {
         }
       }
     }
+  }
+
+  _canEmitMobShockwave(enemy) {
+    if (enemy?.isBoss || enemy?.isElite || enemy?.isGiant) return true;
+    if (this._frameMobShockwaves >= 2) return false;
+    this._frameMobShockwaves++;
+    return true;
+  }
+
+  _canEmitMobSparks(enemy) {
+    if (enemy?.isBoss || enemy?.isElite || enemy?.isGiant) return true;
+    if (this._frameMobSparks >= 3) return false;
+    this._frameMobSparks++;
+    return true;
   }
 
   _executeBossSpecialSkill(boss, px, pz, world, callbacks) {
@@ -5123,7 +5332,7 @@ export class EnemyManager {
       }
     } else if (skill === 'earth_stomp') {
       const radius = 3.8;
-      if (this.renderer?.spawnSkillEffect) {
+      if (this.renderer?.spawnSkillEffect && this._canEmitMobShockwave(boss)) {
         this.renderer.spawnSkillEffect('shockwave', boss.position, 0, { color: 0xa16207, radius });
       }
       if (dist <= radius) {
@@ -5134,7 +5343,7 @@ export class EnemyManager {
       }
     } else if (skill === 'frost_wave') {
       const radius = 4.2;
-      if (this.renderer?.spawnSkillEffect) {
+      if (this.renderer?.spawnSkillEffect && this._canEmitMobShockwave(boss)) {
         this.renderer.spawnSkillEffect('shockwave', boss.position, 0, { color: 0x38bdf8, radius });
       }
       if (dist <= radius) {
@@ -5146,7 +5355,7 @@ export class EnemyManager {
         this._spawnEnemyProjectile(boss, px, pz, 'orb', Math.round(boss.atk * 1.3), 'ice', callbacks, { color: 0x38bdf8 });
       }
     } else if (skill === 'powder_blast') {
-      if (this.renderer?.spawnSkillEffect) {
+      if (this.renderer?.spawnSkillEffect && this._canEmitMobShockwave(boss)) {
         this.renderer.spawnSkillEffect('fireball', { x: px, y: 0.5, z: pz }, 0, { color: 0xea580c, radius: 2.8 });
       }
       if (dist <= 3.2) {
@@ -5170,7 +5379,7 @@ export class EnemyManager {
       this._spawnEnemyProjectile(boss, px, pz, 'orb', Math.round(boss.atk * 1.2), 'poison', callbacks, { isPoison: true, color: 0x84cc16 });
     } else if (skill === 'whirlwind_strike') {
       const radius = 2.8;
-      if (this.renderer?.spawnSkillEffect) {
+      if (this.renderer?.spawnSkillEffect && this._canEmitMobShockwave(boss)) {
         this.renderer.spawnSkillEffect('shockwave', boss.position, 0, { color: 0xf59e0b, radius });
       }
       if (dist <= radius) {
@@ -5178,7 +5387,7 @@ export class EnemyManager {
       }
     } else if (skill === 'curse_drain' || skill === 'abyssal_soul_drain' || skill === 'shaitan_soul_siphon') {
       const range = skill === 'curse_drain' ? (boss.isBoss ? 14.5 : 12.5) : 15.5;
-      if (this.renderer?.spawnSkillEffect) {
+      if (this.renderer?.spawnSkillEffect && this._canEmitMobSparks(boss)) {
         this.renderer.spawnSkillEffect('spark', { x: px, y: 1.0, z: pz }, 0, { color: 0xa855f7 });
       }
       if (dist <= range) {
@@ -5192,8 +5401,12 @@ export class EnemyManager {
     } else if (skill === 'slash' || skill === 'cleave_sweep' || skill === 'shadow_lash' || skill === 'witch_claw' || skill === 'tiger_rend' || skill === 'double_pebble_snap' || skill === 'feral_nip' || skill === 'venom_sting' || skill === 'stone_smash') {
       const reach = skill === 'cleave_sweep' || skill === 'stone_smash' ? boss.attackRange + 1.55 : boss.attackRange + 1.1;
       const fxCol = skill === 'shadow_lash' ? 0x818cf8 : skill === 'witch_claw' || skill === 'venom_sting' ? 0x22c55e : skill === 'stone_smash' ? 0x94a3b8 : 0xf59e0b;
-      this.renderer?.spawnSkillEffect?.('shockwave', boss.position, 0, { color: fxCol, radius: reach * 0.95 });
-      this.renderer?.spawnHitSparks?.(boss.position, fxCol, 10);
+      if (this._canEmitMobShockwave(boss)) {
+        this.renderer?.spawnSkillEffect?.('shockwave', boss.position, 0, { color: fxCol, radius: reach * 0.95 });
+      }
+      if (this._canEmitMobSparks(boss)) {
+        this.renderer?.spawnHitSparks?.(boss.position, fxCol, 10);
+      }
       if (dist <= reach) {
         const mult = (skill === 'cleave_sweep' || skill === 'stone_smash' || skill === 'tiger_rend') ? 1.48 : skill === 'double_pebble_snap' ? 1.38 : 1.3;
         this._dealDamageToPlayer(boss, Math.round(boss.atk * mult), boss.element || 'physical', callbacks);
@@ -5208,7 +5421,9 @@ export class EnemyManager {
     } else if (skill === 'earth_shatter' || skill === 'roar_shockwave') {
       const radius = skill === 'roar_shockwave' ? 4.2 : 3.6;
       const fxCol = skill === 'roar_shockwave' ? 0xe2e8f0 : 0xb45309;
-      this.renderer?.spawnSkillEffect?.('shockwave', boss.position, 0, { color: fxCol, radius });
+      if (this._canEmitMobShockwave(boss)) {
+        this.renderer?.spawnSkillEffect?.('shockwave', boss.position, 0, { color: fxCol, radius });
+      }
       this.renderer?.shake?.(0.32, 0.2);
       if (dist <= radius) {
         this._dealDamageToPlayer(boss, Math.round(boss.atk * 1.52), skill === 'roar_shockwave' ? (boss.element || 'ice') : 'earth', callbacks);
@@ -5225,7 +5440,9 @@ export class EnemyManager {
         callbacks?.applyPlayerStatus?.('chill', 3.0, 35);
       }
     } else if (skill === 'pounce' || skill === 'charge' || skill === 'quick_lunge' || skill === 'ram_tackle') {
-      this.renderer?.spawnHitSparks?.(boss.position, boss.color || 0xf59e0b, 8);
+      if (this._canEmitMobSparks(boss)) {
+        this.renderer?.spawnHitSparks?.(boss.position, boss.color || 0xf59e0b, 8);
+      }
     }
   }
 

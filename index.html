@@ -77,6 +77,70 @@
       color: #ffcc22;
       text-shadow: 0 0 8px rgba(255, 120, 0, 0.9), 0 2px 3px #000;
     }
+    #asj-boot-splash,
+    #asj-loading-overlay {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      background: radial-gradient(circle at 50% 42%, #171a26 0%, #08090d 74%);
+      color: #f0e6d2;
+      text-align: center;
+    }
+    #asj-boot-splash {
+      z-index: 2000;
+    }
+    #asj-loading-overlay {
+      z-index: 1900;
+      display: none;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.35s ease;
+    }
+    #asj-loading-overlay.is-visible {
+      display: flex;
+      opacity: 1;
+      pointer-events: auto;
+    }
+    #asj-loading-overlay.is-fading {
+      display: flex;
+      opacity: 0;
+      pointer-events: none;
+    }
+    .asj-splash-title {
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: 0.24em;
+      color: #f0d799;
+      text-shadow: 0 2px 18px rgba(240, 215, 153, 0.28);
+    }
+    .asj-splash-sub {
+      font-size: 13px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: #b7b0a2;
+    }
+    .asj-splash-bar {
+      width: 180px;
+      height: 3px;
+      border-radius: 999px;
+      background: rgba(240, 230, 210, 0.14);
+      overflow: hidden;
+    }
+    .asj-splash-bar > i {
+      display: block;
+      width: 45%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, #f0d799, transparent);
+      animation: asjSplashBar 1.2s ease-in-out infinite;
+    }
+    @keyframes asjSplashBar {
+      0% { transform: translateX(-110%); }
+      100% { transform: translateX(240%); }
+    }
   </style>
 </head>
 <body>
@@ -87,6 +151,16 @@
     <div id="ui-root"></div>
     <div id="menu-root"></div>
     <div id="modal-root"></div>
+    <div id="asj-boot-splash" role="status" aria-live="polite">
+      <div class="asj-splash-title">ARKENVEIL</div>
+      <div class="asj-splash-sub">ARKENVEIL — Loading...</div>
+      <div class="asj-splash-bar"><i></i></div>
+    </div>
+    <div id="asj-loading-overlay" role="status" aria-live="polite" aria-hidden="true">
+      <div class="asj-splash-title">ARKENVEIL</div>
+      <div class="asj-splash-sub">Entering Arkenveil...</div>
+      <div class="asj-splash-bar"><i></i></div>
+    </div>
   </div>
   <script type="module" src="/src/main.js"></script>
 </body>
