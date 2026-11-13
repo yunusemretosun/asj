@@ -1,13 +1,38 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { getClass, defaultAppearance, sanitizeAppearance } from '../systems/classes.js';
 import { glowLevel, SEALS, STATUS, RARITY_BEAMS } from '../systems/mechanics.js';
 // Namespace import: optional exports (CLASS_SET_STYLE, tierForLevel) may be missing without breaking module linking
 import * as inventoryModule from '../systems/inventory.js';
 
 const glbCache = new Map();
+const _sroSpriteTexCache = new Map();
+const _breakableAssetCache = new Map();
+const _chestAssetCache = new Map();
+let _sroSpriteLoader = null;
 let gltfLoader = null;
+
+function mergeStaticGeometries(geos, useGroups = false) {
+  if (!geos || geos.length === 0) return null;
+  const prepared = [];
+  for (let i = 0; i < geos.length; i++) {
+    const g = geos[i];
+    if (!g) continue;
+    const norm = g.index ? g.toNonIndexed() : g;
+    if (norm !== g) g.dispose?.();
+    prepared.push(norm);
+  }
+  const merged = mergeGeometries(prepared, useGroups);
+  for (let i = 0; i < prepared.length; i++) prepared[i].dispose?.();
+  if (merged) {
+    merged.userData = merged.userData || {};
+    merged.userData.isSharedAsset = true;
+    merged.userData.isCachedGLB = true;
+  }
+  return merged;
+}
 
 function getGLTFLoader() {
   if (!gltfLoader && typeof window !== 'undefined' && typeof document !== 'undefined') {
@@ -71,6 +96,7 @@ export function loadGLB(url) {
       undefined,
       (err) => {
         console.warn(`[models3d] Failed to load GLB: ${url}`, err);
+        glbCache.delete(url);
         resolve(null);
       }
     );
@@ -97,15 +123,22 @@ export function attachGLBModel(targetGroup, url, {
   excludeMeshNames = null,
   castShadow = false,
   receiveShadow = false,
-  onLoaded = null
+  onLoaded = null,
+  onError = null
 } = {}) {
   if (typeof window === 'undefined' || typeof document === 'undefined') {
     return;
   }
-  if (!targetGroup || !url) return;
+  if (!targetGroup || !url) {
+    if (typeof onError === 'function') onError();
+    return;
+  }
 
   loadGLB(url).then((entry) => {
-    if (!entry || !entry.scene || !targetGroup) return;
+    if (!entry || !entry.scene || !targetGroup) {
+      if (typeof onError === 'function') onError();
+      return;
+    }
     const { scene, animations, bounds } = entry;
 
     // Use SkeletonUtils.clone to properly clone SkinnedMesh and bones
@@ -141,6 +174,7 @@ export function attachGLBModel(targetGroup, url, {
       ? new Set(Array.isArray(excludeMeshNames) ? excludeMeshNames : [excludeMeshNames])
       : null;
 
+    const flashHex = targetGroup.userData?._flashHex ?? 0xff4444;
     clone.traverse((child) => {
       if (excludeSet && excludeSet.has(child.name)) {
         child.visible = false;
@@ -152,7 +186,7 @@ export function attachGLBModel(targetGroup, url, {
         if (child.material && child.material.map) {
           child.material.map.colorSpace = THREE.SRGBColorSpace;
         }
-        child.userData._origMat = child.material;
+        patchMeshHitFlash(child, flashHex);
         if (targetGroup.userData?.flashMeshes && !targetGroup.userData.flashMeshes.includes(child)) {
           targetGroup.userData.flashMeshes.push(child);
         }
@@ -292,23 +326,111 @@ function enableShadows(root, cast = true, receive = true) {
   return root;
 }
 
-const HIT_FLASH_MATERIAL = new THREE.MeshStandardMaterial({
-  color: 0xffffff,
-  emissive: new THREE.Color(0xff4444),
-  emissiveIntensity: 0.95,
-  roughness: 0.2
-});
-HIT_FLASH_MATERIAL.userData = { noFlash: true };
+let _lastFlashMat = null;
+let _lastFlashCalls = -1;
+let _lastFlashFrame = -1;
+const _hitFlashColorTmp = new THREE.Color();
 
-function attachHitFlashSupport(group) {
+function _hitFlashOnBeforeRender(renderer, scene, camera, geometry, material) {
+  const u = material?.userData?._hitFlashUniforms;
+  if (!u) return;
+  const flashVal = this.userData?._flashVal || 0;
+  const flashHex = this.userData?._flashHex ?? 0xff4444;
+  const prevVal = u.uHitFlash.value;
+  const prevHex = u.uHitFlashHex;
+  u.uHitFlash.value = flashVal;
+  if (prevHex !== flashHex) {
+    u.uHitFlashHex = flashHex;
+    _hitFlashColorTmp.setHex(flashHex);
+    u.uHitFlashColor.value.copy(_hitFlashColorTmp);
+  }
+  const info = renderer?.info?.render;
+  if (info) {
+    if (_lastFlashMat === material && _lastFlashFrame === info.frame && _lastFlashCalls === info.calls) {
+      if (prevVal !== flashVal || prevHex !== flashHex) {
+        const prog = renderer.properties?.get?.(material)?.currentProgram;
+        if (prog && renderer.getContext) {
+          const gl = renderer.getContext();
+          const uMap = prog.getUniforms().map;
+          uMap.uHitFlash?.setValue(gl, flashVal);
+          if (prevHex !== flashHex) uMap.uHitFlashColor?.setValue(gl, u.uHitFlashColor.value);
+        }
+      }
+    }
+    _lastFlashMat = material;
+    _lastFlashFrame = info.frame;
+    _lastFlashCalls = info.calls + 1;
+  }
+}
+
+function ensureHitFlashShader(mat) {
+  if (!mat || mat.userData?.noFlash || mat.userData?._hitFlashPatched) return;
+  if (typeof mat.onBeforeCompile !== 'function' || typeof mat.customProgramCacheKey !== 'function') return;
+  const prevCompile = mat.onBeforeCompile;
+  const prevCacheKey = mat.customProgramCacheKey;
+  const uniforms = {
+    uHitFlash: { value: 0 },
+    uHitFlashColor: { value: new THREE.Color(0xff4444) },
+    uHitFlashHex: 0xff4444
+  };
+  mat.userData = mat.userData || {};
+  mat.userData._hitFlashUniforms = uniforms;
+  mat.userData._hitFlashPatched = true;
+  mat.onBeforeCompile = (shader, renderer) => {
+    if (prevCompile) prevCompile.call(mat, shader, renderer);
+    shader.uniforms.uHitFlash = uniforms.uHitFlash;
+    shader.uniforms.uHitFlashColor = uniforms.uHitFlashColor;
+    if (!shader.fragmentShader.includes('uniform float uHitFlash;')) {
+      shader.fragmentShader = shader.fragmentShader.replace(
+        'void main() {',
+        'uniform float uHitFlash;\nuniform vec3 uHitFlashColor;\nvoid main() {'
+      );
+    }
+    if (shader.fragmentShader.includes('#include <emissivemap_fragment>')) {
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <emissivemap_fragment>',
+        '#include <emissivemap_fragment>\n  totalEmissiveRadiance += uHitFlashColor * uHitFlash;'
+      );
+    } else if (shader.fragmentShader.includes('#include <opaque_fragment>')) {
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <opaque_fragment>',
+        'outgoingLight += uHitFlashColor * uHitFlash;\n  #include <opaque_fragment>'
+      );
+    }
+  };
+  mat.customProgramCacheKey = () => {
+    const prev = prevCacheKey ? prevCacheKey.call(mat) : '';
+    return prev ? `${prev}|hit-flash` : 'hit-flash';
+  };
+  mat.needsUpdate = true;
+}
+
+function patchMeshHitFlash(mesh, flashHex = 0xff4444) {
+  if (!mesh || !mesh.isMesh || mesh.userData?.noFlash || !mesh.material) return false;
+  const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+  let anyNoFlash = false;
+  for (let i = 0; i < mats.length; i++) {
+    const m = mats[i];
+    if (m?.userData?.noFlash) { anyNoFlash = true; continue; }
+    ensureHitFlashShader(m);
+  }
+  if (anyNoFlash && mats.length === 1) return false;
+  mesh.userData = mesh.userData || {};
+  mesh.userData._flashVal = 0;
+  mesh.userData._flashHex = flashHex;
+  mesh.onBeforeRender = _hitFlashOnBeforeRender;
+  return true;
+}
+
+function attachHitFlashSupport(group, flashHex = 0xff4444) {
   const meshes = [];
   group.traverse((child) => {
-    if (child.isMesh && child.material && !child.userData.noFlash) {
-      child.userData._origMat = child.material;
+    if (patchMeshHitFlash(child, flashHex)) {
       meshes.push(child);
     }
   });
 
+  group.userData._flashHex = flashHex;
   group.userData.flashMeshes = meshes;
   group.userData.hitFlashTimer = 0;
   group.userData.isFlashing = false;
@@ -317,14 +439,11 @@ function attachHitFlashSupport(group) {
     const amount = Math.max(0, Math.min(1, Number(intensity) || 0));
     group.userData.hitFlashTimer = amount;
     const shouldFlash = amount > 0.05;
-    if (shouldFlash !== group.userData.isFlashing) {
-      group.userData.isFlashing = shouldFlash;
-      const list = group.userData.flashMeshes || [];
-      for (let i = 0; i < list.length; i++) {
-        const mesh = list[i];
-        if (!mesh.userData._origMat) mesh.userData._origMat = mesh.material;
-        mesh.material = shouldFlash ? HIT_FLASH_MATERIAL : mesh.userData._origMat;
-      }
+    group.userData.isFlashing = shouldFlash;
+    const flashVal = amount > 0.02 ? amount * 0.85 : 0;
+    const list = group.userData.flashMeshes || [];
+    for (let i = 0; i < list.length; i++) {
+      list[i].userData._flashVal = flashVal;
     }
   };
 
@@ -340,26 +459,45 @@ function attachHitFlashSupport(group) {
 export function disposeObject3D(obj, keepMaterials = null) {
   if (!obj) return;
   obj.traverse((child) => {
-    if (child.geometry && !child.geometry.userData?.isCachedGLB && typeof child.geometry.dispose === 'function') {
+    if (child.isInstancedMesh && typeof child.dispose === 'function') {
+      child.dispose();
+    }
+    if (
+      child.geometry &&
+      !child.geometry.userData?.isCachedGLB &&
+      !child.geometry.userData?.isSharedAsset &&
+      typeof child.geometry.dispose === 'function'
+    ) {
       child.geometry.dispose();
     }
     const mats = Array.isArray(child.material) ? child.material : child.material ? [child.material] : [];
     for (const m of mats) {
-      if (m && !m.userData?.isCachedGLB && (!keepMaterials || !keepMaterials.has(m)) && typeof m.dispose === 'function') {
+      if (
+        m &&
+        !m.userData?.isCachedGLB &&
+        !m.userData?.isSharedAsset &&
+        (!keepMaterials || !keepMaterials.has(m)) &&
+        typeof m.dispose === 'function'
+      ) {
         m.dispose();
       }
+    }
+    if (typeof child.userData?.disposeFx === 'function') {
+      child.userData.disposeFx();
     }
   });
 }
 
 function enableSafeFrustumCulling(obj, minRadius = 2.8) {
   if (!obj) return;
+  const s = Math.max(0.05, obj.scale?.x || 1);
+  const localMinRadius = minRadius / s;
   obj.traverse((c) => {
     if (!c.isMesh) return;
     if (c.geometry && !c.geometry.boundingSphere) c.geometry.computeBoundingSphere?.();
     if (c.isSkinnedMesh && typeof c.computeBoundingSphere === 'function') {
       c.computeBoundingSphere();
-      if (c.boundingSphere && c.boundingSphere.radius < minRadius) c.boundingSphere.radius = minRadius;
+      if (c.boundingSphere && c.boundingSphere.radius < localMinRadius) c.boundingSphere.radius = localMinRadius;
     }
     c.frustumCulled = true;
   });
@@ -1113,9 +1251,6 @@ export function createEuropeanStaffMesh(weaponItem = null, tierStr = '01') {
   tip.rotation.x = Math.PI / 2;
   tip.position.z = orbZ + st.orb + 0.07;
   g.add(tip);
-  const glow = new THREE.PointLight(gemCol, 0.6 + degNum * 0.15, 2.2);
-  glow.position.z = orbZ;
-  g.add(glow);
 
   g.traverse((c) => {
     if (c.isMesh) {
@@ -1514,7 +1649,8 @@ export function applyClassClipMap(actions, classId) {
  * @param {object} equipment equipped items map ({weapon, shield, armor, helmet, boots, ...})
  * @param {{classId?: string, appearance?: object}} look hero class + appearance (optional)
  */
-export function createHeroMesh(equipment = {}, look = {}) {
+export function createHeroMesh(equipment = {}, look = {}, opts = {}) {
+  const isLightweightCrowd = Boolean(look?.lightweightCrowd || opts?.lightweightCrowd);
   const root = new THREE.Group();
   root.name = 'Hero';
 
@@ -1718,48 +1854,22 @@ export function createHeroMesh(equipment = {}, look = {}) {
     helmDome: null
   };
 
-  // ---------------------------------------------------------------- hit flash (shared materials, no cloning)
-  let flashList = [];
+  // ---------------------------------------------------------------- hit flash (per-mesh uniform tint, no cloning or shared material mutation)
+  attachHitFlashSupport(root, 0xffffff);
   const refreshFlashMaterials = () => {
-    const set = new Set();
+    const meshes = root.userData.flashMeshes || (root.userData.flashMeshes = []);
+    for (let i = meshes.length - 1; i >= 0; i--) {
+      if (!meshes[i] || !meshes[i].parent) {
+        const last = meshes.length - 1;
+        if (i !== last) meshes[i] = meshes[last];
+        meshes.pop();
+      }
+    }
     root.traverse((child) => {
-      if (!child.isMesh || child.userData.noFlash) return;
-      const mats = Array.isArray(child.material) ? child.material : [child.material];
-      for (const m of mats) {
-        if (m && m.emissive && !m.userData?.noFlash) set.add(m);
+      if (patchMeshHitFlash(child, 0xffffff) && !meshes.includes(child)) {
+        meshes.push(child);
       }
     });
-    flashList = [...set];
-    for (const m of flashList) {
-      if (!m.userData.flashBase) {
-        m.userData.flashBase = { emissive: m.emissive.clone(), intensity: m.emissiveIntensity ?? 0 };
-      }
-    }
-    root.userData.flashMaterials = flashList.map((m) => ({
-      mat: m,
-      baseEmissive: m.userData.flashBase.emissive,
-      baseIntensity: m.userData.flashBase.intensity
-    }));
-  };
-
-  root.userData.hitFlashTimer = 0;
-  root.userData.setHitFlash = (intensity = 1.0) => {
-    root.userData.hitFlashTimer = clamp01(intensity);
-    const on = root.userData.hitFlashTimer > 0.02;
-    for (const m of flashList) {
-      if (!m.emissive || !m.userData.flashBase) continue;
-      if (on) {
-        m.emissive.setHex(0xffffff);
-        m.emissiveIntensity = 0.85 * root.userData.hitFlashTimer;
-      } else {
-        m.emissive.copy(m.userData.flashBase.emissive);
-        m.emissiveIntensity = m.userData.flashBase.intensity;
-      }
-    }
-  };
-  root.userData.triggerHitFlash = (duration = 0.14) => {
-    root.userData.hitFlashDuration = duration;
-    root.userData.setHitFlash(1.0);
   };
 
   // ---------------------------------------------------------------- class part builders
@@ -2414,12 +2524,6 @@ export function createHeroMesh(equipment = {}, look = {}) {
     weaponFx.auraMat = null;
     weaponFx.sealOnly = level === 0 && seal != null;
 
-    if (level >= 2 && wMesh) {
-      const light = new THREE.PointLight(color, level >= 4 ? 1.6 : level >= 3 ? 1.2 : 0.85, 2.8, 2);
-      light.position.copy(weaponFx.tip);
-      wMesh.add(light);
-      weaponFx.light = light;
-    }
     if (level >= 4 && wMesh) {
       const auraMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.2, blending: THREE.AdditiveBlending, depthWrite: false });
       auraMat.userData.noFlash = true;
@@ -2463,9 +2567,6 @@ export function createHeroMesh(equipment = {}, look = {}) {
         m.emissive.setHex(color);
         m.emissiveIntensity = Math.max(intensity, base ? base.intensity : 0);
       }
-    }
-    if (weaponFx.light) {
-      weaponFx.light.color.setHex(color ?? weaponFx.color);
     }
   };
 
@@ -2568,12 +2669,13 @@ export function createHeroMesh(equipment = {}, look = {}) {
   let glbEquipVer = 0;
 
   function applyGLBWeaponGlow(modelClone, item) {
+    if (isLightweightCrowd) return;
     const fx = buildWeaponGearFx(modelClone, item);
     if (fx) root.userData.gearFx.push({ target: modelClone, update: fx });
   }
 
   function applyGLBArmorLook(clonedArmor, item) {
-    if (!clonedArmor || !item) return;
+    if (!clonedArmor || !item || isLightweightCrowd) return;
     const seal = item.seal ? String(item.seal).toLowerCase() : null;
     const rarity = String(item.rarity || 'normal').toLowerCase();
     const tier = Number(item.tier ?? 0);
@@ -2638,6 +2740,14 @@ export function createHeroMesh(equipment = {}, look = {}) {
         disposeObject3D(c);
       }
     }
+    if (Array.isArray(root.userData.flashMeshes)) {
+      const fms = root.userData.flashMeshes;
+      for (let i = fms.length - 1; i >= 0; i--) {
+        let p = fms[i];
+        while (p && p !== root) p = p.parent;
+        if (p !== root) fms.splice(i, 1);
+      }
+    }
 
     // 1. Sets (only bind armor pieces that are actually equipped in `equipped`)
     const armorItem = equipped?.armor || null;
@@ -2691,9 +2801,6 @@ export function createHeroMesh(equipment = {}, look = {}) {
               child.material.side = THREE.DoubleSide;
             }
             child.userData._origMat = child.material;
-            if (root.userData.flashMeshes && !root.userData.flashMeshes.includes(child)) {
-              root.userData.flashMeshes.push(child);
-            }
           }
           if (child.isSkinnedMesh) {
             hasSkinned = true;
@@ -2706,6 +2813,13 @@ export function createHeroMesh(equipment = {}, look = {}) {
           }
         });
         applyGLBArmorLook(clonedArmor, itemForLook);
+        clonedArmor.traverse((child) => {
+          if (!child.isMesh || child.userData.isGlowShell || child.userData.noFlash) return;
+          patchMeshHitFlash(child, 0xffffff);
+          if (root.userData.flashMeshes && !root.userData.flashMeshes.includes(child)) {
+            root.userData.flashMeshes.push(child);
+          }
+        });
         if (!hasSkinned && socketTarget) {
           socketTarget.add(clonedArmor);
         } else {
@@ -2864,6 +2978,10 @@ export function createHeroMesh(equipment = {}, look = {}) {
           b.receiveShadow = true;
           b.userData._origMat = b.material;
           if (b.material && b.material.map) b.material.map.colorSpace = THREE.SRGBColorSpace;
+          patchMeshHitFlash(b, 0xffffff);
+          if (root.userData.flashMeshes && !root.userData.flashMeshes.includes(b)) {
+            root.userData.flashMeshes.push(b);
+          }
         }
       });
       root.userData.heroBonesByName = heroBonesByName;
@@ -2930,16 +3048,18 @@ export function createHeroMesh(equipment = {}, look = {}) {
       root.userData.guardWeight = 0;
 
       // Spiky Hwan Hair for Berserk
-      loadGLB('/assets/sro/char/chinaman_hwan_hair.glb').then((hwanEntry) => {
-        if (!hwanEntry || !hwanEntry.scene || version !== glbLoadVer) return;
-        const hwanClone = SkeletonUtils.clone(hwanEntry.scene);
-        hwanClone.name = 'HwanHair';
-        hwanClone.visible = false;
-        if (glbHeadMount) {
-          glbHeadMount.add(hwanClone);
-          root.userData.hwanHair = hwanClone;
-        }
-      });
+      if (!isLightweightCrowd) {
+        loadGLB('/assets/sro/char/chinaman_hwan_hair.glb').then((hwanEntry) => {
+          if (!hwanEntry || !hwanEntry.scene || version !== glbLoadVer) return;
+          const hwanClone = SkeletonUtils.clone(hwanEntry.scene);
+          hwanClone.name = 'HwanHair';
+          hwanClone.visible = false;
+          if (glbHeadMount) {
+            glbHeadMount.add(hwanClone);
+            root.userData.hwanHair = hwanClone;
+          }
+        });
+      }
 
       bodyPivot.visible = false;
       root.userData.isGLBHero = true;
@@ -3194,25 +3314,19 @@ export function createHeroMesh(equipment = {}, look = {}) {
           }
 
           // Deterministic weight crossfade whose enabled weights ALWAYS normalize to 1.000 (zero T-pose leakage)
-          let activeOtherWeight = 0;
-          for (const act of root.userData.uniqueActions) {
-            if (act === targetAction) continue;
-            const w = weights.get(act) || 0;
-            if (act.enabled && w > 0.0001) activeOtherWeight += w;
-          }
-
           const fadeDur = (isAttackSt || isSkillSt) ? 0.08 : 0.11;
           const stepW = Math.min(1, Math.max(0.016, dt) / fadeDur);
-          let targetW = activeOtherWeight <= 0.001
-            ? 1.0
-            : Math.min(1.0, (weights.get(targetAction) || 0) + stepW);
-          if (targetW < 0.01) targetW = stepW;
-          weights.set(targetAction, targetW);
+          const fadingActs = root.userData._fadingActs || (root.userData._fadingActs = []);
+          fadingActs.length = 0;
 
-          let totalW = targetW;
-          for (const act of root.userData.uniqueActions) {
+          let activeOtherWeight = 0;
+          let otherWTotal = 0;
+          const uniqActs = root.userData.uniqueActions;
+          for (let i = 0, n = uniqActs.length; i < n; i++) {
+            const act = uniqActs[i];
             if (act === targetAction) continue;
             let w = weights.get(act) || 0;
+            if (act.enabled && w > 0.0001) activeOtherWeight += w;
             if (w > 0) {
               w = Math.max(0, w - stepW);
               if (w <= 0.001) {
@@ -3224,7 +3338,8 @@ export function createHeroMesh(equipment = {}, look = {}) {
                 act.stopFading();
                 act.enabled = true;
                 weights.set(act, w);
-                totalW += w;
+                otherWTotal += w;
+                fadingActs.push(act);
               }
             } else if (act.enabled) {
               act.setEffectiveWeight(0);
@@ -3233,10 +3348,18 @@ export function createHeroMesh(equipment = {}, look = {}) {
             }
           }
 
+          let targetW = activeOtherWeight <= 0.001
+            ? 1.0
+            : Math.min(1.0, (weights.get(targetAction) || 0) + stepW);
+          if (targetW < 0.01) targetW = stepW;
+          const totalW = targetW + otherWTotal;
           const invTotal = totalW > 0.0001 ? 1 / totalW : 1;
-          for (const act of root.userData.uniqueActions) {
-            if (!act.enabled) continue;
-            const normW = (act === targetAction ? targetW : (weights.get(act) || 0)) * invTotal;
+          const normTargetW = targetW * invTotal;
+          weights.set(targetAction, normTargetW);
+          targetAction.setEffectiveWeight(normTargetW);
+          for (let i = 0, n = fadingActs.length; i < n; i++) {
+            const act = fadingActs[i];
+            const normW = (weights.get(act) || 0) * invTotal;
             weights.set(act, normW);
             act.setEffectiveWeight(normW);
           }
@@ -3625,10 +3748,6 @@ export function createHeroMesh(equipment = {}, look = {}) {
       weaponFx.aura.scale.x = weaponFx.aura.scale.z = weaponFx.aura.userData.baseXZ * s;
       weaponFx.auraMat.opacity = 0.16 + Math.sin(time * 4.2) * 0.07;
     }
-    if (weaponFx.light) {
-      if (weaponFx.light.userData.base == null) weaponFx.light.userData.base = weaponFx.light.intensity;
-      weaponFx.light.intensity = weaponFx.light.userData.base * (0.9 + Math.sin(time * 7.3) * 0.1);
-    }
     if (imbueRing) {
       imbueRing.rotation.z = -time * 1.4;
       imbueRing.material.opacity = 0.35 + Math.sin(time * 5) * 0.12;
@@ -3673,29 +3792,65 @@ export function createHeroMesh(equipment = {}, look = {}) {
  * kind: 'arrow' | 'bolt' | 'orb' (default). Mesh faces local +Z (use rotation.y = yaw).
  * Returns a Group with userData.dispose() releasing all its geometries/materials.
  */
+const _projectileAssetCache = {
+  geos: null,
+  coreMat: null,
+  colorMats: new Map(),
+};
+
+function _getProjectileSharedAssets(color) {
+  if (!_projectileAssetCache.geos) {
+    const arrowTrailGeo = new THREE.CylinderGeometry(0.035, 0.004, 0.9, 6, 1, true);
+    const coreGeo = new THREE.IcosahedronGeometry(0.09, 0);
+    const glowGeo = new THREE.SphereGeometry(0.2, 10, 8);
+    const trailGeo = new THREE.ConeGeometry(0.16, 0.8, 8, 1, true);
+    for (const g of [arrowTrailGeo, coreGeo, glowGeo, trailGeo]) {
+      g.userData.isSharedAsset = true;
+      g.userData.isCachedGLB = true;
+    }
+    const coreMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    coreMat.userData.isSharedAsset = true;
+    coreMat.userData.isCachedGLB = true;
+    _projectileAssetCache.geos = { arrowTrailGeo, coreGeo, glowGeo, trailGeo };
+    _projectileAssetCache.coreMat = coreMat;
+  }
+  let cMats = _projectileAssetCache.colorMats.get(color);
+  if (!cMats) {
+    const arrowTrailMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false });
+    const glowMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false });
+    const trailMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false });
+    for (const m of [arrowTrailMat, glowMat, trailMat]) {
+      m.userData.isSharedAsset = true;
+      m.userData.isCachedGLB = true;
+    }
+    cMats = { arrowTrailMat, glowMat, trailMat };
+    if (_projectileAssetCache.colorMats.size < 64) {
+      _projectileAssetCache.colorMats.set(color, cMats);
+    }
+  }
+  return { geos: _projectileAssetCache.geos, coreMat: _projectileAssetCache.coreMat, cMats };
+}
+
 export function createProjectileMesh(kind = 'bolt', color = 0xa855f7, scale = 1) {
   const root = new THREE.Group();
   root.name = `Projectile_${kind}`;
   const inner = new THREE.Group();
   root.add(inner);
+  const { geos, coreMat, cMats } = _getProjectileSharedAssets(color);
 
   if (kind === 'arrow') {
     const arrow = buildArrowMesh(color, 0xcbd5e1, 0.75);
     arrow.rotation.y = -Math.PI / 2; // +X -> +Z
     arrow.position.z = -0.4;
     inner.add(arrow);
-    const trailMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false });
-    const trail = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.004, 0.9, 6, 1, true), trailMat);
+    const trail = new THREE.Mesh(geos.arrowTrailGeo, cMats.arrowTrailMat);
     trail.rotation.x = Math.PI / 2;
     trail.position.z = -0.85;
     inner.add(trail);
   } else {
-    const coreMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    const glowMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false });
-    const trailMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false });
-    const core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.09, 0), coreMat);
-    const glow = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8), glowMat);
-    const trail = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.8, 8, 1, true), trailMat);
+    const core = new THREE.Mesh(geos.coreGeo, coreMat);
+    const glow = new THREE.Mesh(geos.glowGeo, cMats.glowMat);
+    const trail = new THREE.Mesh(geos.trailGeo, cMats.trailMat);
     trail.rotation.x = -Math.PI / 2; // tip points backwards (-Z)
     trail.position.z = -0.45;
     inner.add(core, glow, trail);
@@ -3803,13 +3958,13 @@ export function resolveUniquePrefabKey(cfg = {}) {
     cfg.uniqueId || cfg.uniquePrefab || cfg.id || cfg.type || cfg.name || ''
   ).toLowerCase().replace(/[^a-z0-9]/g, '');
   if (!probe) return null;
-  if (probe.includes('tigergirl') || probe.includes('tigerwoman')) return 'tigerwoman';
-  if (probe.includes('uruchi')) return 'uruchi';
-  if (probe.includes('isyutaru')) return 'isyutaru';
-  if (probe.includes('lordyarkan') || probe.includes('yarkan')) return 'lord_yarkan';
-  if (probe.includes('demonshaitan') || probe.includes('shaitan')) return 'demon_shaitan';
-  if (probe === 'roc' || probe.includes('skysovereign') || probe.includes('monarchofroc') || (probe.includes('roc') && !probe.includes('rock'))) return 'roc';
-  if (probe.includes('medusa')) return 'medusa';
+  if (probe.includes('tigergirl') || probe.includes('tigerwoman') || probe.includes('frostfangempress')) return 'tigerwoman';
+  if (probe.includes('uruchi') || probe.includes('drakmor')) return 'uruchi';
+  if (probe.includes('isyutaru') || probe.includes('glaciera')) return 'isyutaru';
+  if (probe.includes('lordyarkan') || probe.includes('yarkan') || probe.includes('valkor')) return 'lord_yarkan';
+  if (probe.includes('demonshaitan') || probe.includes('shaitan') || probe.includes('malakor')) return 'demon_shaitan';
+  if (probe === 'roc' || probe.includes('aetherion') || probe.includes('skysovereign') || probe.includes('monarchofroc') || (probe.includes('roc') && !probe.includes('rock'))) return 'roc';
+  if (probe.includes('medusa') || probe.includes('vespera') || probe.includes('venomqueen')) return 'medusa';
   return null;
 }
 
@@ -4695,6 +4850,12 @@ export function createMonsterMesh(typeOrConfig = 'slime', options = {}) {
   const usesBespokeUniqueRig = Boolean(
     uniqueKey && uniqueKey !== 'tigerwoman' && (isBoss || cfg.uniquePrefab || cfg.uniqueId)
   );
+  const mobSpec = resolveMonsterGlb(rawType, isBoss, cfg.glbPath, cfg.targetHeight, cfg.targetSpan);
+
+  let proceduralBuilt = false;
+  const buildProceduralBody = () => {
+    if (proceduralBuilt) return;
+    proceduralBuilt = true;
 
   // Determine archetype from name/type
   if (usesBespokeUniqueRig) {
@@ -5016,6 +5177,13 @@ export function createMonsterMesh(typeOrConfig = 'slime', options = {}) {
     rightLeg.position.x = -0.12;
     bodyGroup.add(leftLeg, rightLeg);
   }
+  }; // end buildProceduralBody
+
+  // In browser when an external GLB monster spec exists, defer throwaway multi-part
+  // procedural mesh construction until GLB load failure; keep synchronous in Node/headless tests.
+  if (typeof window === 'undefined' || typeof document === 'undefined' || !mobSpec || cfg.forceProcedural || usesBespokeUniqueRig) {
+    buildProceduralBody();
+  }
 
   // Add Elite / Boss / Giant ground aura ring
   if (isElite || isBoss || isGiant) {
@@ -5051,7 +5219,7 @@ export function createMonsterMesh(typeOrConfig = 'slime', options = {}) {
       yOffset: cfg.mountYOffset || 0,
       hideFallback: false,
       castShadow: isBoss,
-      receiveShadow: true,
+      receiveShadow: isBoss || isGiant,
       onLoaded: (clone, { animations }) => {
         root.userData.mountModel = clone;
         let mountRootBone = null;
@@ -5111,7 +5279,6 @@ export function createMonsterMesh(typeOrConfig = 'slime', options = {}) {
     root.userData.visualTopY = 2.68;
   }
 
-  const mobSpec = resolveMonsterGlb(rawType, isBoss, cfg.glbPath, cfg.targetHeight, cfg.targetSpan);
   if (mobSpec) {
     const riderYOffset = isTigerBoss ? (mobSpec.yOffset || 0) + 1.02 : mobSpec.yOffset;
     const riderZOffset = isTigerBoss ? -0.06 : 0;
@@ -5122,7 +5289,19 @@ export function createMonsterMesh(typeOrConfig = 'slime', options = {}) {
       zOffset: riderZOffset,
       hideFallback: true,
       castShadow: isBoss,
-      receiveShadow: true,
+      receiveShadow: isBoss || isGiant,
+      onError: () => {
+        buildProceduralBody();
+        bodyGroup.traverse((c) => {
+          if (c.isMesh && !c.userData.noFlash) {
+            patchMeshHitFlash(c, 0xff4444);
+            if (root.userData.flashMeshes && !root.userData.flashMeshes.includes(c)) {
+              root.userData.flashMeshes.push(c);
+            }
+          }
+        });
+        enableShadows(bodyGroup, isBoss, isBoss || isGiant);
+      },
       onLoaded: (clone, { animations, bounds }) => {
         root.userData.riderModel = clone;
         if (!isTigerBoss && bounds && bounds.size.y > 0.01) {
@@ -5344,7 +5523,7 @@ export function createMonsterMesh(typeOrConfig = 'slime', options = {}) {
     }
   };
 
-  enableShadows(root, true, true);
+  enableShadows(root, isBoss, isBoss || isGiant);
   return root;
 }
 
@@ -5646,6 +5825,93 @@ export function createNPCMesh(npcOrRole = 'chief') {
 /**
  * Create interactive 3D Treasure Chest with hinged lid (Silkroad iron-bound wooden/golden treasure coffer)
  */
+function _markShared(asset) {
+  if (!asset) return asset;
+  asset.userData = asset.userData || {};
+  asset.userData.isSharedAsset = true;
+  asset.userData.isCachedGLB = true;
+  return asset;
+}
+
+function _getChestAssets(tierKey) {
+  let cached = _chestAssetCache.get(tierKey);
+  if (cached) return cached;
+
+  const isStorage = tierKey === 'storage';
+  const isGold = isStorage || tierKey === 'gold';
+  const boxColor = isStorage ? 0x1e3a8a : isGold ? 0x78350f : 0x451a03;
+  const trimColor = isGold ? 0xfacc15 : 0x94a3b8;
+
+  const woodMat = _markShared(new THREE.MeshStandardMaterial({ color: boxColor, roughness: 0.65, metalness: 0.15 }));
+  const trimMat = _markShared(new THREE.MeshStandardMaterial({ color: trimColor, roughness: 0.25, metalness: 0.85 }));
+  const studMat = _markShared(new THREE.MeshStandardMaterial({ color: isGold ? 0xfef08a : 0xcbd5e1, roughness: 0.2, metalness: 0.9 }));
+  const keyholeMat = _markShared(new THREE.MeshBasicMaterial({ color: 0x0f172a }));
+  const glowMat = _markShared(new THREE.MeshBasicMaterial({ color: isGold ? 0xfef08a : 0x38bdf8 }));
+
+  // Base wood box
+  const baseWoodGeo = new THREE.BoxGeometry(0.78, 0.42, 0.52);
+  baseWoodGeo.translate(0, 0.21, 0);
+
+  // Trim bands & lock plate
+  const bandLGeo = new THREE.BoxGeometry(0.06, 0.43, 0.53);
+  bandLGeo.translate(-0.24, 0.21, 0);
+  const bandRGeo = new THREE.BoxGeometry(0.06, 0.43, 0.53);
+  bandRGeo.translate(0.24, 0.21, 0);
+  const waistGeo = new THREE.BoxGeometry(0.79, 0.05, 0.53);
+  waistGeo.translate(0, 0.40, 0);
+  const lockPlateGeo = new THREE.BoxGeometry(0.14, 0.16, 0.04);
+  lockPlateGeo.translate(0, 0.28, 0.27);
+  const baseTrimGeo = mergeStaticGeometries([bandLGeo, bandRGeo, waistGeo, lockPlateGeo], false);
+
+  // Corner studs
+  const studParts = [];
+  for (const sx of [-0.38, 0.38]) {
+    for (const sz of [-0.25, 0.25]) {
+      const sb = new THREE.BoxGeometry(0.05, 0.05, 0.05);
+      sb.translate(sx, 0.03, sz);
+      const st = new THREE.BoxGeometry(0.05, 0.05, 0.05);
+      st.translate(sx, 0.39, sz);
+      studParts.push(sb, st);
+    }
+  }
+  const baseStudGeo = mergeStaticGeometries(studParts, false);
+
+  // Keyhole
+  const keyholeGeo = new THREE.CylinderGeometry(0.015, 0.02, 0.045, 8);
+  keyholeGeo.rotateX(Math.PI / 2);
+  keyholeGeo.translate(0, 0.27, 0.285);
+
+  const baseGeo = mergeStaticGeometries([baseWoodGeo, baseTrimGeo, baseStudGeo, keyholeGeo], true);
+  const glowGeo = _markShared(new THREE.BoxGeometry(0.66, 0.06, 0.42));
+
+  // Lid vault + curved bands + latch
+  const vaultGeo = new THREE.CylinderGeometry(0.26, 0.26, 0.78, 16, 1, false, 0, Math.PI);
+  vaultGeo.rotateZ(Math.PI / 2);
+  vaultGeo.translate(0, 0.02, 0.26);
+
+  const lidBandLGeo = new THREE.CylinderGeometry(0.266, 0.266, 0.06, 16, 1, false, 0, Math.PI);
+  lidBandLGeo.rotateZ(Math.PI / 2);
+  lidBandLGeo.translate(-0.24, 0.02, 0.26);
+  const lidBandRGeo = new THREE.CylinderGeometry(0.266, 0.266, 0.06, 16, 1, false, 0, Math.PI);
+  lidBandRGeo.rotateZ(Math.PI / 2);
+  lidBandRGeo.translate(0.24, 0.02, 0.26);
+  const latchGeo = new THREE.BoxGeometry(0.08, 0.12, 0.05);
+  latchGeo.translate(0, 0.02, 0.525);
+  const lidTrimGeo = mergeStaticGeometries([lidBandLGeo, lidBandRGeo, latchGeo], false);
+  const lidGeo = mergeStaticGeometries([vaultGeo, lidTrimGeo], true);
+
+  cached = {
+    baseGeo,
+    baseMats: [woodMat, trimMat, studMat, keyholeMat],
+    glowGeo,
+    glowMat,
+    lidGeo,
+    lidMats: [woodMat, trimMat],
+  };
+  _chestAssetCache.set(tierKey, cached);
+  return cached;
+}
+
 export function createChestMesh(tier = 'normal', isOpen = false) {
   const root = new THREE.Group();
   root.name = `Chest_${tier}`;
@@ -5653,51 +5919,14 @@ export function createChestMesh(tier = 'normal', isOpen = false) {
   const tierStr = String(tier || 'normal').toLowerCase();
   const isStorage = tierStr.includes('storage') || tierStr.includes('vault');
   const isGold = isStorage || tierStr.includes('boss') || tierStr.includes('gold') || tierStr.includes('epic') || tierStr.includes('rare') || tierStr.includes('legend');
-  const boxColor = isStorage ? 0x1e3a8a : isGold ? 0x78350f : 0x451a03;
-  const trimColor = isGold ? 0xfacc15 : 0x94a3b8;
+  const tierKey = isStorage ? 'storage' : isGold ? 'gold' : 'normal';
+  const assets = _getChestAssets(tierKey);
 
-  const woodMat = new THREE.MeshStandardMaterial({ color: boxColor, roughness: 0.65, metalness: 0.15 });
-  const trimMat = new THREE.MeshStandardMaterial({ color: trimColor, roughness: 0.25, metalness: 0.85 });
-  const studMat = new THREE.MeshStandardMaterial({ color: isGold ? 0xfef08a : 0xcbd5e1, roughness: 0.2, metalness: 0.9 });
-  const glowMat = new THREE.MeshBasicMaterial({ color: isGold ? 0xfef08a : 0x38bdf8 });
-
-  // Chest base coffer box
-  const base = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.42, 0.52), woodMat);
-  base.position.y = 0.21;
-  root.add(base);
-
-  // Vertical iron/gold reinforcement bands
-  const bandL = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.43, 0.53), trimMat);
-  bandL.position.set(-0.24, 0.21, 0);
-  const bandR = bandL.clone();
-  bandR.position.x = 0.24;
-  // Horizontal reinforcing rim band
-  const waistBand = new THREE.Mesh(new THREE.BoxGeometry(0.79, 0.05, 0.53), trimMat);
-  waistBand.position.y = 0.40;
-  root.add(bandL, bandR, waistBand);
-
-  // Corner brackets & studs on base
-  const studGeo = new THREE.BoxGeometry(0.05, 0.05, 0.05);
-  for (const sx of [-0.38, 0.38]) {
-    for (const sz of [-0.25, 0.25]) {
-      const studBottom = new THREE.Mesh(studGeo, studMat);
-      studBottom.position.set(sx, 0.03, sz);
-      const studTop = new THREE.Mesh(studGeo, studMat);
-      studTop.position.set(sx, 0.39, sz);
-      root.add(studBottom, studTop);
-    }
-  }
-
-  // Front ornate lock plate with keyhole
-  const lockPlate = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.16, 0.04), trimMat);
-  lockPlate.position.set(0, 0.28, 0.27);
-  const keyhole = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.02, 0.045, 8), new THREE.MeshBasicMaterial({ color: 0x0f172a }));
-  keyhole.rotation.x = Math.PI / 2;
-  keyhole.position.set(0, 0.27, 0.285);
-  root.add(lockPlate, keyhole);
+  const baseMesh = new THREE.Mesh(assets.baseGeo, assets.baseMats);
+  root.add(baseMesh);
 
   // Inner treasure glow
-  const innerGlow = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.06, 0.42), glowMat);
+  const innerGlow = new THREE.Mesh(assets.glowGeo, assets.glowMat);
   innerGlow.position.y = 0.40;
   innerGlow.visible = Boolean(isOpen);
   root.add(innerGlow);
@@ -5709,26 +5938,8 @@ export function createChestMesh(tier = 'normal', isOpen = false) {
   root.add(lidPivot);
   root.userData.lid = lidPivot;
 
-  // Lid coffer body: arched barrel vault (half-cylinder)
-  const vaultGeo = new THREE.CylinderGeometry(0.26, 0.26, 0.78, 16, 1, false, 0, Math.PI);
-  const lidVault = new THREE.Mesh(vaultGeo, woodMat);
-  lidVault.position.set(0, 0.02, 0.26);
-  lidVault.rotation.z = Math.PI / 2;
-  lidPivot.add(lidVault);
-
-  // Lid curved iron bands
-  const lidBandGeo = new THREE.CylinderGeometry(0.266, 0.266, 0.06, 16, 1, false, 0, Math.PI);
-  const lidBandL = new THREE.Mesh(lidBandGeo, trimMat);
-  lidBandL.position.set(-0.24, 0.02, 0.26);
-  lidBandL.rotation.z = Math.PI / 2;
-  const lidBandR = lidBandL.clone();
-  lidBandR.position.x = 0.24;
-  lidPivot.add(lidBandL, lidBandR);
-
-  // Lid latch hasp overlapping the lock plate
-  const latch = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.12, 0.05), trimMat);
-  latch.position.set(0, 0.02, 0.525);
-  lidPivot.add(latch);
+  const lidMesh = new THREE.Mesh(assets.lidGeo, assets.lidMats);
+  lidPivot.add(lidMesh);
 
   root.userData.isOpen = Boolean(isOpen);
   lidPivot.rotation.x = root.userData.isOpen ? -1.15 : 0;
@@ -5963,31 +6174,29 @@ export function createPortalMesh(colorOrOptions = 0x38bdf8, type = 'dungeon', ex
  * Create Breakable Dungeon Props (Barrel, Crate, Urn)
  * Realistic medieval/Silkroad barrels with curved staves, dark iron hoops, wooden lid & rivets.
  */
-export function createBreakableMesh(type = 'barrel') {
-  const root = new THREE.Group();
-  const rawKind = String(type || 'barrel').toLowerCase();
-  // Küçük mavi kristal breakable kaldırıldı - urn fallback
-  const kind = rawKind.includes('crystal') ? 'urn' : rawKind;
-  root.name = `Breakable_${kind}`;
+function _getBreakableAssets(cacheKey) {
+  let cached = _breakableAssetCache.get(cacheKey);
+  if (cached) return cached;
 
-  if (kind.includes('crate') || kind.includes('box')) {
-    const woodMat = new THREE.MeshStandardMaterial({ color: 0x783e18, roughness: 0.8 });
-    const metalMat = new THREE.MeshStandardMaterial({ color: 0x2e333b, metalness: 0.8, roughness: 0.4 });
-    const box = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.62, 0.62), woodMat);
-    box.position.y = 0.31;
-    root.add(box);
+  if (cacheKey === 'crate') {
+    const woodMat = _markShared(new THREE.MeshStandardMaterial({ color: 0x783e18, roughness: 0.8 }));
+    const metalMat = _markShared(new THREE.MeshStandardMaterial({ color: 0x2e333b, metalness: 0.8, roughness: 0.4 }));
+    const boxGeo = new THREE.BoxGeometry(0.62, 0.62, 0.62);
+    boxGeo.translate(0, 0.31, 0);
 
-    const bandH = new THREE.Mesh(new THREE.BoxGeometry(0.63, 0.08, 0.63), metalMat);
-    bandH.position.y = 0.31;
-    root.add(bandH);
-    const bandTop = new THREE.Mesh(new THREE.BoxGeometry(0.63, 0.035, 0.63), metalMat);
-    bandTop.position.y = 0.60;
-    const bandBot = bandTop.clone();
-    bandBot.position.y = 0.02;
-    root.add(bandTop, bandBot);
-  } else if (kind.includes('urn') || kind.includes('vase') || kind.includes('pot')) {
-    const mat = new THREE.MeshStandardMaterial({ color: 0xba5d23, roughness: 0.62 });
-    const darkMat = new THREE.MeshStandardMaterial({ color: 0x7c3814, roughness: 0.7 });
+    const bandHGeo = new THREE.BoxGeometry(0.63, 0.08, 0.63);
+    bandHGeo.translate(0, 0.31, 0);
+    const bandTopGeo = new THREE.BoxGeometry(0.63, 0.035, 0.63);
+    bandTopGeo.translate(0, 0.60, 0);
+    const bandBotGeo = new THREE.BoxGeometry(0.63, 0.035, 0.63);
+    bandBotGeo.translate(0, 0.02, 0);
+    const metalGeo = mergeStaticGeometries([bandHGeo, bandTopGeo, bandBotGeo], false);
+
+    const geo = mergeStaticGeometries([boxGeo, metalGeo], true);
+    cached = { geo, mats: [woodMat, metalMat] };
+  } else if (cacheKey === 'urn') {
+    const mat = _markShared(new THREE.MeshStandardMaterial({ color: 0xba5d23, roughness: 0.62 }));
+    const darkMat = _markShared(new THREE.MeshStandardMaterial({ color: 0x7c3814, roughness: 0.7 }));
     const urnPoints = [
       new THREE.Vector2(0.14, 0),
       new THREE.Vector2(0.25, 0.22),
@@ -5997,21 +6206,19 @@ export function createBreakableMesh(type = 'barrel') {
       new THREE.Vector2(0.20, 0.64)
     ];
     const urnGeo = new THREE.LatheGeometry(urnPoints, 16);
-    const urnMesh = new THREE.Mesh(urnGeo, mat);
-    root.add(urnMesh);
+    const rimGeo = new THREE.TorusGeometry(0.19, 0.02, 6, 16);
+    rimGeo.rotateX(Math.PI / 2);
+    rimGeo.translate(0, 0.64, 0);
 
-    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.19, 0.02, 6, 16), darkMat);
-    rim.rotation.x = Math.PI / 2;
-    rim.position.y = 0.64;
-    root.add(rim);
+    const geo = mergeStaticGeometries([urnGeo, rimGeo], true);
+    cached = { geo, mats: [mat, darkMat] };
   } else {
-    // Premium Realistic Wooden Barrel
+    const isExplosive = cacheKey === 'barrel_explosive';
     const H = 0.74;
     const rEnds = 0.285;
     const rBelly = 0.365;
     const segments = 12;
 
-    // Staved bulging barrel body with curved profile
     const points = [];
     for (let i = 0; i <= segments; i++) {
       const t = i / segments;
@@ -6020,65 +6227,76 @@ export function createBreakableMesh(type = 'barrel') {
       points.push(new THREE.Vector2(rEnds + bulge, y));
     }
     const bodyGeo = new THREE.LatheGeometry(points, 18);
-    const isExplosive = kind.includes('explosive');
-    const woodMat = new THREE.MeshStandardMaterial({
+    const woodMat = _markShared(new THREE.MeshStandardMaterial({
       color: isExplosive ? 0xb91c1c : 0x6e3d1b,
       emissive: isExplosive ? new THREE.Color(0x7f1d1d) : new THREE.Color(0x000000),
       emissiveIntensity: isExplosive ? 0.45 : 0,
       roughness: 0.72,
       metalness: 0.04
-    });
-    const bodyMesh = new THREE.Mesh(bodyGeo, woodMat);
-    root.add(bodyMesh);
+    }));
 
-    // Recessed Wooden Lid & Top Stave Rim
     const lidGeo = new THREE.CylinderGeometry(0.275, 0.275, 0.025, 18);
-    const lidMat = new THREE.MeshStandardMaterial({ color: 0x583015, roughness: 0.82 });
-    const lid = new THREE.Mesh(lidGeo, lidMat);
-    lid.position.y = H - 0.02;
-    root.add(lid);
+    lidGeo.translate(0, H - 0.02, 0);
+    const lidMat = _markShared(new THREE.MeshStandardMaterial({ color: 0x583015, roughness: 0.82 }));
 
     const rimGeo = new THREE.TorusGeometry(0.288, 0.014, 6, 18);
-    const rimMat = new THREE.MeshStandardMaterial({ color: 0x502a12, roughness: 0.8 });
-    const topRim = new THREE.Mesh(rimGeo, rimMat);
-    topRim.rotation.x = Math.PI / 2;
-    topRim.position.y = H;
-    root.add(topRim);
+    rimGeo.rotateX(Math.PI / 2);
+    rimGeo.translate(0, H, 0);
+    const rimMat = _markShared(new THREE.MeshStandardMaterial({ color: 0x502a12, roughness: 0.8 }));
 
-    // Bung / cork stopper
     const corkGeo = new THREE.CylinderGeometry(0.032, 0.026, 0.028, 8);
-    const corkMat = new THREE.MeshStandardMaterial({ color: 0x8a5228, roughness: 0.65 });
-    const cork = new THREE.Mesh(corkGeo, corkMat);
-    cork.position.set(0.07, H - 0.005, 0.04);
-    root.add(cork);
+    corkGeo.translate(0.07, H - 0.005, 0.04);
+    const corkMat = _markShared(new THREE.MeshStandardMaterial({ color: 0x8a5228, roughness: 0.65 }));
 
-    // 4 Prominent Dark Wrought Iron Hoops (Top, upper middle, lower middle, bottom)
     const calcRadius = (y) => {
       const t = y / H;
       return rEnds + Math.sin(t * Math.PI) * (rBelly - rEnds);
     };
-
     const hoopYs = [H * 0.87, H * 0.63, H * 0.37, H * 0.13];
-    const hoopMat = new THREE.MeshStandardMaterial({ color: 0x22252a, metalness: 0.85, roughness: 0.38 });
-    const rivetGeo = new THREE.SphereGeometry(0.012, 4, 4);
-
-    hoopYs.forEach((hy) => {
+    const hoopMat = _markShared(new THREE.MeshStandardMaterial({ color: 0x22252a, metalness: 0.85, roughness: 0.38 }));
+    const ironParts = [];
+    for (let hi = 0; hi < hoopYs.length; hi++) {
+      const hy = hoopYs[hi];
       const hr = calcRadius(hy);
-      const hoop = new THREE.Mesh(new THREE.TorusGeometry(hr + 0.004, 0.016, 6, 20), hoopMat);
-      hoop.rotation.x = Math.PI / 2;
-      hoop.position.y = hy;
-      root.add(hoop);
-
-      // Rivets around each hoop
+      const hoopGeo = new THREE.TorusGeometry(hr + 0.004, 0.016, 6, 20);
+      hoopGeo.rotateX(Math.PI / 2);
+      hoopGeo.translate(0, hy, 0);
+      ironParts.push(hoopGeo);
       for (let a = 0; a < 4; a++) {
         const angle = (a * Math.PI) / 2 + 0.2;
         const rx = Math.cos(angle) * (hr + 0.015);
         const rz = Math.sin(angle) * (hr + 0.015);
-        const rivet = new THREE.Mesh(rivetGeo, hoopMat);
-        rivet.position.set(rx, hy, rz);
-        root.add(rivet);
+        const rivetGeo = new THREE.SphereGeometry(0.012, 4, 4);
+        rivetGeo.translate(rx, hy, rz);
+        ironParts.push(rivetGeo);
       }
-    });
+    }
+    const ironGeo = mergeStaticGeometries(ironParts, false);
+    const geo = mergeStaticGeometries([bodyGeo, lidGeo, rimGeo, corkGeo, ironGeo], true);
+    cached = { geo, mats: [woodMat, lidMat, rimMat, corkMat, hoopMat] };
+  }
+
+  _breakableAssetCache.set(cacheKey, cached);
+  return cached;
+}
+
+export function createBreakableMesh(type = 'barrel') {
+  const root = new THREE.Group();
+  const rawKind = String(type || 'barrel').toLowerCase();
+  const kind = rawKind.includes('crystal') ? 'urn' : rawKind;
+  root.name = `Breakable_${kind}`;
+
+  const cacheKey = (kind.includes('crate') || kind.includes('box'))
+    ? 'crate'
+    : (kind.includes('urn') || kind.includes('vase') || kind.includes('pot'))
+      ? 'urn'
+      : kind.includes('explosive')
+        ? 'barrel_explosive'
+        : 'barrel';
+
+  const assets = _getBreakableAssets(cacheKey);
+  if (assets?.geo) {
+    root.add(new THREE.Mesh(assets.geo, assets.mats));
   }
 
   attachHitFlashSupport(root);
@@ -6484,9 +6702,14 @@ export function createSroSprite(spriteUrl, { width = 3, height = 3, yOffset = 1.
   }
 
   try {
-    const loader = new THREE.TextureLoader();
-    const map = loader.load(spriteUrl);
-    map.colorSpace = THREE.SRGBColorSpace;
+    if (!_sroSpriteLoader) _sroSpriteLoader = new THREE.TextureLoader();
+    let map = _sroSpriteTexCache.get(spriteUrl);
+    if (!map) {
+      map = _sroSpriteLoader.load(spriteUrl);
+      map.colorSpace = THREE.SRGBColorSpace;
+      _markShared(map);
+      _sroSpriteTexCache.set(spriteUrl, map);
+    }
     const material = new THREE.SpriteMaterial({ map, transparent: true });
     const sprite = new THREE.Sprite(material);
     sprite.scale.set(width, height, 1);
@@ -6500,7 +6723,7 @@ export function createSroSprite(spriteUrl, { width = 3, height = 3, yOffset = 1.
 }
 
 export class Models3D {
-  createHeroMesh(equipment, look) { return createHeroMesh(equipment, look); }
+  createHeroMesh(equipment, look, opts) { return createHeroMesh(equipment, look, opts); }
   createProjectileMesh(kind, color, scale) { return createProjectileMesh(kind, color, scale); }
   createWeaponMesh(weapon) { return createWeaponMesh(weapon); }
   createShieldMesh(shield) { return createShieldMesh(shield); }

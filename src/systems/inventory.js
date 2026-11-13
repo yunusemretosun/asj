@@ -49,13 +49,13 @@ const newUid = () => `it${Date.now().toString(36)}${(_uidCounter++).toString(36)
 // Item bases
 // =============================================================================
 export const MAGIC_STONES = {
-  stone_str: { id: 'stone_str', name: 'Magic Stone of Strength', stat: 'str', statName: 'STR', minVal: 2, maxVal: 5, icon: '/assets/sro/alchemy/alcm_effect_stuff.png', desc: 'SRO Alchemy: Fuses Strength (+2~5 STR) onto equipment as a Blue Stat.' },
-  stone_int: { id: 'stone_int', name: 'Magic Stone of Intelligence', stat: 'int', statName: 'INT', minVal: 2, maxVal: 5, icon: '/assets/sro/alchemy/alcm_effect_stuff.png', desc: 'SRO Alchemy: Fuses Intelligence (+2~5 INT) onto equipment as a Blue Stat.' },
-  stone_hp: { id: 'stone_hp', name: 'Magic Stone of Stamina', stat: 'hp', statName: 'Max HP', minVal: 60, maxVal: 220, icon: '/assets/sro/alchemy/alcm_effect_stuff.png', desc: 'SRO Alchemy: Fuses Maximum HP (+60~220 HP) onto equipment as a Blue Stat.' },
-  stone_agi: { id: 'stone_agi', name: 'Magic Stone of Agility', stat: 'attackSpeedPct', statName: 'Attack Speed %', minVal: 3, maxVal: 7, icon: '/assets/sro/alchemy/alcm_effect_stuff.png', desc: 'SRO Alchemy: Fuses Attack Speed (+3~7%) onto equipment as a Blue Stat.' },
-  stone_crit: { id: 'stone_crit', name: 'Magic Stone of Critical', stat: 'critRate', statName: 'Critical Rate %', minVal: 2, maxVal: 4, icon: '/assets/sro/alchemy/alcm_effect_stuff.png', desc: 'SRO Alchemy: Fuses Critical Rate (+2~4%) onto equipment as a Blue Stat.' },
-  stone_absorb: { id: 'stone_absorb', name: 'Magic Stone of Defense', stat: 'def', statName: 'Defense', minVal: 10, maxVal: 30, icon: '/assets/sro/alchemy/alcm_effect_stuff.png', desc: 'SRO Alchemy: Fuses Physical & Magical Defense (+10~30 DEF) onto equipment as a Blue Stat.' },
-  stone_astral: { id: 'stone_astral', name: 'Astral Stone', isAstral: true, icon: '/assets/sro/icons/etc/archemy_reinforce_prob_up_a.png', desc: 'SRO Alchemy: Imbues Astral Protection onto equipment. Prevents enhancement from dropping below +4 on failure!' }
+  stone_str: { id: 'stone_str', name: 'Magic Stone of Strength', stat: 'str', statName: 'STR', minVal: 2, maxVal: 5, icon: '/assets/sro/alchemy/alcm_effect_stuff.png', desc: 'Arcane Infusion: Fuses Strength (+2~5 STR) onto equipment as a Blue Stat.' },
+  stone_int: { id: 'stone_int', name: 'Magic Stone of Intelligence', stat: 'int', statName: 'INT', minVal: 2, maxVal: 5, icon: '/assets/sro/alchemy/alcm_effect_stuff.png', desc: 'Arcane Infusion: Fuses Intelligence (+2~5 INT) onto equipment as a Blue Stat.' },
+  stone_hp: { id: 'stone_hp', name: 'Magic Stone of Stamina', stat: 'hp', statName: 'Max HP', minVal: 60, maxVal: 220, icon: '/assets/sro/alchemy/alcm_effect_stuff.png', desc: 'Arcane Infusion: Fuses Maximum HP (+60~220 HP) onto equipment as a Blue Stat.' },
+  stone_agi: { id: 'stone_agi', name: 'Magic Stone of Agility', stat: 'attackSpeedPct', statName: 'Attack Speed %', minVal: 3, maxVal: 7, icon: '/assets/sro/alchemy/alcm_effect_stuff.png', desc: 'Arcane Infusion: Fuses Attack Speed (+3~7%) onto equipment as a Blue Stat.' },
+  stone_crit: { id: 'stone_crit', name: 'Magic Stone of Critical', stat: 'critRate', statName: 'Critical Rate %', minVal: 2, maxVal: 4, icon: '/assets/sro/alchemy/alcm_effect_stuff.png', desc: 'Arcane Infusion: Fuses Critical Rate (+2~4%) onto equipment as a Blue Stat.' },
+  stone_absorb: { id: 'stone_absorb', name: 'Magic Stone of Defense', stat: 'def', statName: 'Defense', minVal: 10, maxVal: 30, icon: '/assets/sro/alchemy/alcm_effect_stuff.png', desc: 'Arcane Infusion: Fuses Physical & Magical Defense (+10~30 DEF) onto equipment as a Blue Stat.' },
+  stone_astral: { id: 'stone_astral', name: 'Astral Stone', isAstral: true, icon: '/assets/sro/icons/etc/archemy_reinforce_prob_up_a.png', desc: 'Arcane Infusion: Imbues Astral Protection onto equipment. Prevents enhancement from dropping below +4 on failure!' }
 };
 
 export const TIER_LEVELS = [1, 5, 10, 16, 22, 30, 40, 50];
@@ -1046,7 +1046,7 @@ export const SHOP_DEFS = {
   curio: { id: 'curio', name: 'Relic Emporium', kind: 'fixed', items: ['box_gear', 'box_relic', 'stone_str', 'stone_int', 'stone_hp', 'stone_agi', 'stone_crit', 'stone_absorb', 'stone_astral', 'scroll_berserk', 'scroll_exp', 'elixir_hero'] },
   accessory_trader: {
     id: 'accessory_trader',
-    name: 'Jodaesan Silk & Jewelry',
+    name: 'Orin’s Fine Relics & Jewelry',
     kind: 'mixed',
     equipmentSlots: ['ring', 'necklace', 'helmet', 'boots'],
     equipmentCount: 8,
@@ -1066,8 +1066,8 @@ const SHOP_ALIASES = [
   ['merchant', ['potion', 'item', 'general', 'alchem', 'shop', 'store', 'merchant', 'trader', 'elara', 'joanna', 'npc3', 'npc6']],
   ['composer', ['compos', 'crystal', 'synth', 'enchant', 'gem', 'lyra']],
   ['curio', ['curio', 'relic', 'stone', 'mystery', 'coffer', 'box', 'emporium']],
-  ['accessory_trader', ['accessory', 'jewel', 'jodaesan', 'ring', 'necklace', 'silk']],
-  ['hunter_master', ['hunter', 'gwakwi', 'bounty', 'guild_armory']],
+  ['accessory_trader', ['accessory', 'jewel', 'orin', 'jodaesan', 'ring', 'necklace', 'silk']],
+  ['hunter_master', ['hunter', 'garrik', 'gwakwi', 'bounty', 'guild_armory']],
 ];
 export function resolveShopId(id) {
   const s = String(id || '').toLowerCase();

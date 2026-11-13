@@ -1,4 +1,4 @@
-// Classic Silk-Road Caravan Town & Organized Jangan Hunting Outskirts for ARKENVEIL: Sigils & Journeys.
+// Oakhaven Caravan Town & Organized Outskirt Hunting Grounds for ARKENVEIL: Sigils & Journeys.
 // Pure scene construction + distance-culled ambient life. No game-state imports.
 import * as THREE from 'three';
 import { HOT_SPRINGS } from '../systems/mechanics.js';
@@ -504,7 +504,7 @@ export function buildVillage(ctx = {}) {
   const GATE_GAP = 5.2;
   const WORLD_BOUND = 122;
 
-  // Helper builds dense Lv 1-10 Jangan (MOB_CH_*) hunting packs from anchor + local offsets
+  // Helper builds dense Lv 1-10 outskirt hunting packs from anchor + local offsets
   const packCamp = (id, name, level, minLevel, maxLevel, respawnSeconds, center, entries) => ({
     id,
     name,
@@ -522,96 +522,96 @@ export function buildVillage(ctx = {}) {
     }))
   });
 
-  // 16 dense Silkroad Jangan Lv 1-10 Hunting Grounds circling Oakhaven walls (156 spawn slots, rapid respawns)
+  // 16 dense Lv 1-10 Hunting Grounds circling Oakhaven walls (156 spawn slots, rapid respawns)
   const outskirtCamps = [
-    packCamp('camp_south_gate_meadow', 'South Jangan West Meadow', 1, 1, 2, 6.5, { x: -24, z: 72 }, [
+    packCamp('camp_south_gate_meadow', 'Oakhaven West Meadow', 1, 1, 2, 6.5, { x: -24, z: 72 }, [
       ['mangyang', -10, -8, 1], ['mangyang', -3, -6, 1], ['mangyang', 4, -8, 1],
       ['small_eye_ghost', -12, 0, 1], ['mangyang', -4, 2, 1], ['small_eye_ghost', 5, 1, 2],
       ['bigeye_ghost', 10, -5, 2], ['mangyang', -9, 9, 2], ['small_eye_ghost', 1, 9, 2],
       ['bigeye_ghost', 9, 8, 2]
     ]),
-    packCamp('camp_south_east_pasture', 'South Jangan East Meadow', 2, 1, 3, 7, { x: 24, z: 72 }, [
+    packCamp('camp_south_east_pasture', 'Oakhaven East Meadow', 2, 1, 3, 7, { x: 24, z: 72 }, [
       ['mangyang', -10, -8, 1], ['bigeye_ghost', -3, -7, 2], ['mangyang', 5, -7, 2],
       ['small_eye_ghost', -11, 1, 2], ['bigeye_ghost', -2, 2, 2], ['small_eye_ghost', 7, 1, 2],
       ['old_weasel', 12, -3, 3], ['mangyang', -8, 9, 2], ['bigeye_ghost', 2, 9, 2],
       ['old_weasel', 10, 9, 3]
     ]),
-    packCamp('camp_far_south_pasture', 'Far South Silk Road Downs', 2, 2, 3, 7, { x: -24, z: 98 }, [
+    packCamp('camp_far_south_pasture', 'Southern Caravan Downs', 2, 2, 3, 7, { x: -24, z: 98 }, [
       ['mangyang', -11, -7, 2], ['small_eye_ghost', -3, -8, 2], ['bigeye_ghost', 6, -7, 2],
       ['old_weasel', -12, 1, 2], ['small_eye_ghost', -4, 2, 2], ['bigeye_ghost', 5, 2, 3],
       ['old_weasel', 11, 0, 3], ['gyo_weasel', -7, 8, 3], ['bigeye_ghost', 2, 8, 3],
       ['gyo_weasel', 10, 8, 3]
     ]),
-    packCamp('camp_sw_weasel_orchard', 'South-West Gyo Weasel Orchard', 3, 2, 4, 7.5, { x: -64, z: 72 }, [
+    packCamp('camp_sw_weasel_orchard', 'Westwatch Outpost', 3, 2, 4, 7.5, { x: -64, z: 72 }, [
       ['old_weasel', -12, -9, 2], ['old_weasel', -3, -10, 3], ['gyo_weasel', 6, -9, 3],
       ['bigeye_ghost', 13, -7, 3], ['gyo_weasel', -10, 0, 3], ['old_weasel', -1, 1, 3],
       ['gyo_weasel', 8, 0, 4], ['old_weasel', -13, 9, 3], ['gyo_weasel', -3, 10, 4],
       ['gyo_weasel', 6, 11, 4, true]
     ]),
-    packCamp('camp_far_sw_weasel_ridge', 'Far South-West Weasel Ridge', 4, 3, 4, 7.5, { x: -94, z: 86 }, [
+    packCamp('camp_far_sw_weasel_ridge', 'Highridge Timberline', 4, 3, 4, 7.5, { x: -94, z: 86 }, [
       ['old_weasel', -10, -8, 3], ['gyo_weasel', -2, -9, 3], ['gyo_weasel', 7, -8, 4],
       ['water_ghost_slave', -11, 1, 3], ['old_weasel', -2, 1, 4], ['gyo_weasel', 7, 1, 4],
       ['gyo_weasel', -8, 10, 4], ['water_ghost', 1, 10, 4], ['gyo_weasel', 9, 10, 4, true]
     ]),
-    packCamp('camp_west_water_marsh', 'West Jangan Lotus Canal North', 4, 3, 5, 8, { x: -80, z: -24 }, [
+    packCamp('camp_west_water_marsh', 'Westbrook Canal North', 4, 3, 5, 8, { x: -80, z: -24 }, [
       ['water_ghost_slave', -12, -8, 3], ['water_ghost_slave', -3, -10, 4], ['water_ghost', 7, -9, 4],
       ['decayed_yeoha', 14, -7, 4], ['water_ghost', -14, 1, 4], ['water_ghost_slave', -4, 2, 4],
       ['water_ghost', 6, 1, 5], ['decayed_yeoha', -10, 10, 4], ['water_ghost', 0, 11, 5],
       ['water_ghost', 10, 11, 5, true]
     ]),
-    packCamp('camp_west_water_marsh_s', 'West Jangan Lotus Canal South', 5, 4, 5, 8, { x: -80, z: 24 }, [
+    packCamp('camp_west_water_marsh_s', 'Westbrook Canal South', 5, 4, 5, 8, { x: -80, z: 24 }, [
       ['water_ghost_slave', -13, -10, 4], ['water_ghost', -3, -11, 4], ['decayed_yeoha', 7, -10, 4],
       ['water_ghost', -14, -1, 4], ['water_ghost_slave', -4, 0, 4], ['yeoha', 7, -1, 5],
       ['water_ghost', -11, 9, 5], ['yeoha', -2, 10, 5], ['water_ghost', 8, 9, 5],
       ['yeoha', 14, 5, 5]
     ]),
-    packCamp('camp_east_ferry_yeoha', 'East River Yeoha North Bank', 5, 4, 6, 8, { x: 80, z: -24 }, [
+    packCamp('camp_east_ferry_yeoha', 'Shadowfen Mire', 5, 4, 6, 8, { x: 80, z: -24 }, [
       ['decayed_yeoha', -13, -9, 4], ['yeoha', -3, -10, 5], ['yeoha', 7, -9, 5],
       ['chakji_worker', 15, -7, 5], ['water_ghost', -14, 1, 5], ['decayed_yeoha', -4, 1, 5],
       ['yeoha', 6, 1, 5], ['chakji_worker', -11, 10, 5], ['yeoha', -1, 11, 6],
       ['chakji_worker', 9, 10, 6]
     ]),
-    packCamp('camp_east_ferry_chakji', 'East River Chakji South Bank', 6, 5, 6, 8, { x: 80, z: 24 }, [
+    packCamp('camp_east_ferry_chakji', 'Amberpool Marsh', 6, 5, 6, 8, { x: 80, z: 24 }, [
       ['yeoha', -14, -10, 5], ['chakji_worker', -4, -11, 5], ['yeoha', 6, -10, 5],
       ['water_ghost', -13, 0, 5], ['chakji_worker', -3, 1, 5], ['chakji_worker', 7, 0, 6],
       ['chakji_worker', 15, 2, 6], ['yeoha', -10, 10, 6], ['chakji_worker', 1, 11, 6],
       ['chakji_worker', 11, 10, 6, true]
     ]),
-    packCamp('camp_nw_stone_ruins', 'North-West Chin Tomb Ruins', 6, 5, 7, 8.5, { x: -64, z: -72 }, [
+    packCamp('camp_nw_stone_ruins', 'Old Kingsway Ruins', 6, 5, 7, 8.5, { x: -64, z: -72 }, [
       ['broken_stone_ghost', -12, -9, 5], ['broken_stone_ghost', -2, -10, 5], ['stone_ghost', 7, -9, 6],
       ['tombstone', -13, 0, 6], ['stone_ghost', -3, 0, 6], ['tombstone_ghost', 7, -1, 6],
       ['decayed_yeoha', -12, 9, 5], ['yeoha', -2, 10, 6], ['stone_ghost', 7, 10, 7],
       ['tombstone_ghost', 14, 7, 7, true]
     ]),
-    packCamp('camp_far_nw_tombstones', 'Far North-West Tombstone Rise', 7, 6, 7, 8.5, { x: -94, z: -88 }, [
+    packCamp('camp_far_nw_tombstones', 'Old Kingsway Watchpost', 7, 6, 7, 8.5, { x: -94, z: -88 }, [
       ['broken_stone_ghost', -10, -9, 6], ['stone_ghost', -1, -9, 6], ['tombstone', 8, -8, 6],
       ['tombstone_ghost', -11, 0, 6], ['stone_ghost', -2, 1, 7], ['tombstone_ghost', 8, 1, 7],
       ['yeoha', -9, 9, 6], ['stone_ghost', 0, 10, 7], ['tombstone_ghost', 9, 10, 7]
     ]),
-    packCamp('camp_se_bandit_camp', 'South-East Black Bandit Ravine', 7, 6, 8, 8.5, { x: 66, z: 72 }, [
+    packCamp('camp_se_bandit_camp', 'Ironwood Foothills', 7, 6, 8, 8.5, { x: 66, z: 72 }, [
       ['bandit_subordinate', -12, -9, 6], ['bandit_subordinate', -3, -10, 6], ['bandit', 7, -9, 7],
       ['bandit_archer', -12, 0, 7], ['bandit_bowman', -2, 1, 7], ['bandit', 8, 0, 7],
       ['bandit_archer', -10, 10, 8], ['bandit_bowman', 0, 10, 8], ['bandit', 10, 9, 8, true],
       ['bandit_archer', 14, -2, 7]
     ]),
-    packCamp('camp_far_se_bandits', 'Far South-East Bandit Outpost', 8, 7, 8, 8.5, { x: 96, z: 88 }, [
+    packCamp('camp_far_se_bandits', 'Eastgate Bandit Camp', 8, 7, 8, 8.5, { x: 96, z: 88 }, [
       ['bandit_subordinate', -11, -8, 7], ['bandit', -2, -9, 7], ['bandit_archer', 7, -8, 7],
       ['bandit', -12, 1, 8], ['bandit_bowman', -2, 1, 8], ['bandit_archer', 8, 1, 8],
       ['bandit', -9, 9, 8], ['bandit_bowman', 1, 10, 8], ['bandit', 10, 9, 8, true],
       ['bandit_archer', -16, -3, 7]
     ]),
-    packCamp('camp_ne_bandit_stronghold', 'North-East Tiger & Bandit Crossroads', 8, 7, 9, 9, { x: 74, z: -72 }, [
+    packCamp('camp_ne_bandit_stronghold', 'Northwatch Tiger Woods', 8, 7, 9, 9, { x: 74, z: -72 }, [
       ['bandit_archer', -12, -9, 7], ['bandit_bowman', -2, -10, 8], ['young_tiger', 8, -9, 7],
       ['tiger', -11, 0, 8], ['black_tiger', -1, 0, 8], ['chakji_worker', 9, 0, 7],
       ['tiger', -8, 9, 9], ['black_tiger', 2, 10, 9, true], ['bandit_archer', 12, 8, 8],
       ['bandit_bowman', -18, -3, 8]
     ]),
-    packCamp('camp_north_west_tigers', 'North Jangan West Tiger Plateau', 9, 8, 10, 9.5, { x: -24, z: -84 }, [
+    packCamp('camp_north_west_tigers', 'Silverfang Glade', 9, 8, 10, 9.5, { x: -24, z: -84 }, [
       ['young_tiger', -12, -8, 8], ['tiger', -2, -9, 8], ['black_tiger', 8, -8, 9],
       ['tombstone_ghost', -13, 2, 8], ['black_tiger', -3, 2, 9], ['white_tiger', 7, 2, 9],
       ['tiger', -9, 12, 9], ['white_tiger', 1, 12, 10], ['white_tiger', 10, 12, 10, true]
     ]),
-    packCamp('camp_north_tiger_hill', 'North Jangan East Tiger Sanctuary', 9, 8, 10, 9.5, { x: 24, z: -84 }, [
+    packCamp('camp_north_tiger_hill', 'Moonclaw Clearing', 9, 8, 10, 9.5, { x: 24, z: -84 }, [
       ['stone_ghost', -11, -9, 8], ['tiger', -1, -9, 9], ['white_tiger', 9, -8, 9],
       ['tombstone_ghost', -12, 2, 9], ['tiger', -2, 2, 9], ['black_tiger', 8, 2, 9],
       ['white_tiger', -8, 12, 10], ['white_tiger', 2, 12, 10], ['white_tiger', 11, 10, 10, true]
@@ -917,7 +917,7 @@ diffuseColor.rgb *= terrainRgb;`
     for (const sz of [-3.7, 3.7]) S.box('curb', 8.5, 0.14, 0.38, segX, 0.08, sz);
   }
 
-  /* ---------------- Winding Outskirt Stream (Zümrüt Çay), Waterfall Cliffs & Bridges ---------------- */
+  /* ---------------- Winding Outskirt Stream (Emerald Brook), Waterfall Cliffs & Bridges ---------------- */
   const riverBedMesh = new THREE.Mesh(buildStreamGeometry(riverCurve, 150, 6.8, 0.018, -0.026), pebbleMat);
   riverBedMesh.name = 'OutskirtRiverBed';
   riverBedMesh.receiveShadow = true;
@@ -995,13 +995,13 @@ diffuseColor.rgb *= terrainRgb;`
     S.sph('stone', 0.36 + rand() * 0.14, POND.x + Math.cos(a) * (POND.r + 0.15), 0.1, POND.z + Math.sin(a) * (POND.r + 0.15), 1, 0.7, 1, 6);
   }
   for (const [lx, lz] of [[-0.8, 0.5], [0.7, -0.6], [0.2, 1.1], [-1.1, -0.9]]) {
-    S.cyl('leafG', 0.34, 0.34, 0.02, POND.x + lx, 0.09, POND.z + lz, 8);
+    S.cyl('leafG', 0.34, 0.34, 0.02, POND.x + lx, 0.095, POND.z + lz, 8);
   }
   obs(POND.x, POND.z, POND.r + 0.1);
   [
-    [17.4, 0.08, -7.8, 1.05],
-    [18.8, 0.08, -6.9, 0.95],
-    [17.9, 0.08, -8.3, 0.9]
+    [17.4, 0.115, -7.8, 1.05],
+    [18.8, 0.115, -6.9, 0.95],
+    [17.9, 0.115, -8.3, 0.9]
   ].forEach(([fx, fy, fz, size]) => {
     loadSROSprite('/assets/sro/sprites/c_pondflower-28ab3d2d@1x.png', {
       width: size, height: size, position: [fx, fy, fz], isFlat: true, parent: group
@@ -1212,8 +1212,8 @@ diffuseColor.rgb *= terrainRgb;`
   const deckBaseZ = HOT_SPRINGS.center.z + (HOT_SPRINGS.radius - 0.3) * Math.sin(0.8);
   S.box('wood', 3.4, 0.12, 1.6, deckBaseX + 0.8, 0.06, deckBaseZ + 0.8, -Math.PI / 4);
   [
-    [-17.2, 0.19, -15.0, 1.2], [-14.5, 0.19, -13.2, 1.1],
-    [-16.0, 0.19, -12.2, 1.25], [-18.0, 0.19, -13.6, 1.05]
+    [-17.2, 0.215, -15.0, 1.2], [-14.5, 0.215, -13.2, 1.1],
+    [-16.0, 0.215, -12.2, 1.25], [-18.0, 0.215, -13.6, 1.05]
   ].forEach(([fx, fy, fz, size]) => {
     loadSROSprite('/assets/sro/sprites/c_pondflower-28ab3d2d@1x.png', {
       width: size, height: size, position: [fx, fy, fz], isFlat: true, parent: group
@@ -1311,11 +1311,9 @@ diffuseColor.rgb *= terrainRgb;`
   obs(FORGE.x, FORGE.z, 0.95);
   obs(FORGE.x + 0.1, FORGE.z + 1.6, 0.45);
 
+  // Feed village focal lights as pooled light sources (never unpooled PointLights)
   lights.push({ pos: [FORGE.x, 1.6, FORGE.z], color: 0xff7a2a, i: 2.2, d: 13, f: true });
   lights.push({ pos: [BR.x, 1.9, BR.z], color: 0xffa040, i: 2.0, d: 13, f: true });
-  lights.push({ pos: [0, 3.6, -34], color: 0x38bdf8, i: 2.0, d: 16, f: false });
-  lights.push({ pos: [-38, 3.4, -10], color: 0xa855f7, i: 2.0, d: 15, f: false });
-  lights.push({ pos: [38, 3.4, -10], color: 0xf59e0b, i: 2.0, d: 15, f: false });
 
   /* ---------------- classic South Market stalls, props & caravan animals ---------------- */
   const stall = (x, z, awnIdx, goods) => {
@@ -1604,7 +1602,7 @@ diffuseColor.rgb *= terrainRgb;`
     }
   };
 
-  // Classic cherry & willow trees inside Jangan plazas
+  // Classic cherry & willow trees inside Oakhaven plazas
   [
     [-11.5, -10.5], [14.0, -12.0], [-34.0, 12.0], [14.0, 20.0], [-42.0, -38.0], [34.0, -30.0]
   ].forEach(([x, z]) => cherry(x, z));
@@ -1873,7 +1871,7 @@ diffuseColor.rgb *= terrainRgb;`
     const mesh = new THREE.Mesh(pigeonGeo, pigeonMat);
     mesh.position.set(x, 0, z);
     group.add(mesh);
-    pigeons.push({ mesh, home: { x, z }, state: 'ground', t: 0, timer: 0, dir: { x: 1, z: 0 }, from: null, cool: 0, phase: i * 1.7, yaw: rand() * 6.28 });
+    pigeons.push({ mesh, home: { x, z }, state: 'ground', t: 0, timer: 0, dir: { x: 1, z: 0 }, from: { x: 0, y: 0, z: 0 }, cool: 0, phase: i * 1.7, yaw: rand() * 6.28 });
   });
 
   /* ---------------- classic SOS gate guards & town adventurers (distance-culled) ---------------- */
@@ -1920,18 +1918,28 @@ diffuseColor.rgb *= terrainRgb;`
     const preset = SOS_TOWN_BUILDS[buildKey] || SOS_TOWN_BUILDS.knight_sos;
     let mesh = null;
     try {
-      mesh = createHeroMesh(preset.eq, { classId: preset.classId });
+      mesh = createHeroMesh(preset.eq, {
+        classId: preset.classId,
+        lightweightCrowd: true,
+        disableWeaponLight: true,
+        disableGearSprites: true,
+        disableRimGlow: true
+      });
     } catch (e) {
       if (createNPCMesh) {
         try { mesh = createNPCMesh(role); } catch (_) { return; }
       }
     }
     if (!mesh) return;
+    const staleLights = [];
     mesh.traverse((c) => {
       if (c.name === 'HeroClassRing' || c.name === 'NpcRing' || c.name === 'QuestMarker') {
         c.visible = false;
+      } else if (c.isPointLight) {
+        staleLights.push(c);
       }
     });
+    for (const pl of staleLights) pl.parent?.remove(pl);
     mesh.userData.setQuestMarker = null;
     mesh.scale.setScalar(scale);
     const groundY = 0.08;
@@ -1953,7 +1961,8 @@ diffuseColor.rgb *= terrainRgb;`
       z,
       groundY,
       wait: route.length ? (villagers.length % 2 === 0 ? 3.5 + (phaseVal % 4.5) : 0) : 0,
-      scale
+      scale,
+      _animAcc: 0
     });
   };
 
@@ -1981,25 +1990,34 @@ diffuseColor.rgb *= terrainRgb;`
     dt = Math.min(dt, 0.1);
     const px = playerPos ? Number(playerPos.x ?? playerPos.position?.x ?? 0) : 0;
     const pz = playerPos ? Number(playerPos.z ?? playerPos.position?.z ?? 0) : 0;
-    const nearTownCore = Math.hypot(px, pz) < 75;
-
-    lanternAccum += dt;
-    if (nearTownCore || lanternAccum >= 0.1) {
-      lanternAccum = 0;
-      writeLanterns(t);
-    }
-    lanternMat.emissiveIntensity = 1.05 + Math.sin(t * 7.1) * 0.1 + Math.sin(t * 13.7) * 0.07;
-    waterMat.emissiveIntensity = 0.5 + Math.sin(t * 2.2) * 0.1;
-    pondMat.emissiveIntensity = 0.32 + Math.sin(t * 1.6) * 0.06;
-    streamMat.emissiveIntensity = 0.24 + Math.sin(t * 2.0) * 0.05;
-    if (streamTexNor) {
-      streamTexNor.offset.y = (streamTexNor.offset.y - dt * 0.34) % 1;
-      streamTexNor.offset.x = (streamTexNor.offset.x + Math.sin(t * 0.45) * dt * 0.04) % 1;
-    }
-    hotSpringMat.emissiveIntensity = 0.78 + Math.sin(t * 2.2) * 0.12;
-    coalMat.emissiveIntensity = 1.3 + Math.sin(t * 9) * 0.25 + Math.sin(t * 5.3) * 0.15;
+    const distOriginSq = px * px + pz * pz;
+    const nearTownCore = distOriginSq < 75 * 75;
 
     if (nearTownCore) {
+      lanternAccum += dt;
+      if (lanternAccum >= 0.033) {
+        lanternAccum = 0;
+        writeLanterns(t);
+      }
+      lanternMat.emissiveIntensity = 1.05 + Math.sin(t * 7.1) * 0.1 + Math.sin(t * 13.7) * 0.07;
+      waterMat.emissiveIntensity = 0.5 + Math.sin(t * 2.2) * 0.1;
+      pondMat.emissiveIntensity = 0.32 + Math.sin(t * 1.6) * 0.06;
+      streamMat.emissiveIntensity = 0.24 + Math.sin(t * 2.0) * 0.05;
+      if (streamTexNor) {
+        streamTexNor.offset.y = (streamTexNor.offset.y - dt * 0.34) % 1;
+        streamTexNor.offset.x = (streamTexNor.offset.x + Math.sin(t * 0.45) * dt * 0.04) % 1;
+      }
+      const hsDx = px - HOT_SPRINGS.center.x;
+      const hsDz = pz - HOT_SPRINGS.center.z;
+      if (hsDx * hsDx + hsDz * hsDz < 42 * 42) {
+        hotSpringMat.emissiveIntensity = 0.78 + Math.sin(t * 2.2) * 0.12;
+      }
+      const fDx = px - FORGE.x;
+      const fDz = pz - FORGE.z;
+      if (fDx * fDx + fDz * fDz < 38 * 38) {
+        coalMat.emissiveIntensity = 1.3 + Math.sin(t * 9) * 0.25 + Math.sin(t * 5.3) * 0.15;
+      }
+
       const fl = 1 + Math.sin(t * 11) * 0.12 + Math.sin(t * 17.3) * 0.08;
       flame.scale.set(fl, fl * (1 + Math.sin(t * 8) * 0.15), fl);
       flame.rotation.y = t * 2;
@@ -2019,11 +2037,11 @@ diffuseColor.rgb *= terrainRgb;`
       for (const p of pigeons) {
         const m = p.mesh;
         p.cool = Math.max(0, p.cool - dt);
-        const d = Math.hypot(px - p.home.x, pz - p.home.z);
+        const dSq = (px - p.home.x) * (px - p.home.x) + (pz - p.home.z) * (pz - p.home.z);
         if (p.state === 'ground') {
           m.position.set(p.home.x, 0, p.home.z);
           m.rotation.set(Math.max(0, Math.sin(t * 3 + p.phase)) * 0.4, p.yaw + Math.sin(t * 0.5 + p.phase) * 0.4, 0);
-          if (d < 3.4 && p.cool <= 0) {
+          if (dSq < 3.4 * 3.4 && p.cool <= 0) {
             p.state = 'fly'; p.t = 0; p.timer = 2.6 + (p.phase % 1.7);
             const dx = p.home.x - px, dz = p.home.z - pz, l = Math.hypot(dx, dz) || 1;
             p.dir.x = dx / l + Math.sin(p.phase) * 0.4; p.dir.z = dz / l + Math.cos(p.phase) * 0.4;
@@ -2033,7 +2051,13 @@ diffuseColor.rgb *= terrainRgb;`
           const k = Math.min(1, p.t / 1.0), run = p.t * 2.4;
           m.position.set(p.home.x + p.dir.x * run + Math.sin(p.t * 2 + p.phase) * 0.6, k * 3.2 + Math.sin(t * 6) * 0.1, p.home.z + p.dir.z * run + Math.cos(p.t * 2 + p.phase) * 0.6);
           m.rotation.set(0, Math.atan2(p.dir.x, p.dir.z), Math.sin(t * 30 + p.phase) * 0.5);
-          if (p.t > p.timer) { p.state = 'land'; p.t = 0; p.from = { x: m.position.x, y: m.position.y, z: m.position.z }; }
+          if (p.t > p.timer) {
+            p.state = 'land';
+            p.t = 0;
+            p.from.x = m.position.x;
+            p.from.y = m.position.y;
+            p.from.z = m.position.z;
+          }
         } else {
           p.t += dt / 1.5;
           const k = Math.min(1, p.t), e = k * k * (3 - 2 * k);
@@ -2044,33 +2068,46 @@ diffuseColor.rgb *= terrainRgb;`
       }
       for (const v of villagers) {
         const distSq = (v.x - px) * (v.x - px) + (v.z - pz) * (v.z - pz);
-        if (distSq > 40 * 40) continue;
+        if (distSq > 40 * 40) {
+          if (v.mesh.visible) v.mesh.visible = false;
+          continue;
+        }
+        if (!v.mesh.visible) v.mesh.visible = true;
         const m = v.mesh;
         const gy = v.groundY ?? 0.08;
+        let animDt = dt;
+        if (distSq > 22 * 22) {
+          v._animAcc = (v._animAcc || 0) + dt;
+          if (v._animAcc >= 0.066) {
+            animDt = v._animAcc;
+            v._animAcc = 0;
+          } else {
+            animDt = 0;
+          }
+        }
         if (v.route.length && v.speed > 0) {
           const wp = v.route[v.idx];
           const dx = wp[0] - v.x, dz = wp[1] - v.z, dist = Math.hypot(dx, dz);
           if (v.wait > 0) {
             v.wait -= dt;
+            if (animDt > 0) m.userData?.animate?.('idle', t + v.phase, animDt);
           } else if (dist < 0.25) {
             v.idx = (v.idx + 1) % v.route.length;
             v.wait = 4.5 + (v.phase % 5.0);
+            if (animDt > 0) m.userData?.animate?.('idle', t + v.phase, animDt);
           } else {
             const step = Math.min(dist, v.speed * dt);
             v.x += (dx / dist) * step; v.z += (dz / dist) * step;
             v.yaw = angleLerp(v.yaw, Math.atan2(dx, dz), Math.min(1, dt * 6));
             m.position.set(v.x, gy, v.z);
             m.rotation.set(0, v.yaw, 0);
-            m.userData?.animate?.('stroll', t + v.phase, dt);
-            continue;
+            if (animDt > 0) m.userData?.animate?.('stroll', t + v.phase, animDt);
           }
-          m.position.set(v.x, gy, v.z);
-          m.rotation.set(0, v.yaw, 0);
-          m.userData?.animate?.('idle', t + v.phase, dt);
         } else {
-          m.position.set(v.x, gy, v.z);
-          m.rotation.set(0, v.isGuard ? v.yaw : v.yaw + Math.sin(t * 0.4 + v.phase) * 0.35, 0);
-          m.userData?.animate?.('idle', t + v.phase, dt);
+          if (!v.isGuard) {
+            m.rotation.set(0, v.yaw + Math.sin(t * 0.4 + v.phase) * 0.35, 0);
+          }
+          if (animDt > 0) m.userData?.animate?.('idle', t + v.phase, animDt);
         }
       }
     }
@@ -2092,7 +2129,8 @@ diffuseColor.rgb *= terrainRgb;`
     if (group.parent) group.parent.remove(group);
   }
 
-  if (addLight) {
+  // Only emit direct unpooled lights if explicitly requested; otherwise return lightSources for the 8-light pool
+  if (addLight && ctx.useDirectLights) {
     for (const l of lights) addLight(new THREE.Vector3(...l.pos), l.color, l.i, l.d, l.f);
   }
 
@@ -2120,6 +2158,14 @@ diffuseColor.rgb *= terrainRgb;`
     villagers,
     pigeons,
     riverPoints: riverSamples.map((p) => ({ x: Number(p.x.toFixed(1)), z: Number(p.z.toFixed(1)) })),
+    lightSources: lights.map((l) => ({
+      x: l.pos[0],
+      y: l.pos[1],
+      z: l.pos[2],
+      color: l.color,
+      intensity: l.i,
+      distance: l.d
+    })),
     lightCount: lights.length,
     update,
     dispose

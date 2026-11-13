@@ -22,7 +22,7 @@ import { PET_TYPES, PetSystem } from '../src/systems/petSystem.js';
 import { SKILL_DEFS, SKILL_ALIASES } from '../src/systems/skills.js';
 import { createDungeonGenerator, DUNGEON_THEMES, CHALLENGE_TYPES, TILE } from '../src/world/dungeonGenerator.js';
 import { nearOpening, SRO_DUNGEON_PROPS, resolveSroDungeon } from '../src/world/dungeonDecor.js';
-import { createEnemyManager, AI_STATE } from '../src/world/enemyAI.js';
+import { createEnemyManager, AI_STATE, OUTSKIRT_GIANT_KILL_THRESHOLD } from '../src/world/enemyAI.js';
 import { models3d, CLASS_CLIP_MAP } from '../src/engine/models3d.js';
 import { PlayerController } from '../src/engine/playerController.js';
 import { buildVillage } from '../src/world/villageBuilder.js';
@@ -568,14 +568,14 @@ import { createHost } from '../src/ui/hud.js';
     FLOOR_POOLS[102].includes('ghost_pirate') &&
     FLOOR_POOLS[103].includes('snake_woman')
   );
-  check('Unique Boss names are concise and faithful to Silkroad',
-    BOSS_CATALOG[3]?.name === 'Tiger Girl' &&
-    BOSS_CATALOG[6]?.name === 'Uruchi' &&
-    BOSS_CATALOG[9]?.name === 'Isyutaru' &&
-    BOSS_CATALOG[12]?.name === 'Lord Yarkan' &&
-    BOSS_CATALOG[15]?.name === 'Demon Shaitan' &&
-    BOSS_CATALOG[103]?.name === 'Medusa' &&
-    BOSS_CATALOG[16]?.name === 'Roc' &&
+  check('Unique Boss names use canonical ARKENVEIL lore and omit titles',
+    BOSS_CATALOG[3]?.name === 'Frostfang Empress' &&
+    BOSS_CATALOG[6]?.name === 'Warchief Drakmor' &&
+    BOSS_CATALOG[9]?.name === 'Lady Glaciera' &&
+    BOSS_CATALOG[12]?.name === 'Valkor, Bone Sovereign' &&
+    BOSS_CATALOG[15]?.name === 'Malakor, Ember Archfiend' &&
+    BOSS_CATALOG[103]?.name === 'Vespera, Venom Queen' &&
+    BOSS_CATALOG[16]?.name === 'Aetherion, Sky Sovereign' &&
     [3, 6, 9, 12, 15, 16, 103].every((f) => BOSS_CATALOG[f]?.title === '')
   );
   check('Unique Boss scales are enlarged and majestic (including Roc)',
@@ -602,12 +602,12 @@ import { createHost } from '../src/ui/hud.js';
 
   const { FLOOR_DEFINITIONS, DungeonGenerator, SPECIAL_ROOM_CYCLE } = await import('../src/world/dungeonGenerator.js');
   check('FLOOR_DEFINITIONS unique boss names updated',
-    FLOOR_DEFINITIONS.find(f => f.floor === 3)?.bossName === 'Tiger Girl' &&
-    FLOOR_DEFINITIONS.find(f => f.floor === 6)?.bossName === 'Uruchi' &&
-    FLOOR_DEFINITIONS.find(f => f.floor === 9)?.bossName === 'Isyutaru' &&
-    FLOOR_DEFINITIONS.find(f => f.floor === 12)?.bossName === 'Lord Yarkan' &&
-    FLOOR_DEFINITIONS.find(f => f.floor === 15)?.bossName === 'Demon Shaitan' &&
-    FLOOR_DEFINITIONS.find(f => f.floor === 103)?.bossName === 'Medusa'
+    FLOOR_DEFINITIONS.find(f => f.floor === 3)?.bossName === 'Frostfang Empress' &&
+    FLOOR_DEFINITIONS.find(f => f.floor === 6)?.bossName === 'Warchief Drakmor' &&
+    FLOOR_DEFINITIONS.find(f => f.floor === 9)?.bossName === 'Lady Glaciera' &&
+    FLOOR_DEFINITIONS.find(f => f.floor === 12)?.bossName === 'Valkor, Bone Sovereign' &&
+    FLOOR_DEFINITIONS.find(f => f.floor === 15)?.bossName === 'Malakor, Ember Archfiend' &&
+    FLOOR_DEFINITIONS.find(f => f.floor === 103)?.bossName === 'Vespera, Venom Queen'
   );
   check('Special room cycle contains celestial_spring', SPECIAL_ROOM_CYCLE.includes('celestial_spring'));
   check('Secret floors S1F, S2F, S3F are registered in FLOOR_DEFINITIONS', FLOOR_DEFINITIONS.some(f => f.floor === 101) && FLOOR_DEFINITIONS.some(f => f.floor === 102) && FLOOR_DEFINITIONS.some(f => f.floor === 103));
@@ -728,7 +728,7 @@ import { createHost } from '../src/ui/hud.js';
   // 8. Giant Miniboss System Validation
   const normalMob = testEnemyMgr.spawnMonster({ type: 'mangyang', floor: 1, x: 0, z: 0 });
   const giantMob = testEnemyMgr.spawnMonster({ type: 'mangyang', floor: 1, x: 1, z: 1, isGiant: true });
-  check('Giant Miniboss has proper Giant naming convention', giantMob.name === 'Giant Mangyang');
+  check('Giant Miniboss has proper Giant naming convention', giantMob.name === 'Giant Sporeling Gremlin');
   check('Giant Miniboss is flagged with isGiant', giantMob.isGiant === true);
   check('Giant Miniboss has ~4.5x HP multiplier', giantMob.maxHp >= Math.round(normalMob.maxHp * 4.3));
   check('Giant Miniboss has ~1.45x ATK multiplier', giantMob.atk >= Math.round(normalMob.atk * 1.4));
@@ -1317,8 +1317,8 @@ import { createHost } from '../src/ui/hud.js';
 
   const f16Enemies = enemyMgr.spawnFloorEnemies(f16Data, 16, scene, models3d, {});
   const rocBoss = f16Enemies.find((e) => e.isBoss);
-  check('Floor 16 spawns Final Unique Roc with elevated multipliers and signature skills',
-    Boolean(rocBoss && rocBoss.name === 'Roc' && Array.isArray(rocBoss.skills) && rocBoss.skills.length >= 4 && rocBoss.skills.includes('roc_hurricane_gale') && rocBoss.skills.includes('sky_feather_storm'))
+  check('Floor 16 spawns Final Unique Aetherion with elevated multipliers and signature skills',
+    Boolean(rocBoss && rocBoss.name === 'Aetherion, Sky Sovereign' && Array.isArray(rocBoss.skills) && rocBoss.skills.length >= 4 && rocBoss.skills.includes('roc_hurricane_gale') && rocBoss.skills.includes('sky_feather_storm'))
   );
 
   // Story completion tracking & save persistence
@@ -1502,7 +1502,7 @@ import { createHost } from '../src/ui/hud.js';
     m.userData.animate?.('skill', 1.25, 0.016);
   });
   check('All 6 non-tiger Uniques build bespoke articulated 3D rigs with custom animation drivers',
-    meshAnimOk && resolveUniquePrefabKey({ name: 'Lord Yarkan' }) === 'lord_yarkan' && resolveUniquePrefabKey({ name: 'Roc' }) === 'roc'
+    meshAnimOk && resolveUniquePrefabKey({ name: 'Valkor, Bone Sovereign' }) === 'lord_yarkan' && resolveUniquePrefabKey({ name: 'Aetherion, Sky Sovereign' }) === 'roc'
   );
 
   // HP-band summon waves (80% / 58% / 35%) + Boss defeat cleanup + non-interference with getAliveNonBossCount
@@ -2461,6 +2461,131 @@ import { createHost } from '../src/ui/hud.js';
       eastEntrance?.side === 'E'
     );
   }
+}
+
+// 29. Regression checks: alert non-spam, outskirt Giant kill-threshold, pond lotus elevation & perf contracts
+{
+  // (a) Pond & Hot Springs lotus sprites stay cleanly above water & lily pads
+  const regVillage = buildVillage({ useDirectLights: false });
+  const lotusY = [];
+  regVillage.group.traverse((child) => {
+    if (typeof child.name === 'string' && child.name.includes('c_pondflower')) {
+      lotusY.push({ y: child.position.y, x: child.position.x, z: child.position.z });
+    }
+  });
+  const pondLotusOk = lotusY.filter((l) => l.x > 0).every((l) => l.y > 0.10);
+  const springLotusOk = lotusY.filter((l) => l.x < 0).every((l) => l.y > 0.20);
+  check('Pond and Hot Springs lotus quads sit above water surfaces to eliminate z-fighting/gliding',
+    lotusY.length === 7 && pondLotusOk && springLotusOk
+  );
+
+  // (b) Alert '!' non-spam while chasing/hit & tether return without alert re-trigger
+  const emittedAlerts = [];
+  const regToasts = [];
+  const mockRegRenderer = {
+    updateCamera: () => {},
+    spawnFloatingText: (_pos, txt) => {
+      if (txt === '!') emittedAlerts.push(txt);
+    },
+    spawnSkillEffect: () => {},
+    spawnHitSparks: () => {},
+    shakeScreen: () => {}
+  };
+  const regEm = createEnemyManager(mockRegRenderer);
+  regEm.setContext({ hud: { toast: (m, t) => regToasts.push({ m, t }) } });
+  const regVillageSpawn = regEm.spawnVillageOutskirts(regVillage);
+  check('OUTSKIRT_GIANT_KILL_THRESHOLD is 10 and spawns outskirt camps',
+    OUTSKIRT_GIANT_KILL_THRESHOLD === 10 && regVillageSpawn.length >= 140
+  );
+
+  const soloMob = regEm.spawnMonster({
+    type: 'mangyang',
+    floor: 0,
+    x: 500,
+    z: 500,
+    isOutskirtMob: true,
+    campId: 'test_isolated_camp',
+    campName: 'Isolated Test Camp'
+  });
+  soloMob.hp = 5000;
+  soloMob.maxHp = 5000;
+  soloMob.isAlerted = true;
+  soloMob.state = AI_STATE.CHASE;
+  const beforeHitAlerts = emittedAlerts.length;
+  regEm.applyDamageToEnemy(soloMob, 25);
+  regEm.applyDamageToEnemy(soloMob, 25);
+  regEm.wakePack(soloMob, { allowTriggerAlert: true });
+  soloMob.state = AI_STATE.PATROL;
+  regEm.applyDamageToEnemy(soloMob, 25); // already alerted in patrol -> allowTriggerAlert: false
+  const extraHitAlerts = emittedAlerts.length - beforeHitAlerts;
+
+  // Move soloMob beyond outskirt leash (spawnDist > 26) and tick AI update; must return home without popping '!'
+  soloMob.state = AI_STATE.CHASE;
+  soloMob.x = soloMob.spawnX + 30;
+  soloMob.z = soloMob.spawnZ;
+  soloMob.position.set(soloMob.x, 0, soloMob.z);
+  const alertsBeforeTether = emittedAlerts.length;
+  regEm.update(0.1, 1.0, { x: soloMob.x - 1, z: soloMob.z }, null, {});
+  regEm.update(0.1, 1.1, { x: soloMob.x - 1, z: soloMob.z }, null, {});
+  const tetherAlerts = emittedAlerts.length - alertsBeforeTether;
+  check('Already-chasing/alerted mobs and outskirt tether return emit zero extra "!" alerts',
+    extraHitAlerts === 0 && tetherAlerts === 0 && soloMob._returningHome === true
+  );
+
+  // (c) Outskirt camp Giant spawns on 10th non-giant kill, resets counter, and prevents double-spawn while Giant is alive
+  const testCampId = 'camp_south_gate_meadow';
+  const campMobs = regEm.enemies.filter((e) => e.campId === testCampId && !e.isGiant);
+  const leadMob = campMobs[0];
+  for (let k = 0; k < OUTSKIRT_GIANT_KILL_THRESHOLD - 1; k++) {
+    regEm._handleEnemyDeath(campMobs[k]);
+  }
+  const progBefore10 = regEm.getCampKillProgress(testCampId);
+  regEm._handleEnemyDeath(campMobs[OUTSKIRT_GIANT_KILL_THRESHOLD - 1]);
+  const spawnedGiants = regEm.enemies.filter((e) => !e.dead && e.isGiant && e.campId === testCampId);
+  const progAfter10 = regEm.getCampKillProgress(testCampId);
+
+  // Kill another 10 non-giant mobs while that Giant is still alive -> must not double-spawn a 2nd Giant
+  for (let r = 0; r < OUTSKIRT_GIANT_KILL_THRESHOLD; r++) {
+    const extraMob = regEm.spawnMonster({
+      type: 'mangyang',
+      floor: 0,
+      x: leadMob.spawnX,
+      z: leadMob.spawnZ,
+      isOutskirtMob: true,
+      campId: testCampId,
+      campName: 'Oakhaven West Meadow'
+    });
+    regEm._handleEnemyDeath(extraMob);
+  }
+  const giantsWhileActive = regEm.enemies.filter((e) => !e.dead && e.isGiant && e.campId === testCampId);
+  check('Killing 10 outskirt camp mobs spawns one spawnOnce Giant, resets campKills, and blocks double-spawn while active',
+    progBefore10.kills === 9 &&
+    spawnedGiants.length === 1 &&
+    spawnedGiants[0].isGiant === true &&
+    spawnedGiants[0].campId === testCampId &&
+    spawnedGiants[0].spawnOnce === true &&
+    progAfter10.kills === 0 &&
+    progAfter10.hasActiveGiant === true &&
+    giantsWhileActive.length === 1 &&
+    regToasts.some((t) => /Giant/i.test(t.m))
+  );
+
+  // (d) Perf & spatial contracts: resolveCollision, getHudSummary, fillSkillBar
+  const colDg = createDungeonGenerator();
+  colDg.generateFloor(1, { scene: null }, null, {});
+  const startRoom = colDg.rooms.find((r) => r.type === 'start') || colDg.rooms[0];
+  const resolved = colDg.resolveCollision(startRoom.centerX, startRoom.centerZ, 0.45);
+  const perfGame = createGame({ classId: 'warrior' });
+  perfGame.newCharacter({ name: 'PerfTester', classId: 'warrior', slot: 0 });
+  const hudOut = perfGame.getHudSummary();
+  const hudSameRef = perfGame.getHudSummary(hudOut);
+  const barOut = [];
+  const barRet = perfGame.skills.fillSkillBar(barOut);
+  check('Perf contracts: resolveCollision, getHudSummary cache reuse, and fillSkillBar operate accurately',
+    Number.isFinite(resolved.x) && Number.isFinite(resolved.z) &&
+    hudSameRef === hudOut && hudOut.className === 'Knight' &&
+    Array.isArray(barRet) && barRet === barOut && barOut.length === 9 && barOut[0]?.ready !== undefined
+  );
 }
 
 console.log(`ALL ${passed} CHECKS PASSED.`);

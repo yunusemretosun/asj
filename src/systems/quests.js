@@ -16,11 +16,11 @@ function registerQuestItems() {
   });
   Q('quest_slime_gel', 'Luminous Slime Gel', '🟢', 'Glowing core gel from a dungeon slime. Requested by Elder Aldric.');
   Q('quest_goblin_ear', 'Goblin Raider Badge', '🪙', 'Crude iron emblem carried by goblin raiders.');
-  Q('quest_cavern_spore', 'Cavern Glow-Spore', '🍄', 'Bioluminescent fungus sought by Alchemist Elara.');
+  Q('quest_cavern_spore', 'Cavern Glow-Spore', '🍄', 'Bioluminescent fungus sought by Apothecary Elara.');
   Q('quest_elemental_core', 'Elemental Core', '🔮', 'Pulsing crystalline core dropped by dungeon golems and mages.');
-  Q('quest_tomb_essence', 'Tombstone Essence', '🪦', 'Dark ectoplasmic residue from ancient Qin-Shi tomb guardians.');
+  Q('quest_tomb_essence', 'Tombstone Essence', '🪦', 'Dark ectoplasmic residue from ancient Sunken Sovereign tomb guardians.');
   Q('quest_astral_dust', 'Astral Dust', '✨', 'Shimmering celestial powder gathered from deep dungeon archers.');
-  Q('quest_emperor_tablet', 'Royal Qin Tablet', '📜', 'Ancient inscribed stone fragment detailing Emperor Qin-Shi rites.');
+  Q('quest_emperor_tablet', 'Sunken Sovereign Tablet', '📜', 'Ancient inscribed stone fragment detailing the Sunken Sovereign’s forbidden rites.');
 }
 registerQuestItems();
 
@@ -30,12 +30,12 @@ registerQuestItems();
 export const NPCS = {
   chief: {
     id: 'chief',
-    name: 'Elder Aldric (Jangan Valisi)',
-    role: 'Village Chief & Story Keeper',
+    name: 'Elder Aldric',
+    role: 'Governor of Oakhaven',
     icon: '🧙‍♂️',
     greeting: [
-      'Jangan’a hoş geldin, yolcu. Qin-Shi İmparatorluk Mezarı’nın mühürleri zayıfladıkça surların dışındaki yaratıklar da hırçınlaştı.',
-      'Önce Jangan ovalarında güçlenip Seviye 10’a ulaş, tüccarlarımızdan donanımını tamamla ve katları tek bir düşman kalmadan temizle.',
+      'Welcome to Oakhaven, traveler. As the seals of the Sunken Sovereign Vaults weaken, the beasts beyond our walls have grown ever more ferocious.',
+      'Hone your strength in the Oakhaven outskirts until you reach Level 10, gear up with our merchants, and purge every dungeon floor down to the last foe.',
     ],
     services: [
       { label: '🏛 Town Blessings & Shrine (Gold)', action: 'open_menu:townhall:blessings' },
@@ -47,13 +47,13 @@ export const NPCS = {
   },
   blacksmith: {
     id: 'blacksmith',
-    name: 'Blacksmith Chulsan (Gorn)',
-    role: 'Master Weaponsmith & Armor',
+    name: 'Blacksmith Gorn',
+    role: 'Master Weaponsmith & Armorer',
     icon: '⚒️',
     shopId: 'blacksmith',
     greeting: [
-      'İpek Yolu’nun en sağlam çeliği burada dövülür. Haydut baskınları yüzünden kervanlar gecikse de örsüm hiç soğumaz.',
-      'Silahına soket açtır, efsun yenile (Reforge) veya +Basma İksirleri için zindan ganimetlerini getir.',
+      'The finest steel in all of Arkenveil is tempered right here. Even with raider ambushes delaying our supply wagons, my anvil never grows cold.',
+      'Bring me your dungeon spoils to open sockets, reforge enchantments, or temper your weapons and armor.',
     ],
     services: [
       { label: '⚔️ Browse Weapons, Shields & Armor', action: 'shop:blacksmith', shopId: 'blacksmith' },
@@ -68,8 +68,8 @@ export const NPCS = {
     icon: '🧪',
     shopId: 'merchant',
     greeting: [
-      'Nilüfer Kanalı’ndaki Water Ghostlar yüzünden şifalı otları toplamak zorlaştı, yine de tüm iksirlerim taze.',
-      'Yanına mutlaka HP/SP İksirleri, Antidote ve Dönüş Parşömeni almadan dış kapılardan çıkma!',
+      'Brook Wraiths along the Lotus Canal have made gathering medicinal herbs perilous, yet my potions remain fresh and potent.',
+      'Never step beyond the outer gates without stocking up on HP/SP Potions, Antidotes, and Return Scrolls!',
     ],
     services: [
       { label: '🧪 Buy Potions, Buffs & Return Scrolls', action: 'shop:merchant', shopId: 'merchant' },
@@ -80,11 +80,11 @@ export const NPCS = {
   trainer: {
     id: 'trainer',
     name: 'Grandmaster Kael',
-    role: 'Bicheon / Heuksal / Arcane Instructor',
+    role: 'Blade & Shield / Bloodaxe / Arcane Instructor',
     icon: '⚔️',
     greeting: [
-      'Sadece ham kuvvetle Tiger Girl ve Uruchi’nin karşısında duramazsın. Aktif ve pasif yetenek ağacını ustalıkla birleştir.',
-      'Jangan ovalarındaki canavarlar bile artık eski tekniklerini kullanıyor; kombo ve kalkan savunmanı zamanında kullan.',
+      'Brute strength alone will not carry you past the Frostfang Empress or Warchief Drakmor. Weave your active and passive skills with true mastery.',
+      'Even the beasts prowling the Oakhaven plains strike with primal ferocity—time your combos and shield blocks carefully.',
     ],
     services: [
       { label: '⚔ Guild Mastery Training (Permanent Stats)', action: 'open_menu:townhall:training' },
@@ -95,12 +95,12 @@ export const NPCS = {
   composer: {
     id: 'composer',
     name: 'Crystal Sage Lyra',
-    role: 'Silkroad Alchemy & Enchanter',
+    role: 'Arcane Enchanter & Alchemist',
     icon: '🔮',
     shopId: 'composer',
     greeting: [
-      'Kadim taşların ve Şans Tozlarının sırrı rezonansta saklıdır. Silah ve zırhlarını iksirlerle +10’a kadar güçlendirebilirsin.',
-      'Kırmızı büyü taşları (Magic Stones) ile ekipmanlarına kalıcı STR, INT, HP ve Astral koruma işleyebilirsin.',
+      'The secret of ancient stones and Luck Powders lies in arcane resonance. With Tempering Elixirs, you can empower your gear all the way to +10.',
+      'Fuse Magic Stones into your equipment to permanently imbue STR, INT, Max HP, and Astral Protection.',
     ],
     services: [
       { label: '✨ Open Alchemy & Magic Stone Station [O]', action: 'compose' },
@@ -110,12 +110,12 @@ export const NPCS = {
   },
   storage: {
     id: 'storage',
-    name: 'Storage-keeper Wangu (Bram)',
+    name: 'Quartermaster Bram',
     role: 'General Shared Vault',
     icon: '🏦',
     greeting: [
-      'Tüm Jangan kervanlarının ortak emaneti bende saklıdır. Bu Genel Depo Sandığı (General Storage), tüm karakterlerin arasında ortaktır!',
-      'Altınlarını, nadir SEAL eşyalarını ve simya iksirlerini güvenle yatırıp istediğin zaman çekebilirsin.',
+      'Every merchant caravan in Oakhaven entrusts its valuables to my care. This General Storage Vault is shared across all your characters!',
+      'Deposit your gold, rare Sealed relics, and alchemy elixirs here with complete peace of mind.',
     ],
     services: [
       { label: '🏦 Open General Shared Storage Vault (Items & Gold)', action: 'open_menu:storage' },
@@ -127,11 +127,11 @@ export const NPCS = {
   pet_merchant: {
     id: 'pet_merchant',
     name: 'Beast Tamer Zara',
-    role: 'Silkroad Grab & Combat Companions',
+    role: 'Grab & Combat Companions',
     icon: '🐾',
     greeting: [
-      'İpek Yolu’nda tek başına avlanmak yorucudur! Sadık bir Grab Pet düşen altın ve eşyaları senin için anında toplar.',
-      'Av arkadaşın seviye atladıkça sana ekstra Kritik, Saldırı ve Sihirli Eşya Şansı kazandırır.',
+      'Hunting the wilds of Arkenveil alone is exhausting! A faithful Grab Pet will gather dropped gold and loot for you in an instant.',
+      'As your companion levels up beside you, it grants bonus Critical Rate, Attack Power, and Magic Find.',
     ],
     services: [
       { label: '🐾 Open Companion Market & Stable [P]', action: 'open_menu:petshop' },
@@ -140,13 +140,13 @@ export const NPCS = {
   },
   accessory_trader: {
     id: 'accessory_trader',
-    name: 'Specialty Trader Jodaesan',
-    role: 'Rings, Necklaces & Silkroad Relics',
+    name: 'Orin',
+    role: 'Rings, Necklaces & Arkenveil Relics',
     icon: '💍',
     shopId: 'accessory_trader',
     greeting: [
-      'Batı’dan Doğu’ya uzanan kervanların en nadir yüzükleri, tılsımlı kolyeleri ve mühürlü sandıkları tezgâhımdadır.',
-      'Doğu’daki haydut çeteleri kervanımı soydu; onlara gününü gösterirsen en iyi mücevherlerim senin olur.',
+      'My stall carries the rarest enchanted rings, talismanic necklaces, and sealed coffers brought from every corner of Arkenveil.',
+      'Blackblade Raiders along the eastern road plundered my supply wagon—teach them a lesson, and my finest jewels will be yours.',
     ],
     services: [
       { label: '💍 Browse Jewelry, Coffers & EXP Scrolls', action: 'shop:accessory_trader', shopId: 'accessory_trader' },
@@ -156,13 +156,13 @@ export const NPCS = {
   },
   hunter_master: {
     id: 'hunter_master',
-    name: 'Hunter Associate Gwakwi',
-    role: 'Jangan Hunter Guild & Bounties',
+    name: 'Garrik',
+    role: 'Oakhaven Hunter Guild & Bounties',
     icon: '🏹',
     shopId: 'hunter_master',
     greeting: [
-      'Jangan Avcılar Loncası surların dışındaki dengeyi korur. Güneydeki Mangyanglardan Kuzey Sırtı’ndaki Kaplanlara kadar her bölgenin ödülü vardır.',
-      'Seviye 10’a eriştiğinde Donwhang Mağarası ve ötesindeki kadim tehlikeler için lonca donanımlarımızı kullanabilirsin.',
+      'The Oakhaven Hunter Guild keeps the balance beyond our walls. From the Sporeling Gremlins of the southern meadows to the Frostfang Tigers of the northern ridge, every hunt earns a bounty.',
+      'Once you reach Level 10, our guild armory will outfit you for the Whispering Stone Caverns and the abyss beyond.',
     ],
     services: [
       { label: '🛡️ Browse Hunter Guild Armory & Supplies', action: 'shop:hunter_master', shopId: 'hunter_master' },
@@ -180,8 +180,8 @@ const NPC_ALIASES = [
   ['composer', ['composer', 'compos', 'lyra', 'crystal', 'synth', 'gem', 'enchanter']],
   ['storage', ['storage', 'stash', 'bram', 'wangu', 'bank', 'vault', 'quartermaster', 'warehouse', 'chest', 'innkeeper', 'npc4']],
   ['pet_merchant', ['pet_merchant', 'pet_shop', 'pet', 'zara', 'tamer', 'companion', 'stable']],
-  ['accessory_trader', ['accessory_trader', 'accessory', 'jodaesan', 'jewel', 'ring', 'necklace', 'specialty']],
-  ['hunter_master', ['hunter_master', 'hunter', 'gwakwi', 'bounty', 'guild_officer']],
+  ['accessory_trader', ['accessory_trader', 'accessory', 'orin', 'jodaesan', 'jewel', 'ring', 'necklace', 'specialty']],
+  ['hunter_master', ['hunter_master', 'hunter', 'garrik', 'gwakwi', 'bounty', 'guild_officer']],
 ];
 
 export function resolveNpcId(npcId) {
@@ -399,19 +399,19 @@ export const QUEST_DEFS = {
 
   q_crypt_warden: {
     id: 'q_crypt_warden',
-    name: 'Tiger Girl, Mistress of Steppes',
+    name: 'Frostfang Empress, Ruler of the Wilds',
     npcId: 'chief',
     reqLevel: 5,
     prereq: 'q_trial_of_steel',
-    desc: 'The legendary steppe ruler Tiger Girl rides her fierce White Tiger on Floor 3. Defeat her to shatter the ancient seal and claim glory!',
+    desc: 'The ferocious Frostfang Empress commands the savage pack from the depths of Floor 3. Defeat her to shatter the ancient cavern seal and claim glory!',
     introLines: [
-      'Tiger Girl commands the wild white tigers from the summit of B3F. Vanquish her and restore peace to the steppe border!',
+      'The Frostfang Empress commands the wild Frostfang Tigers from the summit of B3F. Vanquish her and restore peace to the outer wilds!',
     ],
     completeLines: [
-      'Tiger Girl has fallen! The steppe winds sing of your bravery across all Arkenveil!',
+      'The Frostfang Empress has fallen! Songs of your bravery ring out across all of Arkenveil!',
     ],
     objectives: [
-      { id: 'kill_boss', type: 'boss', targets: ['tiger_girl', 'boss'], target: 1, text: 'Defeat Tiger Girl on Floor 3' },
+      { id: 'kill_boss', type: 'boss', targets: ['tiger_girl', 'boss'], target: 1, text: 'Defeat the Frostfang Empress on Floor 3' },
     ],
     rewards: {
       exp: 3800,
@@ -431,15 +431,15 @@ export const QUEST_DEFS = {
     npcId: 'blacksmith',
     reqLevel: 6,
     prereq: 'q_crypt_warden',
-    desc: 'Blacksmith Gorn and Crystal Sage Lyra partner to forge star-tempered arms. Slay 10 Bandit Archers on Floor 4-5, gather Astral Dust, consult Lyra, and return to Gorn.',
+    desc: 'Blacksmith Gorn and Crystal Sage Lyra partner to forge star-tempered arms. Slay 10 Blackblade Marksmen on Floor 4–5, gather Astral Dust, consult Lyra, and return to Gorn.',
     introLines: [
-      'Bandit archers loose enchanted arrows in the catacombs. Slay 10 archers, gather their Astral Dust, consult Lyra for purification, and bring the infused dust back to my forge!',
+      'Blackblade marksmen loose enchanted arrows in the catacombs. Slay 10 marksmen, gather their Astral Dust, consult Lyra for purification, and bring the infused dust back to my forge!',
     ],
     completeLines: [
       'Behold! The blade shines with astral radiance! Take this Seal of Star armament!',
     ],
     objectives: [
-      { id: 'kill_archers', type: 'kill', targets: ['bandit_archer', 'archer'], floor: 4, matchFloorFallback: true, target: 10, text: 'Slay Bandit Archers (B4-B5)' },
+      { id: 'kill_archers', type: 'kill', targets: ['bandit_archer', 'archer'], floor: 4, matchFloorFallback: true, target: 10, text: 'Slay Blackblade Marksmen (B4F–B5F)' },
       { id: 'collect_astral', type: 'collect', itemId: 'quest_astral_dust', dropChance: 0.8, dropTargets: ['bandit_archer', 'any'], target: 3, text: 'Gather Astral Dust' },
       { id: 'talk_lyra', type: 'talk_npc', npcId: 'composer', target: 1, text: 'Consult Crystal Sage Lyra for Astral Blessing', dialogue: 'The cosmic dust is humming! I have infused it with pure starlight. Hand it to Gorn for smithing.' },
       { id: 'talk_gorn', type: 'talk_npc', npcId: 'blacksmith', target: 1, text: 'Deliver Starlight Dust to Blacksmith Gorn', dialogue: 'Incredible luminescence! Watch as I forge this into a masterwork.' },
@@ -458,20 +458,20 @@ export const QUEST_DEFS = {
 
   q_orc_warband: {
     id: 'q_orc_warband',
-    name: 'Black Tiger Fortress',
+    name: 'Ironcrest Raider Fortress',
     npcId: 'blacksmith',
     reqLevel: 7,
     prereq: 'q_goblin_raiders',
-    desc: 'Black bandit brigands have garrisoned the fortress on Floor 4 and 5. Push deep into the fortress and break their frontline ranks.',
+    desc: 'Blackblade brigands have garrisoned the fortress across Floor 4 and Floor 5. Push deep into Ironcrest Crags and break their frontline ranks.',
     introLines: [
-      'Bandit warbands are assembling on Floor 4 and 5! Break 15 of their warriors and archers before they raid our outposts.',
+      'Raider warbands are massing on Floor 4 and Floor 5! Break 15 of their warriors and marksmen before they strike our outposts.',
     ],
     completeLines: [
-      'Not even the Black Tiger Fortress could withstand your might! Take this heavy plate armor.',
+      'Not even the Ironcrest Fortress could withstand your might! Take this heavy plate armor.',
     ],
     objectives: [
       { id: 'reach_f4', type: 'floor', floor: 4, target: 1, text: 'Reach Dungeon Floor 4' },
-      { id: 'kill_orcs', type: 'kill', targets: ['bandit', 'bandit_archer', 'water_ghost', 'ghost_bug'], floor: 4, matchFloorFallback: true, target: 15, text: 'Slay Fortress Bandits & Spirits' },
+      { id: 'kill_orcs', type: 'kill', targets: ['bandit', 'bandit_archer', 'water_ghost', 'ghost_bug'], floor: 4, matchFloorFallback: true, target: 15, text: 'Slay Fortress Raiders & Wraiths' },
     ],
     rewards: {
       exp: 4800,
@@ -487,19 +487,19 @@ export const QUEST_DEFS = {
 
   q_bandit_stronghold: {
     id: 'q_bandit_stronghold',
-    name: 'Uruchi, Bandit Overlord',
+    name: 'Warchief Drakmor, Raider Overlord',
     npcId: 'chief',
     reqLevel: 8,
     prereq: 'q_forged_in_starlight',
-    desc: 'The infamous bandit overlord Uruchi commands the Black Bandit Keep on Floor 6. Infiltrate his lair and bring him to justice!',
+    desc: 'The infamous raider overlord Warchief Drakmor commands the Frosthollow Citadel on Floor 6. Infiltrate his lair and bring his tyranny to an end!',
     introLines: [
-      'Uruchi has pillaged the silk trade caravans for years from his throne on B6F. End his reign of terror!',
+      'Warchief Drakmor has pillaged Oakhaven trade caravans for years from his throne on B6F. End his reign of terror!',
     ],
     completeLines: [
-      'Uruchi is defeated! Caravan horns echo in celebration across the Silk Road!',
+      'Warchief Drakmor is defeated! Supply horns echo in celebration across the realm of Arkenveil!',
     ],
     objectives: [
-      { id: 'kill_uruchi', type: 'boss', targets: ['bandit_lord', 'boss'], target: 1, text: 'Defeat Uruchi, Black Bandit Overlord (Floor 6)' },
+      { id: 'kill_uruchi', type: 'boss', targets: ['bandit_lord', 'boss'], target: 1, text: 'Defeat Warchief Drakmor, Raider Overlord (Floor 6)' },
     ],
     rewards: {
       exp: 6200,
@@ -519,7 +519,7 @@ export const QUEST_DEFS = {
     npcId: 'composer',
     reqLevel: 9,
     prereq: 'q_crystal_study',
-    desc: 'Crystal Sage Lyra seeks 4 Elemental Cores from the Stone Ghosts and Taoist spellweavers to stabilize the town protection barrier.',
+    desc: 'Crystal Sage Lyra seeks 4 Elemental Cores from Cairn Sentinels and subterranean spellweavers to stabilize the town protection barrier.',
     introLines: [
       'The elemental leylines beneath Floor 6 and Floor 7 are surging. Recover 4 Elemental Cores from the creatures below!',
     ],
@@ -547,17 +547,17 @@ export const QUEST_DEFS = {
     npcId: 'merchant',
     reqLevel: 9,
     prereq: 'q_alchemist_herbs',
-    desc: 'Alchemist Elara and Battle Master Kael collaborate to distill an ultimate panacea against tomb curses. Gather Tombstone Essences, consult Kael, and brew the elixir.',
+    desc: 'Apothecary Elara and Grandmaster Kael collaborate to distill an ultimate panacea against tomb curses. Gather Tombstone Essences, consult Kael, and brew the elixir.',
     introLines: [
-      'The cursed air of Qin-Shi Tomb rots the soul. Collect 3 Tombstone Essences on B7, consult Master Kael on ki circulation, and return here!',
+      'The cursed air of the Sunken Sovereign Vaults rots the soul. Collect 3 Tombstone Essences on B7F, consult Grandmaster Kael on focus and breath, and return here!',
     ],
     completeLines: [
       'The Panacea is complete! Drink deeply and fear no curse in the deepest crypts.',
     ],
     objectives: [
       { id: 'collect_tomb', type: 'collect', itemId: 'quest_tomb_essence', dropChance: 0.75, dropTargets: ['tombstone_ghost', 'chakji', 'any'], target: 3, text: 'Collect Tombstone Essences (Floor 7+)' },
-      { id: 'talk_kael', type: 'talk_npc', npcId: 'trainer', target: 1, text: 'Consult Battle Master Kael on Ki Balance', dialogue: 'To channel this panacea, align your breath with your core strikes. Tell Elara the formula is solid.' },
-      { id: 'talk_elara', type: 'talk_npc', npcId: 'merchant', target: 1, text: 'Deliver Catalysts to Alchemist Elara', dialogue: 'Perfection! Here is your personal share of the Panacea Elixir.' },
+      { id: 'talk_kael', type: 'talk_npc', npcId: 'trainer', target: 1, text: 'Consult Grandmaster Kael on Focus & Balance', dialogue: 'To channel this panacea, align your breath with your core strikes. Tell Elara the formula is sound.' },
+      { id: 'talk_elara', type: 'talk_npc', npcId: 'merchant', target: 1, text: 'Deliver Catalysts to Apothecary Elara', dialogue: 'Perfection! Here is your personal share of the Panacea Elixir.' },
     ],
     rewards: {
       exp: 6500,
@@ -573,20 +573,20 @@ export const QUEST_DEFS = {
 
   q_abyss_overlord: {
     id: 'q_abyss_overlord',
-    name: 'Isyutaru',
+    name: 'Lady Glaciera, Sovereign of Frost',
     npcId: 'chief',
     reqLevel: 10,
     prereq: 'q_bandit_stronghold',
-    desc: 'Descend into Sanctum of the Tao on Floor 9 and vanquish Isyutaru, the Silkroad Frost Queen.',
+    desc: 'Descend into the Sunken Sovereign Vaults on Floor 9 and vanquish Lady Glaciera, the Sovereign of Frost.',
     introLines: [
-      'Isyutaru commands frozen spirits deep inside B9F. Defeat her and shatter the frost seal!',
+      'Lady Glaciera commands frozen spirits deep inside B9F. Defeat her and shatter the frost seal!',
     ],
     completeLines: [
-      'Isyutaru has fallen! Arkenveil celebrates your triumph!',
+      'Lady Glaciera has fallen! Oakhaven celebrates your triumph!',
     ],
     objectives: [
       { id: 'reach_f9', type: 'floor', floor: 9, target: 1, text: 'Reach Dungeon Floor 9' },
-      { id: 'kill_general', type: 'boss', targets: ['isyutaru', 'earth_king', 'boss'], target: 1, text: 'Defeat Isyutaru (Floor 9)' },
+      { id: 'kill_general', type: 'boss', targets: ['isyutaru', 'earth_king', 'boss'], target: 1, text: 'Defeat Lady Glaciera (Floor 9)' },
     ],
     rewards: {
       exp: 9500,
@@ -603,19 +603,19 @@ export const QUEST_DEFS = {
 
   q_emperor_conspiracy: {
     id: 'q_emperor_conspiracy',
-    name: "Emperor's Secret Conspiracy",
+    name: "Sovereign's Secret Conspiracy",
     npcId: 'chief',
     reqLevel: 12,
     prereq: 'q_abyss_overlord',
-    desc: 'Unearth Emperor Qin-Shi ancient resurrection tablets from Stone Ghosts, decipher them with Lyra, secure town vaults with Bram, and brief the Chief.',
+    desc: 'Unearth the Sunken Sovereign’s ancient resurrection tablets from Cairn Sentinels, decipher them with Lyra, secure Oakhaven’s vaults with Bram, and brief Elder Aldric.',
     introLines: [
-      'Disturbing rumors claim Emperor Qin-Shi spirit seeks complete resurrection. Gather Royal Qin Tablets from stone ghosts, decipher them with Sage Lyra, coordinate with Quartermaster Bram, and report back!',
+      'Disturbing rumors claim the Sunken Sovereign’s spirit seeks complete resurrection. Gather Sunken Sovereign Tablets from Cairn Sentinels, decipher them with Sage Lyra, coordinate with Quartermaster Bram, and report back!',
     ],
     completeLines: [
       'We now comprehend their dark rituals. Thanks to your tireless investigation, Oakhaven is forewarned and prepared.',
     ],
     objectives: [
-      { id: 'collect_tablet', type: 'collect', itemId: 'quest_emperor_tablet', dropChance: 0.8, dropTargets: ['stone_ghost', 'earth_ghost', 'any'], target: 2, text: 'Recover Royal Qin Tablets (Floor 7-9)' },
+      { id: 'collect_tablet', type: 'collect', itemId: 'quest_emperor_tablet', dropChance: 0.8, dropTargets: ['stone_ghost', 'earth_ghost', 'any'], target: 2, text: 'Recover Sunken Sovereign Tablets (Floor 7–9)' },
       { id: 'talk_lyra', type: 'talk_npc', npcId: 'composer', target: 1, text: 'Decipher Tablet with Crystal Sage Lyra', dialogue: 'These glyphs describe forbidden soul-forging rites! Bram must reinforce the village storage wards.' },
       { id: 'talk_bram', type: 'talk_npc', npcId: 'storage', target: 1, text: 'Alert Quartermaster Bram of Intruders', dialogue: 'I will double the vault locks immediately. Go inform Elder Aldric of the threat!' },
       { id: 'talk_aldric', type: 'talk_npc', npcId: 'chief', target: 1, text: 'Brief Elder Aldric on Findings', dialogue: 'Magnificent work. The Council salutes your vigilance!' },
@@ -634,19 +634,19 @@ export const QUEST_DEFS = {
 
   q_steppe_legend: {
     id: 'q_steppe_legend',
-    name: 'Secret Steppe Sanctuary',
+    name: 'Secret Highland Sanctuary',
     npcId: 'trainer',
     reqLevel: 11,
     prereq: 'q_crypt_warden',
-    desc: 'Enter the hidden rift to Secret Floor S1F (Secret Steppe Sanctuary) and hunt down the apex White Tigers roaming the untouched wilds.',
+    desc: 'Enter the hidden rift to Secret Floor S1F (Secret Highland Sanctuary) and hunt down the apex Frostfang Tigers roaming the untouched wilds.',
     introLines: [
-      'A secret portal rift has appeared leading to the untouched steppes. Slay 15 White Tigers in the secret zone to prove your supremacy!',
+      'A secret portal rift has appeared leading to the untouched highlands. Slay 12 Frostfang Tigers in the secret zone to prove your supremacy!',
     ],
     completeLines: [
-      'You conquered the secret steppe wilds! Wear this beastmaster mantle with pride.',
+      'You conquered the secret highland wilds! Wear this beastmaster mantle with pride.',
     ],
     objectives: [
-      { id: 'kill_white_tigers', type: 'kill', targets: ['white_tiger', 'tiger'], floor: 101, matchFloorFallback: true, target: 12, text: 'Slay Apex White Tigers in Sanctuary S1F' },
+      { id: 'kill_white_tigers', type: 'kill', targets: ['white_tiger', 'tiger'], floor: 101, matchFloorFallback: true, target: 12, text: 'Slay Apex Frostfang Tigers in Sanctuary S1F' },
     ],
     rewards: {
       exp: 11500,
@@ -662,20 +662,20 @@ export const QUEST_DEFS = {
 
   q_taklamakan_storm: {
     id: 'q_taklamakan_storm',
-    name: 'Wastes of Taklamakan',
+    name: 'Scorched Sunspire Ruins',
     npcId: 'blacksmith',
     reqLevel: 14,
     prereq: 'q_emperor_conspiracy',
-    desc: 'The scorching winds of Taklamakan Wastes on Floor 10-11 harbor monstrous Devil Bugs and Hyungno raiders. Slay 18 desert terrors.',
+    desc: 'The scorching winds of the Scorched Sunspire Ruins on Floor 10–11 harbor monstrous Cinder Scarabs and Sunspire Marauders. Slay 18 desert terrors.',
     introLines: [
-      'Taklamakan desert is boiling with vicious Devil Bugs and Hyungno marauders. Crush 18 of them on B10-B11!',
+      'The Sunspire Wastes are crawling with vicious Cinder Scarabs and Sunspire Marauders. Crush 18 of them on B10F–B11F!',
     ],
     completeLines: [
       'The sands run clear! Accept this volcanic forged armament.',
     ],
     objectives: [
-      { id: 'reach_f10', type: 'floor', floor: 10, target: 1, text: 'Reach Taklamakan Wastes (B10F)' },
-      { id: 'kill_desert', type: 'kill', targets: ['devil_bug', 'hyungno', 'blue_tiger'], floor: 10, matchFloorFallback: true, target: 18, text: 'Slay Devil Bugs & Hyungno on B10+' },
+      { id: 'reach_f10', type: 'floor', floor: 10, target: 1, text: 'Reach Scorched Sunspire Ruins (B10F)' },
+      { id: 'kill_desert', type: 'kill', targets: ['devil_bug', 'hyungno', 'blue_tiger'], floor: 10, matchFloorFallback: true, target: 18, text: 'Slay Cinder Scarabs & Sunspire Marauders on B10F+' },
     ],
     rewards: {
       exp: 14500,
@@ -683,7 +683,7 @@ export const QUEST_DEFS = {
       ap: 4,
       sp: 3,
       items: [
-        { baseId: 'sword_5', name: 'Taklamakan Scimitar', rarity: 'epic', seal: 'moon', level: 32, count: 1 },
+        { baseId: 'sword_5', name: 'Sunspire Scimitar', rarity: 'epic', seal: 'moon', level: 32, count: 1 },
         { baseId: 'elixir_weapon', name: 'Elixir of Tempering (Weapon)', count: 4 },
       ],
     },
@@ -691,19 +691,19 @@ export const QUEST_DEFS = {
 
   q_blue_monarch: {
     id: 'q_blue_monarch',
-    name: 'Lord Yarkan',
+    name: 'Valkor, Bone Sovereign',
     npcId: 'chief',
     reqLevel: 16,
     prereq: 'q_taklamakan_storm',
-    desc: 'Lord Yarkan rules the Taklamakan crags on Floor 12. Vanquish this legendary Silkroad Unique!',
+    desc: 'Valkor, Bone Sovereign rules the Scorched Sunspire Ruins on Floor 12. Vanquish this dreaded tyrant!',
     introLines: [
-      'At Sovereign Pinnacle on B12F, Lord Yarkan awaits. End his desert dominion!',
+      'At the Sovereign Bone Spire on B12F, Valkor, Bone Sovereign awaits. End his scorched dominion!',
     ],
     completeLines: [
-      'Lord Yarkan has been defeated! You are a living legend!',
+      'Valkor, Bone Sovereign has been defeated! You are a living legend!',
     ],
     objectives: [
-      { id: 'kill_blue_boss', type: 'boss', targets: ['lord_yarkan', 'blue_tiger_boss', 'boss'], target: 1, text: 'Defeat Lord Yarkan (Floor 12)' },
+      { id: 'kill_blue_boss', type: 'boss', targets: ['lord_yarkan', 'blue_tiger_boss', 'boss'], target: 1, text: 'Defeat Valkor, Bone Sovereign (Floor 12)' },
     ],
     rewards: {
       exp: 19500,
@@ -711,7 +711,7 @@ export const QUEST_DEFS = {
       ap: 5,
       sp: 4,
       items: [
-        { baseId: 'staff_5', name: 'Glacial Tiger Crest Staff', rarity: 'epic', seal: 'moon', level: 40, count: 1 },
+        { baseId: 'staff_5', name: 'Sunspire Sovereign Staff', rarity: 'epic', seal: 'moon', level: 40, count: 1 },
         { baseId: 'elixir_weapon', name: 'Elixir of Tempering (Weapon)', count: 5 },
         { baseId: 'elixir_shield', name: 'Elixir of Tempering (Shield)', count: 4 },
       ],
@@ -720,13 +720,13 @@ export const QUEST_DEFS = {
 
   q_secret_vault_heist: {
     id: 'q_secret_vault_heist',
-    name: "Bandit Monarch's Secret Vault",
+    name: "Raider Monarch's Secret Vault",
     npcId: 'storage',
     reqLevel: 15,
     prereq: 'q_blue_monarch',
-    desc: 'Enter Secret Floor S2F through the rift, infiltrate the Bandit Monarch secret treasury, and plunder their fabled hoards.',
+    desc: 'Enter Secret Floor S2F through the rift, infiltrate the Raider Monarch’s secret treasury, and plunder their fabled hoards.',
     introLines: [
-      'Our spies uncovered a rift leading into the Bandit Monarch private vault on S2F. Clean out the guardians and recover their hoarded wealth!',
+      'Our spies uncovered a rift leading into the Raider Monarch’s private vault on S2F. Clean out the guardians and recover their hoarded wealth!',
     ],
     completeLines: [
       'What magnificent treasures! Quartermaster Bram safely vaults your plunder!',
@@ -748,20 +748,20 @@ export const QUEST_DEFS = {
 
   q_hyeongcheon_fall: {
     id: 'q_hyeongcheon_fall',
-    name: 'Demon Shaitan',
+    name: 'Malakor, Ember Archfiend',
     npcId: 'chief',
     reqLevel: 19,
     prereq: 'q_blue_monarch',
-    desc: 'Descend to the deepest abyss on Floor 15 and defeat Demon Shaitan to liberate Arkenveil.',
+    desc: 'Descend to the deepest abyss on Floor 15 and defeat Malakor, Ember Archfiend to liberate Arkenveil.',
     introLines: [
-      'Demon Shaitan has awakened on B15F. Slay the supreme Silkroad Unique and seal the underworld!',
+      'Malakor, the Ember Archfiend, has awakened in the Ashen Abyss on B15F. Slay the dread archfiend and seal the underworld!',
     ],
     completeLines: [
-      'DEMON SHAITAN HAS FALLEN! Your name echoes forever as the Savior of Arkenveil!',
+      'MALAKOR, THE EMBER ARCHFIEND HAS FALLEN! Your name echoes forever as the Savior of Arkenveil!',
     ],
     objectives: [
       { id: 'reach_f15', type: 'floor', floor: 15, target: 1, text: 'Reach Floor 15' },
-      { id: 'kill_hyeongcheon', type: 'boss', targets: ['demon_shaitan', 'hyeongcheon', 'boss'], target: 1, text: 'Defeat Demon Shaitan (Floor 15)' },
+      { id: 'kill_hyeongcheon', type: 'boss', targets: ['demon_shaitan', 'hyeongcheon', 'boss'], target: 1, text: 'Defeat Malakor, Ember Archfiend (Floor 15)' },
     ],
     rewards: {
       exp: 35000,
@@ -776,23 +776,23 @@ export const QUEST_DEFS = {
     },
   },
 
-  // ---- Oakhaven/Jangan Outskirts Hunting Progression (Lv 1 -> Lv 10 Dungeon Gate) ----
+  // ---- Oakhaven Outskirts Hunting Progression (Lv 1 -> Lv 10 Dungeon Gate) ----
   q_outskirts_meadow: {
     id: 'q_outskirts_meadow',
-    name: 'Jangan Sınırı: Güney Çayırı (Lv 1-3)',
+    name: 'Oakhaven Border: Southern Meadow (Lv 1–3)',
     npcId: 'chief',
     reqLevel: 1,
     prereq: null,
-    desc: 'Zindan kapıları Seviye 10’a ulaşana kadar mühürlü! Jangan’ın Güney ve Güneydoğu açık kapılarından çıkıp tekrar doğan Mangyang ve Göz Hayaletlerini avlayarak seviye atla.',
+    desc: 'The dungeon gates remain sealed until you reach Level 10! Step out through Oakhaven’s Southern and Southeastern gates to hunt respawning Sporeling Gremlins and Gloom-Eye Wisps and grow stronger.',
     introLines: [
-      'Hoş geldin! Donwhang Mağarası sadece Seviye 10 ve üzeri savaşçılara açılır.',
-      'Jangan’ın 4 büyük kapısından dışarı çık; Mangyanglar ve Küçük Göz Hayaletleri kısa sürede tekrar doğar!',
+      'Welcome! The Whispering Stone Caverns only open to warriors of Level 10 and above.',
+      'Step outside any of Oakhaven’s four great gates—Sporeling Gremlins and Gloom-Eye Wisps respawn swiftly across the meadows!',
     ],
     completeLines: [
-      'İyi başlangıç! Şimdi Batı Söğütlüğü ve Nilüfer Bataklığı’ndaki daha güçlü kamplara ilerle.',
+      'A strong start! Now press onward to the denser hunting camps in the Western Willowwood and Lotus Marsh.',
     ],
     objectives: [
-      { id: 'hunt_meadow', type: 'kill', targets: ['mangyang', 'small_eye_ghost', 'bigeye_ghost', 'slime'], floor: 0, matchFloorFallback: false, target: 6, text: 'Jangan Güney Çayırı canavarlarını avla (Lv 1-3)' },
+      { id: 'hunt_meadow', type: 'kill', targets: ['mangyang', 'small_eye_ghost', 'bigeye_ghost', 'slime'], floor: 0, matchFloorFallback: false, target: 6, text: 'Hunt Oakhaven Southern Meadow monsters (Lv 1–3)' },
     ],
     rewards: {
       exp: 360,
@@ -807,19 +807,19 @@ export const QUEST_DEFS = {
 
   q_outskirts_woods: {
     id: 'q_outskirts_woods',
-    name: 'Batı Söğütlüğü: Gelincik & Su Hayaleti (Lv 4-6)',
+    name: 'Western Willowwood: Jackals & Brook Wraiths (Lv 4–6)',
     npcId: 'trainer',
     reqLevel: 2,
     prereq: 'q_outskirts_meadow',
-    desc: 'Batı Kapısı dışındaki söğütlük ve bataklıkta Gelincikler (Weasel) ile Su Hayaletleri türedi.',
+    desc: 'Beyond the Western Gate, Thornback Jackals, Rabid Howlers, and Brook Wraiths have overrun the willow grove and marsh.',
     introLines: [
-      'Batı Kapısı’ndan çık ve Old Weasel, Weasel Gyo ile Water Ghost sürülerini avla!',
+      'Venture out of the Western Gate and cull the packs of Thornback Jackals, Rabid Howlers, and Brook Wraiths!',
     ],
     completeLines: [
-      'Reflekslerin keskinleşiyor! Doğu Taş Ocağı ve Haydut Kanyonu seni bekliyor.',
+      'Your reflexes are growing sharper! The Eastern Quarry and Raider Canyon await you next.',
     ],
     objectives: [
-      { id: 'hunt_woods', type: 'kill', targets: ['old_weasel', 'gyo_weasel', 'water_ghost_slave', 'water_ghost'], floor: 0, matchFloorFallback: false, target: 8, text: 'Batı Söğütlüğü & Bataklık yaratıklarını avla (Lv 4-6)' },
+      { id: 'hunt_woods', type: 'kill', targets: ['old_weasel', 'gyo_weasel', 'water_ghost_slave', 'water_ghost'], floor: 0, matchFloorFallback: false, target: 8, text: 'Hunt Western Willowwood & Marsh creatures (Lv 4–6)' },
     ],
     rewards: {
       exp: 760,
@@ -827,26 +827,26 @@ export const QUEST_DEFS = {
       ap: 1,
       sp: 2,
       items: [
-        { baseId: 'mp_potion_s', name: 'Small MP Potion', count: 5 },
+        { baseId: 'mp_potion_s', name: 'Small SP Potion', count: 5 },
       ],
     },
   },
 
   q_outskirts_outpost: {
     id: 'q_outskirts_outpost',
-    name: 'Doğu Harabeleri: Taş Hayalet & Haydutlar (Lv 7-9)',
+    name: 'Eastern Ruins: Cairn Sentinels & Raiders (Lv 7–9)',
     npcId: 'blacksmith',
     reqLevel: 4,
     prereq: 'q_outskirts_woods',
-    desc: 'Doğu Kapısı dışındaki antik taş ocağı ve harabelerde Stone Ghostlar ile Bandit akıncıları üslendi.',
+    desc: 'Cairn Sentinels and Blackblade Raiders have entrenched themselves in the ancient stone quarry and ruins outside the Eastern Gate.',
     introLines: [
-      'İpek Yolu kervan geçidini açmak için Doğu Harabeleri’ndeki Taş Hayaletleri ve Haydut gruplarını dağıt!',
+      'Clear the Cairn Sentinels and Blackblade Raider bands from the Eastern Ruins to reopen the Oakhaven trade road!',
     ],
     completeLines: [
-      'Demir gibi sağlamsın! Son açık alan sınavı için Kuzey Kaplan Sırtı’na yürü.',
+      'Steadfast as forged iron! March to the Northern Tiger Ridge for your final outskirts trial.',
     ],
     objectives: [
-      { id: 'hunt_outpost', type: 'kill', targets: ['broken_stone_ghost', 'stone_ghost', 'tombstone_ghost', 'tombstone', 'bandit_subordinate', 'bandit_archer', 'bandit_bowman', 'bandit'], floor: 0, matchFloorFallback: false, target: 10, text: 'Doğu Harabeleri & Haydutları avla (Lv 7-9)' },
+      { id: 'hunt_outpost', type: 'kill', targets: ['broken_stone_ghost', 'stone_ghost', 'tombstone_ghost', 'tombstone', 'bandit_subordinate', 'bandit_archer', 'bandit_bowman', 'bandit'], floor: 0, matchFloorFallback: false, target: 10, text: 'Hunt Eastern Ruins & Blackblade Raiders (Lv 7–9)' },
     ],
     rewards: {
       exp: 1450,
@@ -861,20 +861,20 @@ export const QUEST_DEFS = {
 
   q_outskirts_ridge: {
     id: 'q_outskirts_ridge',
-    name: 'Kuzey Kaplan Sırtı & Seviye 10 Sınavı',
+    name: 'Northern Ridge & the Level 10 Trial',
     npcId: 'chief',
     reqLevel: 6,
     prereq: 'q_outskirts_outpost',
-    desc: 'Jangan Kuzey Sırtı ve Yeoha Korusu’nda Yeoha, Chakji Worker, Genç Kaplan, Siyah ve Beyaz Kaplanları avlayarak Seviye 10’a ulaş.',
+    desc: 'Hunt Thornwood Dryads, Hollowbark Brutes, and Ashwood & Frostfang Tigers along Oakhaven’s Northern Ridge until you reach Level 10.',
     introLines: [
-      'Kuzey Sırtı’ndaki Yeoha ve Beyaz Kaplanlar Jangan’ın en güçlü açık alan avlarıdır. Seviye 10 olduğunda Zindan Kapısı açılacak!',
+      'The Thornwood Dryads and Frostfang Tigers of the Northern Ridge are the fiercest beasts in the outskirts. Reach Level 10 to unseal the Dungeon Gate!',
     ],
     completeLines: [
-      'Artık Seviye 10 oldun! Donwhang Taş Mağarası’na girebilir ve katları tamamen temizleyerek hikayeyi ilerletebilirsin!',
+      'You have reached Level 10! You may now enter the Whispering Stone Caverns and purge every floor to advance the realm’s story!',
     ],
     objectives: [
-      { id: 'hunt_ridge', type: 'kill', targets: ['decayed_yeoha', 'yeoha', 'young_tiger', 'tiger', 'black_tiger', 'white_tiger', 'chakji_worker', 'tombstone'], floor: 0, matchFloorFallback: false, target: 10, text: 'Kuzey Sırtı Jangan canavarlarını avla (Lv 8-10)' },
-      { id: 'reach_lv10', type: 'level', target: 10, text: 'Seviye 10’a ulaş (Zindan Kapısını aç)' },
+      { id: 'hunt_ridge', type: 'kill', targets: ['decayed_yeoha', 'yeoha', 'young_tiger', 'tiger', 'black_tiger', 'white_tiger', 'chakji_worker', 'tombstone'], floor: 0, matchFloorFallback: false, target: 10, text: 'Hunt Oakhaven Northern Ridge monsters (Lv 8–10)' },
+      { id: 'reach_lv10', type: 'level', target: 10, text: 'Reach Level 10 (Unseal the Dungeon Gate)' },
     ],
     rewards: {
       exp: 2600,
@@ -888,23 +888,23 @@ export const QUEST_DEFS = {
     },
   },
 
-  // ---- Story-Integrated Jangan NPC Quests ----
+  // ---- Story-Integrated Oakhaven NPC Quests ----
   q_tamer_bond: {
     id: 'q_tamer_bond',
-    name: 'Yoldaş Bağı: Jangan Kaplanları',
+    name: 'Companion Bond: Oakhaven Wilds',
     npcId: 'pet_merchant',
     reqLevel: 3,
     prereq: null,
-    desc: 'Beast Tamer Zara, surların dışındaki yaban kaplanlarının neden saldırganlaştığını araştırıyor ve şehrin Genel Depo Sorumlusu ile erzak paylaşımı yapmanı istiyor.',
+    desc: 'Beast Tamer Zara is investigating why the wild beasts beyond Oakhaven’s walls have grown aggressive, and asks you to log supplies with Quartermaster Bram.',
     introLines: [
-      'Yolcu! Beyaz Kaplanlar bile son günlerde tedirgin. Birkaç Genç Kaplan ya da Gelincik avla ve Depo Sorumlusu Wangu’ya uğra.',
+      'Traveler! Even the young tigers and jackals have grown restless lately. Scout a few packs in the outskirts and check in with Quartermaster Bram.',
     ],
     completeLines: [
-      'Harika iş! Artık [P] menüsünden bir Grab veya Combat Pet edinip yanına alabilirsin. Ganimetleri Genel Depo Sandığı’nda saklamayı unutma!',
+      'Splendid work! You can now adopt a Grab or Combat Pet from the [P] menu to fight at your side. Don’t forget to store your spare loot in the General Shared Vault!',
     ],
     objectives: [
-      { id: 'hunt_beasts', type: 'kill', targets: ['young_tiger', 'tiger', 'old_weasel', 'gyo_weasel'], floor: 0, matchFloorFallback: false, target: 6, text: 'Kaplan veya Gelincik sürülerini incele' },
-      { id: 'talk_wangu', type: 'talk_npc', npcId: 'storage', target: 1, text: 'Depo Sorumlusu Wangu ile erzak kaydı yap', dialogue: 'Zara’nın selamıyla mı geldin? Genel Depo Sandığı tüm karakterlerin için hazırdır. Altın ve eşyalarını güvenle bırakabilirsin!' },
+      { id: 'hunt_beasts', type: 'kill', targets: ['young_tiger', 'tiger', 'old_weasel', 'gyo_weasel'], floor: 0, matchFloorFallback: false, target: 6, text: 'Investigate Tiger & Jackal packs in the outskirts' },
+      { id: 'talk_wangu', type: 'talk_npc', npcId: 'storage', target: 1, text: 'Register supplies with Quartermaster Bram', dialogue: 'Did Zara send you? The General Storage Vault is shared across all your characters. Leave your gold and relics here anytime!' },
     ],
     rewards: {
       exp: 950,
@@ -919,20 +919,20 @@ export const QUEST_DEFS = {
 
   q_canal_shadows: {
     id: 'q_canal_shadows',
-    name: 'Nilüfer Kanalındaki Gölgeler',
+    name: 'Shadows in the Lotus Canal',
     npcId: 'merchant',
     reqLevel: 4,
     prereq: null,
-    desc: 'Apothecary Elara, Jangan su kanallarını kirleten Water Ghostları uzaklaştırmanı ve Crystal Sage Lyra’ya su örneğini iletmeni istiyor.',
+    desc: 'Apothecary Elara wants you to drive away the Brook Wraiths fouling Oakhaven’s canals and bring a water sample to Crystal Sage Lyra for analysis.',
     introLines: [
-      'Güneybatıdaki Nilüfer Bataklığı’ndan gelen Water Ghostlar şifalı su kaynaklarımıza buz büyüsü yayıyor. Onları geri püskürtüp Lyra’ya danış!',
+      'Brook Wraiths drifting up from the southwestern Lotus Marsh are tainting our healing springs with frost magic. Push them back and consult Lyra!',
     ],
     completeLines: [
-      'Harika! Kanal suyu yeniden berraklaştı. Al bakalım, bu iksirler ve şans tozu sana derinlerde yardımcı olacak.',
+      'Wonderful! The canal waters run clear once more. Take these potions and Luck Powders—they will serve you well in the depths.',
     ],
     objectives: [
-      { id: 'purge_water', type: 'kill', targets: ['water_ghost_slave', 'water_ghost'], floor: 0, matchFloorFallback: false, target: 6, text: 'Nilüfer Bataklığı Su Hayaletlerini temizle' },
-      { id: 'talk_lyra', type: 'talk_npc', npcId: 'composer', target: 1, text: 'Crystal Sage Lyra’ya numuneyi incelet', dialogue: 'Bu buz rezonansı Donwhang’ın altından sızıyor. Ekipmanlarını iksirlerle +basmayı ihmal etme!' },
+      { id: 'purge_water', type: 'kill', targets: ['water_ghost_slave', 'water_ghost'], floor: 0, matchFloorFallback: false, target: 6, text: 'Purge Brook Wraiths from the Lotus Marsh' },
+      { id: 'talk_lyra', type: 'talk_npc', npcId: 'composer', target: 1, text: 'Have Crystal Sage Lyra inspect the sample', dialogue: 'This frost resonance is seeping up from beneath the Whispering Stone Caverns. Remember to temper your gear with elixirs!' },
     ],
     rewards: {
       exp: 1200,
@@ -940,28 +940,28 @@ export const QUEST_DEFS = {
       ap: 1,
       sp: 2,
       items: [
-        { baseId: 'hp_potion_m', name: 'Medium HP Potion', count: 5 },
-        { baseId: 'powder_1', name: 'Luck Powder (1st Degree)', count: 3 },
+        { baseId: 'hp_potion_m', name: 'HP Potion', count: 5 },
+        { baseId: 'powder_1', name: 'Luck Powder (Grade 1)', count: 3 },
       ],
     },
   },
 
   q_bandit_caravan: {
     id: 'q_bandit_caravan',
-    name: 'Çalınan İpek Kervanı',
+    name: 'The Stolen Caravan',
     npcId: 'hunter_master',
     reqLevel: 6,
     prereq: null,
-    desc: 'Hunter Associate Gwakwi, Doğu Kapısı dışında kervanlara saldıran Bandit gruplarını çökertmeni ve Jodaesan’a kervan raporunu vermeni istiyor.',
+    desc: 'Hunter Master Garrik wants you to crush the Blackblade Raider bands ambushing caravans outside the Eastern Gate and report the cleared route to Orin.',
     introLines: [
-      'Bandit Subordinate ve Bandit Archer çeteleri Doğu yolunu tutmuş durumda! Çeteyi dağıt ve Tüccar Jodaesan’a güvence ver.',
+      'Blackblade Raiders and Marksmen have blockaded the eastern road! Scatter their warband and reassure Specialty Trader Orin.',
     ],
     completeLines: [
-      'İpek Yolu yeniden açık! Jodaesan dükkanındaki en seçkin yüzük ve mücevherleri hizmetine sundu.',
+      'The trade road is open once again! Orin has opened his finest selection of rings and relics to you.',
     ],
     objectives: [
-      { id: 'defeat_bandits', type: 'kill', targets: ['bandit_subordinate', 'bandit', 'bandit_archer', 'bandit_bowman'], floor: 0, matchFloorFallback: false, target: 8, text: 'Jangan Doğu Haydutlarını bozguna uğrat' },
-      { id: 'talk_jodaesan', type: 'talk_npc', npcId: 'accessory_trader', target: 1, text: 'Specialty Trader Jodaesan ile ticaret yolunu teyit et', dialogue: 'Gwakwi’nin avcısı! Haydutları dağıttığın için minnettarım. Dükkanımdaki yüzükler, kolyeler ve EXP parşömenleri daima emrindedir.' },
+      { id: 'defeat_bandits', type: 'kill', targets: ['bandit_subordinate', 'bandit', 'bandit_archer', 'bandit_bowman'], floor: 0, matchFloorFallback: false, target: 8, text: 'Defeat Eastern Oakhaven Blackblade Raiders' },
+      { id: 'talk_jodaesan', type: 'talk_npc', npcId: 'accessory_trader', target: 1, text: 'Confirm the open trade route with Orin', dialogue: 'So Garrik sent his finest hunter! Thank you for driving off those raiders. My rings, necklaces, and EXP scrolls are always at your service.' },
     ],
     rewards: {
       exp: 1950,
@@ -969,7 +969,7 @@ export const QUEST_DEFS = {
       ap: 2,
       sp: 2,
       items: [
-        { baseId: 'box_gear', name: 'Silkroad Sealed Gear Coffer', count: 1 },
+        { baseId: 'box_gear', name: 'Mystery War Coffer', count: 1 },
       ],
     },
   },
@@ -977,21 +977,21 @@ export const QUEST_DEFS = {
   // ---- Full Floor Purge Quests (updated via onFloorCleared) ----
   q_clear_donhwang: {
     id: 'q_clear_donhwang',
-    name: 'Donwhang Mağarası Tam Temizlik (B1F–B3F)',
+    name: 'Whispering Stone Caverns Purge (B1F–B3F)',
     npcId: 'chief',
     reqLevel: 10,
     prereq: 'q_outskirts_ridge',
-    desc: 'Donwhang Taş Mağarası’nın 1., 2. ve 3. katlarındaki tek bir canavar dahi kalmadan temizle.',
+    desc: 'Purge every last monster across Floors 1, 2, and 3 of the Whispering Stone Caverns.',
     introLines: [
-      'Bir katı tamamen temizlemeden sonraki geçit açılmaz. Donwhang’ın üç katını da bütünüyle arındır!',
+      'The gate to the next floor remains sealed until every foe is vanquished. Cleanse all three floors of the Whispering Stone Caverns!',
     ],
     completeLines: [
-      'Donwhang Mağarası artık güvenli! Hikaye günlüğün güncellendi.',
+      'The Whispering Stone Caverns are secure! Your chronicle has been updated.',
     ],
     objectives: [
-      { id: 'clr_f1', type: 'clear_floor', floor: 1, target: 1, text: 'B1F (Donwhang B1F) Tamamen Temizle' },
-      { id: 'clr_f2', type: 'clear_floor', floor: 2, target: 1, text: 'B2F (Donwhang B2F) Tamamen Temizle' },
-      { id: 'clr_f3', type: 'clear_floor', floor: 3, target: 1, text: 'B3F (Tiger Girl İni) Tamamen Temizle' },
+      { id: 'clr_f1', type: 'clear_floor', floor: 1, target: 1, text: 'Fully Clear B1F (Whispering Stone Caverns B1F)' },
+      { id: 'clr_f2', type: 'clear_floor', floor: 2, target: 1, text: 'Fully Clear B2F (Whispering Stone Caverns B2F)' },
+      { id: 'clr_f3', type: 'clear_floor', floor: 3, target: 1, text: 'Fully Clear B3F (Frostfang Empress Lair)' },
     ],
     rewards: {
       exp: 4200,
@@ -1003,21 +1003,21 @@ export const QUEST_DEFS = {
 
   q_clear_karakoram: {
     id: 'q_clear_karakoram',
-    name: 'Karakorum Kaleleri Tam Temizlik (B4F–B6F)',
+    name: 'Ironcrest Crags & Frosthollow Purge (B4F–B6F)',
     npcId: 'chief',
     reqLevel: 10,
     prereq: 'q_clear_donhwang',
-    desc: 'Black Robber Den ve Karakoram Buz Kalesi’ndeki (B4F–B6F) tüm düşmanları temizle.',
+    desc: 'Clear all enemies across Ironcrest Crags and Frosthollow (B4F–B6F).',
     introLines: [
-      'Uruchi ve haydutlarının üç katını tek düşman bırakmadan arındır.',
+      'Cleanse all three floors of Warchief Drakmor and his raiders without leaving a single foe standing.',
     ],
     completeLines: [
-      'Karakorum tamamen temizlendi! Qin-Shi Mezarı yolu aydınlandı.',
+      'Ironcrest Crags and Frosthollow are cleared! The path to the Sunken Sovereign Vaults lies open.',
     ],
     objectives: [
-      { id: 'clr_f4', type: 'clear_floor', floor: 4, target: 1, text: 'B4F (Black Robber Den) Tamamen Temizle' },
-      { id: 'clr_f5', type: 'clear_floor', floor: 5, target: 1, text: 'B5F (Karakoram Cave) Tamamen Temizle' },
-      { id: 'clr_f6', type: 'clear_floor', floor: 6, target: 1, text: 'B6F (Uruchi Kalesi) Tamamen Temizle' },
+      { id: 'clr_f4', type: 'clear_floor', floor: 4, target: 1, text: 'Fully Clear B4F (Ironcrest Crags)' },
+      { id: 'clr_f5', type: 'clear_floor', floor: 5, target: 1, text: 'Fully Clear B5F (Frosthollow Cavern)' },
+      { id: 'clr_f6', type: 'clear_floor', floor: 6, target: 1, text: 'Fully Clear B6F (Warchief Drakmor’s Citadel)' },
     ],
     rewards: {
       exp: 7500,
@@ -1029,21 +1029,21 @@ export const QUEST_DEFS = {
 
   q_clear_qinshi: {
     id: 'q_clear_qinshi',
-    name: 'Qin-Shi Mezarı Tam Temizlik (B7F–B9F)',
+    name: 'Sunken Sovereign Vaults Purge (B7F–B9F)',
     npcId: 'chief',
     reqLevel: 14,
     prereq: 'q_clear_karakoram',
-    desc: 'Qin-Shi İmparatorluk Mezarı’nın Terracotta ve Yılan katlarını (B7F–B9F) tamamen temizle.',
+    desc: 'Purge every guardian inside the Sunken Sovereign Vaults across Floors B7F–B9F.',
     introLines: [
-      'Isyutaru ve Terracotta ordusunun üç katını tamamen arındır!',
+      'Cleanse all three vault tiers held by Lady Glaciera and the Sovereign’s undead legion!',
     ],
     completeLines: [
-      'İmparatorluk Mezarı susturuldu! Şimdi Alev Dağı’na ilerle.',
+      'The Sunken Sovereign Vaults have fallen silent! Press onward to the Scorched Sunspire Ruins.',
     ],
     objectives: [
-      { id: 'clr_f7', type: 'clear_floor', floor: 7, target: 1, text: 'B7F (Qin-Shi B1F) Tamamen Temizle' },
-      { id: 'clr_f8', type: 'clear_floor', floor: 8, target: 1, text: 'B8F (Qin-Shi B2F) Tamamen Temizle' },
-      { id: 'clr_f9', type: 'clear_floor', floor: 9, target: 1, text: 'B9F (Isyutaru Tapınağı) Tamamen Temizle' },
+      { id: 'clr_f7', type: 'clear_floor', floor: 7, target: 1, text: 'Fully Clear B7F (Sunken Sovereign Vaults B1F)' },
+      { id: 'clr_f8', type: 'clear_floor', floor: 8, target: 1, text: 'Fully Clear B8F (Sunken Sovereign Vaults B2F)' },
+      { id: 'clr_f9', type: 'clear_floor', floor: 9, target: 1, text: 'Fully Clear B9F (Lady Glaciera’s Sanctum)' },
     ],
     rewards: {
       exp: 12000,
@@ -1055,21 +1055,21 @@ export const QUEST_DEFS = {
 
   q_clear_flame: {
     id: 'q_clear_flame',
-    name: 'Alev Dağı Tam Temizlik (B10F–B12F)',
+    name: 'Scorched Sunspire Ruins Purge (B10F–B12F)',
     npcId: 'chief',
     reqLevel: 18,
     prereq: 'q_clear_qinshi',
-    desc: 'Flame Mountain ve Death Bone katlarını (B10F–B12F) son yaratığa kadar temizle.',
+    desc: 'Purge the Scorched Sunspire Ruins and Bone Galleries (B10F–B12F) down to the final creature.',
     introLines: [
-      'Lord Yarkan’ın alev galerilerini eksiksiz arındır!',
+      'Cleanse Valkor, Bone Sovereign’s scorched galleries completely!',
     ],
     completeLines: [
-      'Alev Dağı dize getirildi! Kutsal Tapınakların mührü açıldı.',
+      'The Scorched Sunspire Ruins are subdued! The seal to the Sanctum of Light has broken.',
     ],
     objectives: [
-      { id: 'clr_f10', type: 'clear_floor', floor: 10, target: 1, text: 'B10F (Ash Passage) Tamamen Temizle' },
-      { id: 'clr_f11', type: 'clear_floor', floor: 11, target: 1, text: 'B11F (Magma Galleries) Tamamen Temizle' },
-      { id: 'clr_f12', type: 'clear_floor', floor: 12, target: 1, text: 'B12F (Lord Yarkan Zirvesi) Tamamen Temizle' },
+      { id: 'clr_f10', type: 'clear_floor', floor: 10, target: 1, text: 'Fully Clear B10F (Ash Passage)' },
+      { id: 'clr_f11', type: 'clear_floor', floor: 11, target: 1, text: 'Fully Clear B11F (Magma Galleries)' },
+      { id: 'clr_f12', type: 'clear_floor', floor: 12, target: 1, text: 'Fully Clear B12F (Valkor’s Bone Spire)' },
     ],
     rewards: {
       exp: 22000,
@@ -1081,21 +1081,21 @@ export const QUEST_DEFS = {
 
   q_clear_pantheon: {
     id: 'q_clear_pantheon',
-    name: 'Kutsal Tapınaklar & Roc Yolu (B13F–B15F)',
+    name: 'Sanctum of Light & Skycrown Path (B13F–B15F)',
     npcId: 'chief',
     reqLevel: 24,
     prereq: 'q_clear_flame',
-    desc: 'Holy Water Temple (B13F), Jupiter Temple (B14F) ve Shambhala (B15F) katlarını tamamen temizle.',
+    desc: 'Fully purge the Sanctum of Light (B13F), Stormspire Temple (B14F), and Ashen Abyss (B15F).',
     introLines: [
-      'Pharaoh Seth, Baal ve Demon Shaitan’ın tüm ordularını tamamen temizlemeden Roc Zirvesi’ne geçilmez!',
+      'The path to Skycrown Citadel will not open until the legions of the Sanctum Wardens and Malakor, the Ember Archfiend, are completely purged!',
     ],
     completeLines: [
-      'Son gökyüzü savaşı için hazırsın kahraman!',
+      'You are ready for the final battle high above the clouds, hero!',
     ],
     objectives: [
-      { id: 'clr_f13', type: 'clear_floor', floor: 13, target: 1, text: 'B13F (Holy Water Temple) Tamamen Temizle' },
-      { id: 'clr_f14', type: 'clear_floor', floor: 14, target: 1, text: 'B14F (Jupiter Temple) Tamamen Temizle' },
-      { id: 'clr_f15', type: 'clear_floor', floor: 15, target: 1, text: 'B15F (Shambhala Abyss) Tamamen Temizle' },
+      { id: 'clr_f13', type: 'clear_floor', floor: 13, target: 1, text: 'Fully Clear B13F (Sanctum of Light)' },
+      { id: 'clr_f14', type: 'clear_floor', floor: 14, target: 1, text: 'Fully Clear B14F (Stormspire Temple)' },
+      { id: 'clr_f15', type: 'clear_floor', floor: 15, target: 1, text: 'Fully Clear B15F (Ashen Abyss)' },
     ],
     rewards: {
       exp: 42000,

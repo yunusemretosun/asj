@@ -39,6 +39,67 @@ import {
 const LIGHT_POOL_SIZE = 8;
 export const MIN_DUNGEON_LEVEL = 10;
 
+const UNIT_WALK_OFFSETS = [
+  [0, 0],
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+  [0.7, 0.7],
+  [-0.7, 0.7],
+  [0.7, -0.7],
+  [-0.7, -0.7]
+];
+
+const _surfaceTexCache = new Map();
+const _surfaceTexPending = new Map();
+let _surfaceTexLoader = null;
+
+function applyCachedSurfaceTexture(mat, texUrl) {
+  if (typeof window === 'undefined' || !texUrl || !mat) return;
+  const cached = _surfaceTexCache.get(texUrl);
+  if (cached) {
+    mat.map = cached;
+    mat.needsUpdate = true;
+    return;
+  }
+  let waiters = _surfaceTexPending.get(texUrl);
+  if (waiters) {
+    waiters.push(mat);
+    return;
+  }
+  waiters = [mat];
+  _surfaceTexPending.set(texUrl, waiters);
+  try {
+    if (!_surfaceTexLoader) _surfaceTexLoader = new THREE.TextureLoader();
+    _surfaceTexLoader.load(
+      texUrl,
+      (tex) => {
+        tex.wrapS = THREE.RepeatWrapping;
+        tex.wrapT = THREE.RepeatWrapping;
+        tex.repeat.set(1, 1);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        _surfaceTexCache.set(texUrl, tex);
+        const list = _surfaceTexPending.get(texUrl);
+        _surfaceTexPending.delete(texUrl);
+        if (list) {
+          for (let i = 0; i < list.length; i++) {
+            const m = list[i];
+            m.map = tex;
+            m.needsUpdate = true;
+          }
+        }
+      },
+      undefined,
+      () => {
+        _surfaceTexPending.delete(texUrl);
+      }
+    );
+  } catch (e) {
+    _surfaceTexPending.delete(texUrl);
+  }
+}
+
 // Tile constants for grid collision and minimap
 export const TILE = {
   VOID: 0,
@@ -84,8 +145,8 @@ export const DUNGEON_THEMES = {
   },
   cave: {
     id: 'cave',
-    name: 'Donwhang Stone Cave',
-    subtitle: 'Donwhang Taş Mağarası — Webbed Galleries & Stone Relics',
+    name: 'Fungal Echo Caverns',
+    subtitle: 'Fungal Echo Caverns — Webbed Galleries & Stone Relics',
     decor: 'cave',
     atmosphere: {
       fogColor: 0x161c18,
@@ -115,8 +176,8 @@ export const DUNGEON_THEMES = {
   },
   crypt: {
     id: 'crypt',
-    name: 'Black Robber Stronghold',
-    subtitle: 'Karakoram & Black Robber Mağarası — Bandit Catacombs',
+    name: 'Blackblade Stronghold',
+    subtitle: 'Rimevault & Blackblade Catacombs — Frozen Raider Halls',
     decor: 'crypt',
     atmosphere: {
       fogColor: 0x101829,
@@ -146,8 +207,8 @@ export const DUNGEON_THEMES = {
   },
   ruins: {
     id: 'ruins',
-    name: "Qin-Shi Emperor's Tomb",
-    subtitle: 'Qin-Shi İmparatoru Mezarlığı — Terracotta & Jade Chambers',
+    name: 'Sunken Imperial Mausoleum',
+    subtitle: 'Sunken Imperial Mausoleum — Terracotta & Jade Chambers',
     decor: 'ruins',
     atmosphere: {
       fogColor: 0x1a1a16,
@@ -177,8 +238,8 @@ export const DUNGEON_THEMES = {
   },
   lava: {
     id: 'lava',
-    name: 'Flame Mountain',
-    subtitle: 'Alev Dağı İçinde — Volcanic Basalt & Caldera Vaults',
+    name: 'Caldera Sanctum',
+    subtitle: 'Caldera Sanctum — Volcanic Basalt & Ember Vaults',
     decor: 'lava',
     atmosphere: {
       fogColor: 0x261409,
@@ -208,8 +269,8 @@ export const DUNGEON_THEMES = {
   },
   boss: {
     id: 'boss',
-    name: 'Jupiter & Shambhala Sanctum',
-    subtitle: 'Kutsal Su, Jupiter Tapınağı & Roc Dağı Zirvesi',
+    name: 'Stormspire & Abyssal Sanctum',
+    subtitle: 'Sunken Sun Sanctum, Stormspire Hall & Celestial Peak',
     decor: 'abyss',
     atmosphere: {
       fogColor: 0x1c0d14,
@@ -242,8 +303,8 @@ export const DUNGEON_THEMES = {
 export const FLOOR_DEFINITIONS = [
   // recommendedLevel mirrors floorMonsterLevel(floor) in src/systems/inventory.js (monster level & loot tier)
   {
-    floor: 1, name: 'Donwhang Stone Cave B1F', sroDungeon: 'donhwang', decorProfile: 'donhwang_b1', layoutStyle: 'cavern_branch',
-    subtitle: 'Donwhang Taş Mağarası -1. Kat — Entrance Galleries',
+    floor: 1, name: 'Fungal Echo Caverns B1F', sroDungeon: 'donhwang', decorProfile: 'donhwang_b1', layoutStyle: 'cavern_branch',
+    subtitle: 'Fungal Echo Caverns -1F — Entrance Galleries',
     theme: 'cave', recommendedLevel: 1, isBossFloor: false,
     portalStyle: 'jade_gate',
     floorTexture: '/assets/sro/dun/tex/donhwang_floor.png', wallTexture: '/assets/sro/dun/tex/donhwang_wall.png',
@@ -252,8 +313,8 @@ export const FLOOR_DEFINITIONS = [
     monsterTypes: ['mangyang', 'gyo_weasel', 'bigeye_ghost', 'tiger', 'bug_ghost', 'water_ghost', 'yeoha', 'work_earth_ghost']
   },
   {
-    floor: 2, name: 'Donwhang Stone Cave B2F — Earth Vaults', sroDungeon: 'donhwang', decorProfile: 'donhwang_b2', layoutStyle: 'cavern_branch',
-    subtitle: 'Donwhang Taş Mağarası -2. Kat — Earth Ghosts & Buddha Alcoves',
+    floor: 2, name: 'Fungal Echo Caverns B2F — Earth Vaults', sroDungeon: 'donhwang', decorProfile: 'donhwang_b2', layoutStyle: 'cavern_branch',
+    subtitle: 'Fungal Echo Caverns -2F — Earth Spirits & Relic Alcoves',
     theme: 'cave', recommendedLevel: 3, isBossFloor: false,
     portalStyle: 'amber_cavern',
     floorTexture: '/assets/sro/dun/tex/donhwang_floor.png', wallTexture: '/assets/sro/dun/tex/donhwang_wall.png',
@@ -262,9 +323,9 @@ export const FLOOR_DEFINITIONS = [
     monsterTypes: ['bug_ghost', 'work_earth_ghost', 'soldier_earth_ghost', 'earth_ghost', 'stone_ghost', 'blindmon', 'yeoha', 'bandit', 'bandit_archer']
   },
   {
-    floor: 3, name: 'Donwhang Stone Cave B3F — Tiger Lair', sroDungeon: 'donhwang', decorProfile: 'donhwang_b3', layoutStyle: 'cavern_branch',
-    subtitle: 'Donwhang Taş Mağarası -3. Kat — Lair of Tiger Girl',
-    theme: 'cave', recommendedLevel: 5, isBossFloor: true, bossId: 'tiger_girl', bossName: 'Tiger Girl',
+    floor: 3, name: 'Fungal Echo Caverns B3F — Frostfang Lair', sroDungeon: 'donhwang', decorProfile: 'donhwang_b3', layoutStyle: 'cavern_branch',
+    subtitle: 'Fungal Echo Caverns -3F — Lair of Frostfang Empress',
+    theme: 'cave', recommendedLevel: 5, isBossFloor: true, bossId: 'tiger_girl', bossName: 'Frostfang Empress',
     portalStyle: 'crimson_tiger',
     floorTexture: '/assets/sro/dun/tex/donhwang_floor.png', wallTexture: '/assets/sro/dun/tex/donhwang_wall.png',
     themeOverride: { floorColor: 0x6e5f58, altFloorColor: 0x574a44, wallColor: 0x857168, trimColor: 0xea580c, torchColor: 0xf97316, portalColor: 0xf97316 },
@@ -272,8 +333,8 @@ export const FLOOR_DEFINITIONS = [
     monsterTypes: ['soldier_earth_ghost', 'blindmon', 'nachal', 'yacha', 'demon_horse', 'taese', 'chakji', 'stone_ghost', 'earth_ghost']
   },
   {
-    floor: 4, name: 'Black Robber Den B4F', sroDungeon: 'karakoram', decorProfile: 'karakoram_b4', layoutStyle: 'stronghold_wing',
-    subtitle: 'Black Robber Mağarası — Oasis & Karakorum Raider Outpost',
+    floor: 4, name: 'Blackblade Den B4F', sroDungeon: 'karakoram', decorProfile: 'karakoram_b4', layoutStyle: 'stronghold_wing',
+    subtitle: 'Blackblade Stronghold — Oasis & Raider Outpost',
     theme: 'crypt', recommendedLevel: 9, isBossFloor: false,
     portalStyle: 'bandit_lantern',
     floorTexture: '/assets/sro/dun/tex/karakoram_floor.png', wallTexture: '/assets/sro/dun/tex/karakoram_wall.png',
@@ -282,8 +343,8 @@ export const FLOOR_DEFINITIONS = [
     monsterTypes: ['black_robber', 'black_robber_archer', 'red_eye_ghost', 'ong', 'scorpion', 'red_scorpion', 'desert_trunkz', 'bandit', 'bandit_archer']
   },
   {
-    floor: 5, name: 'Karakoram Dark Cave B5F', sroDungeon: 'karakoram', decorProfile: 'karakoram_b5', layoutStyle: 'stronghold_wing',
-    subtitle: 'Kara Mağara — Frozen Salt Crags & Yeti Caverns',
+    floor: 5, name: 'Rimevault Caverns B5F', sroDungeon: 'karakoram', decorProfile: 'karakoram_b5', layoutStyle: 'stronghold_wing',
+    subtitle: 'Rimevault Caverns — Frozen Salt Crags & Yeti Hollows',
     theme: 'crypt', recommendedLevel: 13, isBossFloor: false,
     portalStyle: 'frost_runes',
     floorTexture: '/assets/sro/dun/tex/karakoram_floor.png', wallTexture: '/assets/sro/dun/tex/karakoram_wall.png',
@@ -292,9 +353,9 @@ export const FLOOR_DEFINITIONS = [
     monsterTypes: ['ishade', 'planar', 'yeti', 'penon_fighter', 'penon_warrior', 'snow_spider', 'white_spider', 'blue_tiger', 'white_tiger']
   },
   {
-    floor: 6, name: 'Black Robber Citadel B6F', sroDungeon: 'karakoram', decorProfile: 'karakoram_b6', layoutStyle: 'stronghold_wing',
-    subtitle: 'Karakoram Stronghold — Domain of Uruchi',
-    theme: 'crypt', recommendedLevel: 17, isBossFloor: true, bossId: 'uruchi', bossName: 'Uruchi',
+    floor: 6, name: 'Blackblade Citadel B6F', sroDungeon: 'karakoram', decorProfile: 'karakoram_b6', layoutStyle: 'stronghold_wing',
+    subtitle: 'Blackblade Citadel — Domain of Warchief Drakmor',
+    theme: 'crypt', recommendedLevel: 17, isBossFloor: true, bossId: 'uruchi', bossName: 'Warchief Drakmor',
     portalStyle: 'obsidian_uruchi',
     floorTexture: '/assets/sro/dun/tex/karakoram_floor.png', wallTexture: '/assets/sro/dun/tex/karakoram_wall.png',
     themeOverride: { floorColor: 0x4f495f, altFloorColor: 0x3f394c, wallColor: 0x685f7d, trimColor: 0xa855f7, torchColor: 0xc084fc, portalColor: 0xa855f7 },
@@ -302,8 +363,8 @@ export const FLOOR_DEFINITIONS = [
     monsterTypes: ['red_scorpion', 'desert_trunkz', 'big_spider', 'yeowa', 'black_robber', 'black_robber_archer', 'penon_fighter', 'penon_warrior', 'yeti', 'white_tiger', 'blue_tiger', 'gunpowder_ghost']
   },
   {
-    floor: 7, name: "Qin-Shi Emperor's Tomb B1F", sroDungeon: 'qinshi', decorProfile: 'qinshi_b7', layoutStyle: 'tomb_grid',
-    subtitle: 'Qin-Shi İmparatoru Mezarlığı Seviye 1 — Terracotta Galleries',
+    floor: 7, name: 'Sunken Imperial Mausoleum B7F', sroDungeon: 'qinshi', decorProfile: 'qinshi_b7', layoutStyle: 'tomb_grid',
+    subtitle: 'Sunken Imperial Mausoleum 1F — Terracotta Galleries',
     theme: 'ruins', recommendedLevel: 21, isBossFloor: false,
     portalStyle: 'terracotta_seal',
     floorTexture: '/assets/sro/dun/tex/qinshi_floor.png', wallTexture: '/assets/sro/dun/tex/qinshi_wall.png',
@@ -312,8 +373,8 @@ export const FLOOR_DEFINITIONS = [
     monsterTypes: ['tombstone_ghost', 'tomb_stone_spirit', 'tomb_bug_ghost', 'bomb_stone_ghost', 'qinshi_tombstone', 'tomb_soldier', 'tomb_archer', 'tomb_general', 'royal_soldier']
   },
   {
-    floor: 8, name: "Qin-Shi Emperor's Tomb B2F", sroDungeon: 'qinshi', decorProfile: 'qinshi_b8', layoutStyle: 'tomb_grid',
-    subtitle: 'Qin-Shi İmparatoru Mezarlığı Seviye 2 — Serpent Lantern Wing',
+    floor: 8, name: 'Sunken Imperial Mausoleum B8F', sroDungeon: 'qinshi', decorProfile: 'qinshi_b8', layoutStyle: 'tomb_grid',
+    subtitle: 'Sunken Imperial Mausoleum 2F — Serpent Lantern Wing',
     theme: 'ruins', recommendedLevel: 25, isBossFloor: false,
     portalStyle: 'jade_serpent',
     floorTexture: '/assets/sro/dun/tex/qinshi_floor.png', wallTexture: '/assets/sro/dun/tex/qinshi_wall.png',
@@ -322,9 +383,9 @@ export const FLOOR_DEFINITIONS = [
     monsterTypes: ['snake_slave', 'snake_man', 'snake_demon', 'snake_general', 'snake_woman', 'black_snake', 'tomb_soldier', 'tomb_archer', 'devil_bug']
   },
   {
-    floor: 9, name: "Qin-Shi Emperor's Tomb B3F — Snake Sanctum", sroDungeon: 'qinshi', decorProfile: 'qinshi_b9', layoutStyle: 'tomb_grid',
-    subtitle: 'Qin-Shi Mezarlığı Merkez Mağara — Sanctum of Isyutaru',
-    theme: 'ruins', recommendedLevel: 28, isBossFloor: true, bossId: 'isyutaru', bossName: 'Isyutaru',
+    floor: 9, name: 'Sunken Imperial Mausoleum B9F — Frost Sanctum', sroDungeon: 'qinshi', decorProfile: 'qinshi_b9', layoutStyle: 'tomb_grid',
+    subtitle: 'Sunken Imperial Mausoleum Central Sanctum — Hall of Lady Glaciera',
+    theme: 'ruins', recommendedLevel: 28, isBossFloor: true, bossId: 'isyutaru', bossName: 'Lady Glaciera',
     portalStyle: 'imperial_tetra',
     floorTexture: '/assets/sro/dun/tex/qinshi_floor.png', wallTexture: '/assets/sro/dun/tex/qinshi_wall.png',
     themeOverride: { floorColor: 0x5c687a, altFloorColor: 0x4a5463, wallColor: 0x738296, trimColor: 0xfacc15, torchColor: 0x38bdf8, portalColor: 0x38bdf8 },
@@ -332,8 +393,8 @@ export const FLOOR_DEFINITIONS = [
     monsterTypes: ['east_guardian', 'west_guardian', 'north_guardian', 'south_guardian', 'royal_soldier', 'tomb_general', 'snake_general', 'snake_woman', 'hyungno']
   },
   {
-    floor: 10, name: 'Flame Mountain B10F — Ash Passage', sroDungeon: 'flame', decorProfile: 'flame_b10', layoutStyle: 'caldera_ring',
-    subtitle: 'Alev Dağı İçinde — Scorched Taklamakan Border',
+    floor: 10, name: 'Caldera Sanctum B10F — Ash Passage', sroDungeon: 'flame', decorProfile: 'flame_b10', layoutStyle: 'caldera_ring',
+    subtitle: 'Caldera Sanctum — Scorched Sunspire Border',
     theme: 'lava', recommendedLevel: 32, isBossFloor: false,
     portalStyle: 'ember_caldera',
     floorTexture: '/assets/sro/dun/tex/flame_floor.png', wallTexture: '/assets/sro/dun/tex/flame_wall.png',
@@ -342,8 +403,8 @@ export const FLOOR_DEFINITIONS = [
     monsterTypes: ['flame_ghost', 'flame_evil', 'flame_salamander', 'flame_witch', 'flame_archer', 'ghost_bug', 'devil_bug']
   },
   {
-    floor: 11, name: 'Flame Mountain B11F — Magma Galleries', sroDungeon: 'flame', decorProfile: 'flame_b11', layoutStyle: 'caldera_ring',
-    subtitle: 'Alev Dağı İçinde — Volcanic Basalt & Death Bone Necropolis',
+    floor: 11, name: 'Caldera Sanctum B11F — Magma Galleries', sroDungeon: 'flame', decorProfile: 'flame_b11', layoutStyle: 'caldera_ring',
+    subtitle: 'Caldera Sanctum — Volcanic Basalt & Bone Necropolis',
     theme: 'lava', recommendedLevel: 36, isBossFloor: false,
     portalStyle: 'ossuary_pyre',
     floorTexture: '/assets/sro/dun/tex/flame_floor.png', wallTexture: '/assets/sro/dun/tex/flame_wall.png',
@@ -352,9 +413,9 @@ export const FLOOR_DEFINITIONS = [
     monsterTypes: ['bone_soldier', 'bone_hunter', 'bone_mage', 'bone_general', 'bone_lord', 'devil_eye', 'edimmu', 'death_kara', 'hyeongcheon']
   },
   {
-    floor: 12, name: 'Flame Mountain B12F — Flame Sprite Gorge', sroDungeon: 'flame', decorProfile: 'flame_b12', layoutStyle: 'caldera_ring',
-    subtitle: 'Flame Sprite Geçidi — Sovereign Domain of Lord Yarkan',
-    theme: 'lava', recommendedLevel: 40, isBossFloor: true, bossId: 'lord_yarkan', bossName: 'Lord Yarkan',
+    floor: 12, name: 'Caldera Sanctum B12F — Ember Gorge', sroDungeon: 'flame', decorProfile: 'flame_b12', layoutStyle: 'caldera_ring',
+    subtitle: 'Ember Gorge — Sovereign Domain of Valkor, Bone Sovereign',
+    theme: 'lava', recommendedLevel: 40, isBossFloor: true, bossId: 'lord_yarkan', bossName: 'Valkor, Bone Sovereign',
     portalStyle: 'sovereign_blaze',
     floorTexture: '/assets/sro/dun/tex/flame_floor.png', wallTexture: '/assets/sro/dun/tex/flame_wall.png',
     themeOverride: { floorColor: 0x803d2e, altFloorColor: 0x663024, wallColor: 0x994a38, trimColor: 0xfbbf24, torchColor: 0xfacc15, portalColor: 0xfbbf24 },
@@ -362,8 +423,8 @@ export const FLOOR_DEFINITIONS = [
     monsterTypes: ['flame_captain', 'flame_adjutant', 'flame_cow_king', 'flame_giant', 'flame_gigantic', 'flame_crazy', 'flame_witch', 'flame_archer', 'hyungno', 'hyeongcheon']
   },
   {
-    floor: 13, name: "Holy Water Temple B13F — Pharaoh's Hall", sroDungeon: 'holywater', decorProfile: 'holywater', layoutStyle: 'basilica_wings',
-    subtitle: 'Kutsal Su Tapınağı & Pharaoh Mezarı — Halls of Horus, Isis & Seth',
+    floor: 13, name: "Sunken Sun Sanctum B13F — Pharaoh's Hall", sroDungeon: 'holywater', decorProfile: 'holywater', layoutStyle: 'basilica_wings',
+    subtitle: 'Sunken Sun Sanctum & Pharaoh Vault — Halls of Solar Guardians',
     theme: 'boss', recommendedLevel: 44, isBossFloor: false,
     portalStyle: 'solar_pharaoh',
     floorTexture: '/assets/sro/dun/tex/holywater_floor.png', wallTexture: '/assets/sro/dun/tex/holywater_wall.png',
@@ -372,8 +433,8 @@ export const FLOOR_DEFINITIONS = [
     monsterTypes: ['sand_mummy', 'aker', 'anubis', 'heron', 'keisas', 'apriest', 'spector', 'sphinx', 'sandman', 'sd_raider', 'bastet', 'mont', 'sekhmet', 'haroeris', 'osiris', 'isis', 'neith', 'selkis', 'seth']
   },
   {
-    floor: 14, name: 'Jupiter Temple B14F — Hall of Worship', sroDungeon: 'jupiter', decorProfile: 'jupiter', layoutStyle: 'basilica_wings',
-    subtitle: 'Jupiter Tapınağı & Tanrıların Bahçesi — Sanctum of the Pantheon',
+    floor: 14, name: 'Stormspire Temple B14F — Hall of Worship', sroDungeon: 'jupiter', decorProfile: 'jupiter', layoutStyle: 'basilica_wings',
+    subtitle: 'Stormspire Temple & Celestial Gardens — Sanctum of the Spire',
     theme: 'boss', recommendedLevel: 48, isBossFloor: false,
     portalStyle: 'olympus_lightning',
     floorTexture: '/assets/sro/dun/tex/jupiter_floor.png', wallTexture: '/assets/sro/dun/tex/jupiter_wall.png',
@@ -382,9 +443,9 @@ export const FLOOR_DEFINITIONS = [
     monsterTypes: ['babilion', 'mino', 'griffin', 'charm_witch', 'fear_serpent', 'fanaticism', 'desire_watcher', 'devil_dog', 'dark_dog', 'devil_dark', 'immortal_warden', 'nike_lion', 'the_earth', 'yuno', 'jupiter_sentinel', 'baal']
   },
   {
-    floor: 15, name: "Shambhala Abyss B15F — Guardian's Chamber", sroDungeon: 'demon', decorProfile: 'demon', layoutStyle: 'tomb_grid',
-    subtitle: 'Koruyucunun Odası — Demon Shaitan Guards Roc Mountain Summit',
-    theme: 'boss', recommendedLevel: 52, isBossFloor: true, bossId: 'demon_shaitan', bossName: 'Demon Shaitan',
+    floor: 15, name: "Underworld Abyss B15F — Guardian's Chamber", sroDungeon: 'demon', decorProfile: 'demon', layoutStyle: 'tomb_grid',
+    subtitle: "Guardian's Chamber — Malakor, Ember Archfiend Guards the Celestial Summit",
+    theme: 'boss', recommendedLevel: 52, isBossFloor: true, bossId: 'demon_shaitan', bossName: 'Malakor, Ember Archfiend',
     portalStyle: 'shambhala_void',
     floorTexture: '/assets/sro/dun/tex/demon_floor.png', wallTexture: '/assets/sro/dun/tex/demon_wall.png',
     themeOverride: { floorColor: 0x613c4f, altFloorColor: 0x4c2d3d, wallColor: 0x7a4a62, trimColor: 0xf87171, torchColor: 0xef4444, portalColor: 0xa855f7 },
@@ -392,9 +453,9 @@ export const FLOOR_DEFINITIONS = [
     monsterTypes: ['wendigo', 'succubus', 'void_devil', 'dark_guardian', 'goat_demon', 'garm', 'shamoot', 'underworld_knight', 'shambhala_mage', 'narun', 'dm_soldier', 'andras']
   },
   {
-    floor: 16, name: 'Mountain Roc Peak — Sky Nest Sanctum', sroDungeon: 'roc_nest', decorProfile: 'roc_nest', layoutStyle: 'roc_sanctum',
-    subtitle: 'Roc Dağı Zirvesi (Roc Odası) — Final Confrontation',
-    theme: 'boss', recommendedLevel: 58, isBossFloor: true, isFinalBossFloor: true, bossId: 'roc', bossName: 'Roc',
+    floor: 16, name: 'Celestial Peak — Sky Nest Sanctum', sroDungeon: 'roc_nest', decorProfile: 'roc_nest', layoutStyle: 'roc_sanctum',
+    subtitle: 'Celestial Peak (Sky Nest) — Final Confrontation',
+    theme: 'boss', recommendedLevel: 58, isBossFloor: true, isFinalBossFloor: true, bossId: 'roc', bossName: 'Aetherion, Sky Sovereign',
     portalStyle: 'celestial_roc',
     floorTexture: '/assets/sro/dun/tex/roc_floor.png', wallTexture: '/assets/sro/dun/tex/roc_wall.png',
     themeOverride: { floorColor: 0x766c8f, altFloorColor: 0x5e5573, wallColor: 0x9185ad, trimColor: 0xfbbf24, torchColor: 0xfde047, portalColor: 0x38bdf8 },
@@ -403,8 +464,8 @@ export const FLOOR_DEFINITIONS = [
   },
   // Secret floors accessible via Secret Rift Portals in vault / special rooms
   {
-    floor: 101, name: 'Forgotten World — Togui Village S1F', sroDungeon: 'togui', decorProfile: 'togui', layoutStyle: 'cavern_branch',
-    subtitle: 'Unutulan Dünya (Togui Köyü) — Cursed Doll Shrine',
+    floor: 101, name: 'Forgotten Rift — Ashen Totem Hollow S1F', sroDungeon: 'togui', decorProfile: 'togui', layoutStyle: 'cavern_branch',
+    subtitle: 'Forgotten Rift (Ashen Totem Hollow) — Cursed Idol Shrine',
     theme: 'cave', recommendedLevel: 15, isBossFloor: false, isSecretFloor: true, returnFloor: 4,
     portalStyle: 'togui_mask',
     floorTexture: '/assets/sro/dun/tex/togui_floor.png', wallTexture: '/assets/sro/dun/tex/donhwang_wall.png',
@@ -413,8 +474,8 @@ export const FLOOR_DEFINITIONS = [
     monsterTypes: ['togui_doll', 'togui_boom', 'togui_soldier', 'togui_magic', 'togui_strong', 'togui_general', 'togui_elder', 'togui_chieftain']
   },
   {
-    floor: 102, name: 'Forgotten World — Shipwreck Hold S2F', sroDungeon: 'wreck', decorProfile: 'wreck', layoutStyle: 'stronghold_wing',
-    subtitle: 'Unutulan Dünya (Batık Kalyon) — Ghost Captain Vault',
+    floor: 102, name: 'Forgotten Rift — Dread Galleon Hold S2F', sroDungeon: 'wreck', decorProfile: 'wreck', layoutStyle: 'stronghold_wing',
+    subtitle: 'Forgotten Rift (Dread Galleon) — Ghost Captain Vault',
     theme: 'crypt', recommendedLevel: 30, isBossFloor: false, isSecretFloor: true, returnFloor: 7,
     portalStyle: 'ghost_galleon',
     floorTexture: '/assets/sro/dun/tex/wreck_floor.png', wallTexture: '/assets/sro/dun/tex/wreck_wall.png',
@@ -423,9 +484,9 @@ export const FLOOR_DEFINITIONS = [
     monsterTypes: ['ghost_pirate', 'ghost_marauder', 'ghost_beast', 'ghost_curse', 'ghost_gluttony', 'ghost_specter', 'ghost_seiren', 'ghost_undine', 'ghost_king_nipper', 'ghost_commander', 'ghost_wreck']
   },
   {
-    floor: 103, name: 'Qin-Shi Tomb B6F — Chamber of Medusa S3F', sroDungeon: 'qinshi_b6', decorProfile: 'qinshi_b6', layoutStyle: 'tomb_grid',
-    subtitle: 'Qin-Shi İmparatoru Mezarlığı Seviye 6 — Beyaz Yılan Tapınağı',
-    theme: 'ruins', recommendedLevel: 45, isBossFloor: true, bossId: 'medusa', bossName: 'Medusa', isSecretFloor: true, returnFloor: 10,
+    floor: 103, name: 'Sunken Crypt B6F — Chamber of Vespera S3F', sroDungeon: 'qinshi_b6', decorProfile: 'qinshi_b6', layoutStyle: 'tomb_grid',
+    subtitle: 'Sunken Crypt Deep Vault — Jade Serpent Shrine',
+    theme: 'ruins', recommendedLevel: 45, isBossFloor: true, bossId: 'medusa', bossName: 'Vespera, Venom Queen', isSecretFloor: true, returnFloor: 10,
     portalStyle: 'white_viper',
     floorTexture: '/assets/sro/dun/tex/qinshi_floor.png', wallTexture: '/assets/sro/dun/tex/qinshi_wall.png',
     themeOverride: { floorColor: 0x4b7063, altFloorColor: 0x3d5c51, wallColor: 0x658f80, trimColor: 0x34d399, torchColor: 0x34d399, portalColor: 0x10b981 },
@@ -514,11 +575,11 @@ export const CHALLENGE_TYPES = {
     overdriveGiant: true,
     color: 0xf97316,
     chestTiers: ['epic', 'boss', 'boss'],
-    desc: 'Taklamakan magma rains across the coliseum while fiery elites converge from every gate!'
+    desc: 'Sunspire magma rains across the coliseum while fiery elites converge from every gate!'
   },
   cursed_obelisk: {
     id: 'cursed_obelisk',
-    name: '70s Qin-Shi Cursed Siege',
+    name: '70s Sunken Obelisk Siege',
     duration: 70,
     waveInterval: 4.2,
     waveCount: 6,
@@ -565,7 +626,7 @@ export const VILLAGE_NPCS = [
     id: 'chief',
     npcId: 'chief',
     name: 'Elder Aldric',
-    title: 'Jangan Governor & Questmaster',
+    title: 'Governor of Oakhaven & Questmaster',
     role: 'chief',
     actionType: 'quest',
     x: -9.5,
@@ -573,8 +634,8 @@ export const VILLAGE_NPCS = [
     rotationY: 0.45,
     prompt: 'Speak with Elder Aldric (Quests, Chronicle & Bounties) [E]',
     dialogue: [
-      'Welcome to the walled metropolis of Jangan, adventurer. Evil chi rises from the ancient Chin Tomb and Donwhang ruins beyond the north pass.',
-      'Prove your strength against the Jangan wilds up to Level 10, clear every dungeon floor completely to break the ancient seals, and aid our guild masters.'
+      'Welcome to the walled haven of Oakhaven, adventurer. Dark corruption rises from the Sunken Mausoleum and Fungal Caverns beyond the north pass.',
+      'Prove your strength in the Oakhaven wilds up to Level 10, clear every dungeon floor completely to break the ancient seals, and aid our guild masters.'
     ]
   },
   {
@@ -590,7 +651,7 @@ export const VILLAGE_NPCS = [
     rotationY: Math.PI * 0.45,
     prompt: 'Trade with Blacksmith Gorn (Weapons, Shields & Armor) [E]',
     dialogue: [
-      'Forged in the western fires of Jangan! Upgrade your cold steel here before facing White Tigers or entering Donwhang Stone Cave.'
+      'Forged in the western fires of Oakhaven! Upgrade your cold steel here before facing Frostfang Tigers or entering the Fungal Echo Caverns.'
     ]
   },
   {
@@ -606,7 +667,7 @@ export const VILLAGE_NPCS = [
     rotationY: -Math.PI * 0.45,
     prompt: 'Trade with Alchemist Elara (Potions, Elixirs & Scrolls) [E]',
     dialogue: [
-      'Every seasoned traveler on the Silk Road carries Return Scrolls, Haste Drafts, and ample potions before leaving the city gates!'
+      'Every seasoned traveler along the trade roads carries Return Scrolls, Haste Drafts, and ample potions before leaving the city gates!'
     ]
   },
   {
@@ -621,7 +682,7 @@ export const VILLAGE_NPCS = [
     rotationY: Math.PI * 0.65,
     prompt: 'Train with Battle Master Kael (Skills, Passives & Quests) [K / E]',
     dialogue: [
-      'Even the Mangyang and Yeoha of Jangan strike with elemental techniques. Master your active combos and passive stances here!'
+      'Even the gremlins and bramblekin beyond Oakhaven strike with elemental techniques. Master your active combos and passive stances here!'
     ]
   },
   {
@@ -659,7 +720,7 @@ export const VILLAGE_NPCS = [
     id: 'pet_merchant',
     npcId: 'pet_merchant',
     name: 'Beast Tamer Zara',
-    title: 'Silkroad Companion & Stables Master',
+    title: 'Royal Companion & Stables Master',
     role: 'merchant',
     actionType: 'pet_shop',
     x: -34.5,
@@ -667,39 +728,39 @@ export const VILLAGE_NPCS = [
     rotationY: 0.45,
     prompt: 'Speak with Beast Tamer Zara (Pets & Quests) [E]',
     dialogue: [
-      'Fine Silkroad companions, tamed along the Jangan canals! Loyal grab spirits and ferocious tiger cubs await beside the western stables.'
+      'Fine royal companions, tamed along the Oakhaven canals! Loyal grab spirits and ferocious tiger cubs await beside the western stables.'
     ]
   },
   {
     id: 'accessory_trader',
     npcId: 'accessory_trader',
     shopId: 'accessory_trader',
-    name: 'Specialty Trader Jodaesan',
-    title: 'Silk Jewels, Talismans & Coffers',
+    name: 'Artifact Broker Orin',
+    title: 'Arcane Jewels, Talismans & Coffers',
     role: 'merchant',
     actionType: 'shop',
     x: 21.5,
     z: 28.5,
     rotationY: -0.55,
-    prompt: 'Trade with Specialty Trader Jodaesan (Accessories & Coffers) [E]',
+    prompt: 'Trade with Artifact Broker Orin (Accessories & Coffers) [E]',
     dialogue: [
-      'Finest jade rings, amulets, Magic Stones, and sealed coffers from Changan caravans! Take my caravan request if you head south-east.'
+      'Finest jade rings, amulets, Magic Stones, and sealed coffers from Oakhaven caravans! Take my caravan request if you head south-east.'
     ]
   },
   {
     id: 'hunter_master',
     npcId: 'hunter_master',
     shopId: 'hunter_master',
-    name: 'Hunter Associate Gwakwi',
+    name: 'Bounty Warden Garrik',
     title: 'Hunter Guild Master & Outskirts Armory',
     role: 'guard_spear',
     actionType: 'shop',
     x: 29.0,
     z: -10.5,
     rotationY: -Math.PI * 0.5,
-    prompt: 'Speak with Hunter Associate Gwakwi (Guild Armory & Bounties) [E]',
+    prompt: 'Speak with Bounty Warden Garrik (Guild Armory & Bounties) [E]',
     dialogue: [
-      'Black Robber scouts and Water Ghosts stalk the canal road! Stock up on Hunter Guild weapons and clear the Jangan roads!'
+      'Blackblade scouts and Brook Wraiths stalk the canal road! Stock up on Hunter Guild weapons and clear the Oakhaven roads!'
     ]
   }
 ];
@@ -783,6 +844,15 @@ export class DungeonGenerator {
     this._lightSources = [];
     this._lightPool = [];
     this._lightClock = 0;
+    this._questMarkerClock = 0;
+    this._obstacleGrid = new Map();
+    this._largeObstacles = [];
+    this._obstacleGridCount = -1;
+    this._obstacleGridRef = null;
+    this._lightBestIdx = [];
+    this._lightBestDist = [];
+    this._lightFree = [];
+    this._lightTaken = new Set();
     this._batch = null;
     this._wallTiles = [];
     this.unlockedMaxFloor = 1;
@@ -904,6 +974,12 @@ export class DungeonGenerator {
     this.exitLockedByClear = false;
     this._lightSources = [];
     this._lightPool = [];
+    this._lightClock = 0;
+    this._questMarkerClock = 0;
+    this._obstacleGrid.clear();
+    this._largeObstacles.length = 0;
+    this._obstacleGridCount = -1;
+    this._obstacleGridRef = null;
     this._batch = null;
     this._wallTiles = [];
   }
@@ -1052,9 +1128,7 @@ export class DungeonGenerator {
     const dungeonPortalMesh = (this.models3d?.createPortalMesh || createPortalMesh)({ color: 0x38bdf8, portalStyle: 'jade_gate' }, 'dungeon');
     dungeonPortalMesh.position.set(dpPos.x, 0, dpPos.z);
     this.rootGroup.add(dungeonPortalMesh);
-    if (this.renderer?.addPointLight) {
-      this.renderer.addPointLight(new THREE.Vector3(dpPos.x, 1.8, dpPos.z), 0x38bdf8, 2.2, 14, true);
-    }
+    this._lightSources.push({ x: dpPos.x, y: 1.8, z: dpPos.z, color: 0x38bdf8, intensity: 2.2, distance: 14 });
 
     this.portals.push({
       id: 'dungeon_entrance',
@@ -1153,6 +1227,7 @@ export class DungeonGenerator {
     ];
 
     this.spawnPoint = vb?.spawnPoint ? { ...vb.spawnPoint } : { x: 0, y: 0, z: 7.5 };
+    this._createLightPool();
     return this.getFloorState();
   }
 
@@ -1196,6 +1271,9 @@ export class DungeonGenerator {
     this.villageBuild = vb;
     this.rootGroup.add(vb.group);
     for (const o of vb.obstacles) this.solidObstacles.push(o);
+    if (Array.isArray(vb.lightSources)) {
+      for (const ls of vb.lightSources) this._lightSources.push(ls);
+    }
     return vb;
   }
 
@@ -1739,20 +1817,7 @@ vFloorWorldXZ = (modelMatrix * floorWp).xz;`
     };
 
     const applySurfaceTexture = (mat, texUrl) => {
-      if (typeof window === 'undefined' || !texUrl) return;
-      try {
-        const texLoader = new THREE.TextureLoader();
-        texLoader.load(texUrl, (tex) => {
-          tex.wrapS = THREE.RepeatWrapping;
-          tex.wrapT = THREE.RepeatWrapping;
-          tex.repeat.set(1, 1);
-          tex.colorSpace = THREE.SRGBColorSpace;
-          mat.map = tex;
-          mat.needsUpdate = true;
-        });
-      } catch (e) {
-        // Safe fallback in headless/test environments
-      }
+      applyCachedSurfaceTexture(mat, texUrl);
     };
 
     // Apply authentic Silkroad dungeon floor texture extracted from SilkroadTR Data.pk2
@@ -2042,14 +2107,14 @@ vFloorWorldXZ = (modelMatrix * floorWp).xz;`
         this._decorateBossArena(room, floorNum);
       }
 
-      // Breakables: Yerleşim kesinlikle kapı/koridor ağızlarından uzak (>= 4.5m), derin duvar kenarlarına ve kör köşelerine yakın
+      // Breakables: keep clear of doorways/corridor mouths (>= 4.5m), tucked near deep walls and blind corners
       if (room.type !== 'start' && room.type !== 'trap') {
         const breakTypes = (this.theme.breakableTypes || ['barrel', 'crate', 'urn']).filter((t) => t !== 'crystal');
         const targetCount = 3 + Math.floor(rand() * 3);
         let placed = 0;
         let attempts = 0;
 
-        // Odaya bağlanan kapı ve koridor geçiş noktalarını topla (eşikler ve açıklıklar)
+        // Collect doorway and corridor transition points connected to this room
         const roomDoorways = [];
         for (let gx = room.gx; gx < room.gx + room.gw; gx++) {
           const tN = this.getTileAtGrid(gx, room.gz - 1);
@@ -2080,7 +2145,7 @@ vFloorWorldXZ = (modelMatrix * floorWp).xz;`
         }
 
         const isSafeSpot = (bx, bz) => {
-          // 1. Duvardan uzaklık kontrolü (kesinlikle 0.7 - 1.25 birim aralığında olmalı)
+          // 1. Distance from wall check (must stay within 0.68 - 1.25 units)
           const dW = bx - room.x;
           const dE = (room.x + room.w) - bx;
           const dN = bz - room.z;
@@ -2088,26 +2153,26 @@ vFloorWorldXZ = (modelMatrix * floorWp).xz;`
           const distToWall = Math.min(dW, dE, dN, dS);
           if (distToWall < 0.68 || distToWall > 1.25) return false;
 
-          // 2. Odanın orta alanı dövüş ve hareket için temiz, ferah kalsın
+          // 2. Keep center of the room open for combat and movement
           if (Math.hypot(bx - room.centerX, bz - room.centerZ) < 3.2) return false;
 
-          // 3. Grid tile kontrolü (zemin üzerinde olmalı)
+          // 3. Grid tile check (must rest on floor tile)
           const { gx, gz } = this.worldToGrid(bx, bz);
           if (this.getTileAtGrid(gx, gz) !== TILE.FLOOR) return false;
 
-          // 4. Kapı veya koridor açıklıklarına yakın olmamalı (sıkı denetim pad = 3)
+          // 4. Must not sit near door or corridor openings (strict pad = 3)
           if (nearOpening(this, bx, bz, 3)) return false;
 
-          // 5. Odaların kapı geçiş noktalarından (kapı eşiklerinden) en az 4.5 birim uzakta olmalı
+          // 5. Must stay at least 4.5 units away from room doorway thresholds
           for (let i = 0; i < roomDoorways.length; i++) {
             const dw = roomDoorways[i];
             if (Math.hypot(bx - dw.x, bz - dw.z) < 4.5) return false;
           }
 
-          // 6. Diğer engeller, reserved alanlar, sandıklar, portallar ile çakışmamalı
+          // 6. Must not overlap other obstacles, reserved zones, chests, or portals
           if (!this._spotFree(bx, bz, 0.48, 3)) return false;
 
-          // 7. Daha önce yerleştirilmiş diğer breakable'larla çakışmamalı
+          // 7. Must not overlap previously placed breakables
           if (this.breakables.some((b) => Math.hypot(bx - b.x, bz - b.z) < 0.65)) return false;
 
           return true;
@@ -2120,7 +2185,7 @@ vFloorWorldXZ = (modelMatrix * floorWp).xz;`
           { cx: room.x + room.w, cz: room.z + room.h, sx: -1, sz: -1 }
         ];
 
-        // Kapılardan ve koridorlardan uzak kör köşeleri belirle
+        // Identify blind corners far from doors and corridors
         const blindCorners = corners.filter((c) => {
           if (roomDoorways.some((dw) => Math.hypot(c.cx - dw.x, c.cz - dw.z) < 4.8)) return false;
           if (nearOpening(this, c.cx + c.sx * 1.2, c.cz + c.sz * 1.2, 3)) return false;
@@ -2132,10 +2197,10 @@ vFloorWorldXZ = (modelMatrix * floorWp).xz;`
           attempts++;
           let candX = 0;
           let candZ = 0;
-          const wallDist = 0.78 + rand() * 0.38; // 0.78 ~ 1.16 birim
+          const wallDist = 0.78 + rand() * 0.38; // 0.78 ~ 1.16 units
 
           if (rand() < 0.65 && pickCorners.length > 0) {
-            // Kör köşe kümelenmesi
+            // Blind corner cluster
             const corner = pickCorners[Math.floor(rand() * pickCorners.length)];
             const mode = rand();
             if (mode < 0.45) {
@@ -2149,22 +2214,22 @@ vFloorWorldXZ = (modelMatrix * floorWp).xz;`
               candZ = corner.cz + corner.sz * (wallDist + 0.35);
             }
           } else {
-            // Derin duvar kenarı boyunca dizilim
+            // Deep wall-edge line-up
             const side = Math.floor(rand() * 4);
             if (side === 0) {
-              // Kuzey duvarı
+              // North wall
               candZ = room.z + wallDist;
               candX = room.x + 3.0 + rand() * Math.max(1, room.w - 6.0);
             } else if (side === 1) {
-              // Güney duvarı
+              // South wall
               candZ = room.z + room.h - wallDist;
               candX = room.x + 3.0 + rand() * Math.max(1, room.w - 6.0);
             } else if (side === 2) {
-              // Batı duvarı
+              // West wall
               candX = room.x + wallDist;
               candZ = room.z + 3.0 + rand() * Math.max(1, room.h - 6.0);
             } else {
-              // Doğu duvarı
+              // East wall
               candX = room.x + room.w - wallDist;
               candZ = room.z + 3.0 + rand() * Math.max(1, room.h - 6.0);
             }
@@ -2671,24 +2736,58 @@ vFloorWorldXZ = (modelMatrix * floorWp).xz;`
   /** Re-point the pooled PointLights at the emissive sources nearest the player (call every ~0.25 s). */
   _updateLightBudget(playerPos) {
     const pool = this._lightPool;
-    if (!pool.length || !playerPos) return;
+    const sources = this._lightSources;
+    if (!pool.length || !sources.length || !playerPos) return;
     const px = Number(playerPos.x ?? playerPos.position?.x ?? 0);
     const pz = Number(playerPos.z ?? playerPos.position?.z ?? 0);
-    const scored = this._lightSources.map((s, i) => ({ i, d: (s.x - px) * (s.x - px) + (s.z - pz) * (s.z - pz) }));
-    scored.sort((a, b) => a.d - b.d);
-    const want = scored.slice(0, pool.length).map((s) => s.i);
-    const wantSet = new Set(want);
-    const taken = new Set();
-    const free = [];
-    for (const slot of pool) {
-      if (wantSet.has(slot.src)) { taken.add(slot.src); slot.target = 1; } else free.push(slot);
+
+    const kMax = Math.min(pool.length, sources.length);
+    const bestIdx = this._lightBestIdx;
+    const bestDist = this._lightBestDist;
+    bestIdx.length = 0;
+    bestDist.length = 0;
+
+    for (let i = 0; i < sources.length; i++) {
+      const s = sources[i];
+      const dx = s.x - px;
+      const dz = s.z - pz;
+      const d = dx * dx + dz * dz;
+      const len = bestIdx.length;
+      if (len < kMax || d < bestDist[len - 1]) {
+        let pos = len < kMax ? len : len - 1;
+        while (pos > 0 && d < bestDist[pos - 1]) {
+          bestDist[pos] = bestDist[pos - 1];
+          bestIdx[pos] = bestIdx[pos - 1];
+          pos--;
+        }
+        bestDist[pos] = d;
+        bestIdx[pos] = i;
+      }
     }
+
+    const wantSet = this._lightTaken;
+    wantSet.clear();
+    for (let i = 0; i < bestIdx.length; i++) wantSet.add(bestIdx[i]);
+
+    const free = this._lightFree;
+    free.length = 0;
+    for (let i = 0; i < pool.length; i++) {
+      const slot = pool[i];
+      if (wantSet.has(slot.src)) {
+        wantSet.delete(slot.src);
+        slot.target = 1;
+      } else {
+        free.push(slot);
+      }
+    }
+
     let k = 0;
-    for (const idx of want) {
-      if (taken.has(idx)) continue;
+    for (let i = 0; i < bestIdx.length; i++) {
+      const idx = bestIdx[i];
+      if (!wantSet.has(idx)) continue;
       const slot = free[k++];
       if (!slot) break;
-      const src = this._lightSources[idx];
+      const src = sources[idx];
       slot.src = idx;
       slot.level = 0;
       slot.target = 1;
@@ -2753,16 +2852,16 @@ vFloorWorldXZ = (modelMatrix * floorWp).xz;`
 
     // Locked Boss Gate at the entrance corridor archway to the Boss Chamber (Final Floor 16 opens straight into the Sanctum)
     const BOSS_GATE_NAMES = {
-      donhwang: 'Donwhang Cave Seal Gate',
-      karakoram: 'Karakoram Black Robber Gate',
-      qinshi: 'Qin-Shi Seal Gate',
-      qinshi_b6: 'Medusa Chamber Seal Gate',
-      flame: 'Flame Mountain Magma Gate',
-      holywater: 'Holy Water Sanctum Gate',
-      jupiter: 'Jupiter Inner Sanctum Gate',
-      demon: 'Shambhala Guardian Gate',
-      togui: 'Togui Elder Gate',
-      wreck: 'Sunken Captain Gate'
+      donhwang: 'Fungal Cavern Seal Gate',
+      karakoram: 'Blackblade Stronghold Gate',
+      qinshi: 'Sunken Mausoleum Seal Gate',
+      qinshi_b6: 'Vespera Sanctum Seal Gate',
+      flame: 'Caldera Sanctum Magma Gate',
+      holywater: 'Sunken Sun Sanctum Gate',
+      jupiter: 'Stormspire Inner Sanctum Gate',
+      demon: 'Abyssal Guardian Gate',
+      togui: 'Ashen Chieftain Gate',
+      wreck: 'Dread Captain Gate'
     };
     if (entrance && floorNum !== 16) {
       const gateId = `f${floorNum}_boss_gate`;
@@ -2808,7 +2907,7 @@ vFloorWorldXZ = (modelMatrix * floorWp).xz;`
       name: isFinalFloor
         ? 'Victory Rift to Oakhaven'
         : leadsToFinalBoss
-          ? 'Abyssal Gate to Mountain Roc Peak — Sky Nest'
+          ? 'Abyssal Gate to Celestial Peak — Sky Nest'
           : `Abyssal Rift to Floor ${floorNum + 1}`,
       targetFloor: isFinalFloor ? 0 : floorNum + 1,
       lockedByBoss: true,
@@ -2820,7 +2919,7 @@ vFloorWorldXZ = (modelMatrix * floorWp).xz;`
       prompt: isFinalFloor
         ? 'Victory Complete! Return to Oakhaven [E]'
         : leadsToFinalBoss
-          ? 'Enter Mountain Roc Peak — Sky Nest [E]'
+          ? 'Enter Celestial Peak — Sky Nest [E]'
           : `Enter Rift to Floor ${floorNum + 1} [E]`,
       mesh: nextPortalMesh
     });
@@ -2872,9 +2971,7 @@ vFloorWorldXZ = (modelMatrix * floorWp).xz;`
     const mesh = (this.models3d?.createTorchMesh || createTorchMesh)(color);
     mesh.position.set(x, 0.85, z);
     this.rootGroup.add(mesh);
-    if (this.renderer?.addPointLight && this.torches.length < 32) {
-      this.renderer.addPointLight(new THREE.Vector3(x, 2.2, z), color, 2.5, 18.0, true);
-    }
+    this._lightSources.push({ x, y: 2.2, z, color, intensity: 2.5, distance: 18.0 });
     this.torches.push({ x, y: 0.85, z, color, mesh });
   }
 
@@ -2884,9 +2981,7 @@ vFloorWorldXZ = (modelMatrix * floorWp).xz;`
     mesh.position.set(x, 0, z);
     this.rootGroup.add(mesh);
 
-    if (this.renderer?.addPointLight) {
-      this.renderer.addPointLight(new THREE.Vector3(x, 1.4, z), 0xfbbf24, 1.5, 9.0, false);
-    }
+    this._lightSources.push({ x, y: 1.4, z, color: 0xfbbf24, intensity: 1.5, distance: 9.0 });
 
     const chestObj = {
       id,
@@ -2935,7 +3030,7 @@ vFloorWorldXZ = (modelMatrix * floorWp).xz;`
   }
 
   _spawnBreakable(x, z, kind = 'barrel', id = null) {
-    // Küçük mavi kristalleri kırılabilir nesne olarak kaldır - temaya uygun fallback yap
+    // Replace small crystal breakables with a theme-appropriate fallback prop
     let validKind = kind;
     if (validKind === 'crystal') {
       validKind = (this.theme?.breakableTypes && this.theme.breakableTypes[0]) || 'barrel';
@@ -3165,6 +3260,34 @@ vFloorWorldXZ = (modelMatrix * floorWp).xz;`
     return this.isWalkable(posOrX, zOrRadius, maybeRadius);
   }
 
+  _ensureObstacleGrid() {
+    const obs = this.solidObstacles;
+    if (this._obstacleGridRef === obs && this._obstacleGridCount === obs.length) {
+      return;
+    }
+    this._obstacleGrid.clear();
+    this._largeObstacles.length = 0;
+    for (let i = 0; i < obs.length; i++) {
+      const o = obs[i];
+      const r = o.radius || 0.5;
+      if (r > 1.5) {
+        this._largeObstacles.push(o);
+        continue;
+      }
+      const cx = Math.floor(o.x * 0.25) + 4096;
+      const cz = Math.floor(o.z * 0.25) + 4096;
+      const key = (cx << 13) | cz;
+      let bucket = this._obstacleGrid.get(key);
+      if (!bucket) {
+        bucket = [];
+        this._obstacleGrid.set(key, bucket);
+      }
+      bucket.push(o);
+    }
+    this._obstacleGridRef = obs;
+    this._obstacleGridCount = obs.length;
+  }
+
   /**
    * Check whether a circle at (x, z) with given radius can stand on walkable ground
    */
@@ -3174,21 +3297,14 @@ vFloorWorldXZ = (modelMatrix * floorWp).xz;`
     const z = parsed.z;
     const radius = parsed.isObject ? Number(parsed.extra ?? 0.4) : Number(maybeRadius ?? 0.4);
 
-    // Check 4 cardinal perimeter points + center against tile grid
-    const sampleOffsets = [
-      [0, 0],
-      [radius, 0],
-      [-radius, 0],
-      [0, radius],
-      [0, -radius],
-      [radius * 0.7, radius * 0.7],
-      [-radius * 0.7, radius * 0.7],
-      [radius * 0.7, -radius * 0.7],
-      [-radius * 0.7, -radius * 0.7]
-    ];
-
-    for (const [ox, oz] of sampleOffsets) {
-      const { gx, gz } = this.worldToGrid(x + ox, z + oz);
+    // Check 4 cardinal perimeter points + center against tile grid (inlined worldToGrid)
+    const invTile = 1 / this.tileSize;
+    const oxBase = this.originX;
+    const ozBase = this.originZ;
+    for (let i = 0; i < UNIT_WALK_OFFSETS.length; i++) {
+      const off = UNIT_WALK_OFFSETS[i];
+      const gx = Math.floor((x + off[0] * radius - oxBase) * invTile);
+      const gz = Math.floor((z + off[1] * radius - ozBase) * invTile);
       const tile = this.getTileAtGrid(gx, gz);
       if (tile === TILE.WALL || tile === TILE.VOID || tile === TILE.DOOR_CLOSED || tile === TILE.PIT) {
         return false;
@@ -3196,22 +3312,54 @@ vFloorWorldXZ = (modelMatrix * floorWp).xz;`
     }
 
     // Check closed gates
-    for (const gate of this.gates) {
-      if (!gate.isOpen && Math.hypot(x - gate.x, z - gate.z) < gate.radius + radius * 0.6) {
+    for (let i = 0; i < this.gates.length; i++) {
+      const gate = this.gates[i];
+      if (gate.isOpen) continue;
+      const dx = x - gate.x;
+      const dz = z - gate.z;
+      const minR = gate.radius + radius * 0.6;
+      if (dx * dx + dz * dz < minR * minR) {
         return false;
       }
     }
 
-    // Check solid obstacles (fountain, pillars, unopened chests, NPCs)
-    for (const obs of this.solidObstacles) {
-      if (Math.hypot(x - obs.x, z - obs.z) < obs.radius + radius * 0.75) {
+    // Check solid obstacles (spatial hash grid CELL = 4m + large obstacles)
+    this._ensureObstacleGrid();
+    for (let i = 0; i < this._largeObstacles.length; i++) {
+      const obs = this._largeObstacles[i];
+      const dx = x - obs.x;
+      const dz = z - obs.z;
+      const minR = obs.radius + radius * 0.75;
+      if (dx * dx + dz * dz < minR * minR) {
         return false;
+      }
+    }
+    const cx = Math.floor(x * 0.25) + 4096;
+    const cz = Math.floor(z * 0.25) + 4096;
+    for (let ox = -1; ox <= 1; ox++) {
+      for (let oz = -1; oz <= 1; oz++) {
+        const bucket = this._obstacleGrid.get(((cx + ox) << 13) | (cz + oz));
+        if (!bucket) continue;
+        for (let bi = 0; bi < bucket.length; bi++) {
+          const obs = bucket[bi];
+          const dx = x - obs.x;
+          const dz = z - obs.z;
+          const minR = obs.radius + radius * 0.75;
+          if (dx * dx + dz * dz < minR * minR) {
+            return false;
+          }
+        }
       }
     }
 
     // Check unbroken breakables
-    for (const brk of this.breakables) {
-      if (!brk.destroyed && Math.hypot(x - brk.x, z - brk.z) < brk.radius + radius * 0.65) {
+    for (let i = 0; i < this.breakables.length; i++) {
+      const brk = this.breakables[i];
+      if (brk.destroyed) continue;
+      const dx = x - brk.x;
+      const dz = z - brk.z;
+      const minR = brk.radius + radius * 0.65;
+      if (dx * dx + dz * dz < minR * minR) {
         return false;
       }
     }
@@ -3233,20 +3381,78 @@ vFloorWorldXZ = (modelMatrix * floorWp).xz;`
     let collided = false;
     const normal = { x: 0, z: 0 };
 
-    // Push out of circular obstacles (pillars, fountain, closed gates, unbroken barrels)
-    const allCircles = [
-      ...this.solidObstacles,
-      ...this.gates.filter((g) => !g.isOpen),
-      ...this.breakables.filter((b) => !b.destroyed)
-    ];
-
-    for (const obs of allCircles) {
+    // Push out of circular obstacles via spatial grid (zero array spreads/filters)
+    this._ensureObstacleGrid();
+    for (let i = 0; i < this._largeObstacles.length; i++) {
+      const obs = this._largeObstacles[i];
       const dx = x - obs.x;
       const dz = z - obs.z;
-      const dist = Math.hypot(dx, dz);
       const minDist = (obs.radius || 0.5) + radius * 0.8;
-      if (dist < minDist) {
+      const distSq = dx * dx + dz * dz;
+      if (distSq < minDist * minDist) {
         collided = true;
+        const dist = Math.sqrt(distSq);
+        const nx = dist > 0.0001 ? dx / dist : 1;
+        const nz = dist > 0.0001 ? dz / dist : 0;
+        x = obs.x + nx * minDist;
+        z = obs.z + nz * minDist;
+        normal.x = nx;
+        normal.z = nz;
+      }
+    }
+    const cx = Math.floor(x * 0.25) + 4096;
+    const cz = Math.floor(z * 0.25) + 4096;
+    for (let ox = -1; ox <= 1; ox++) {
+      for (let oz = -1; oz <= 1; oz++) {
+        const bucket = this._obstacleGrid.get(((cx + ox) << 13) | (cz + oz));
+        if (!bucket) continue;
+        for (let bi = 0; bi < bucket.length; bi++) {
+          const obs = bucket[bi];
+          const dx = x - obs.x;
+          const dz = z - obs.z;
+          const minDist = (obs.radius || 0.5) + radius * 0.8;
+          const distSq = dx * dx + dz * dz;
+          if (distSq < minDist * minDist) {
+            collided = true;
+            const dist = Math.sqrt(distSq);
+            const nx = dist > 0.0001 ? dx / dist : 1;
+            const nz = dist > 0.0001 ? dz / dist : 0;
+            x = obs.x + nx * minDist;
+            z = obs.z + nz * minDist;
+            normal.x = nx;
+            normal.z = nz;
+          }
+        }
+      }
+    }
+    for (let i = 0; i < this.gates.length; i++) {
+      const obs = this.gates[i];
+      if (obs.isOpen) continue;
+      const dx = x - obs.x;
+      const dz = z - obs.z;
+      const minDist = (obs.radius || 0.5) + radius * 0.8;
+      const distSq = dx * dx + dz * dz;
+      if (distSq < minDist * minDist) {
+        collided = true;
+        const dist = Math.sqrt(distSq);
+        const nx = dist > 0.0001 ? dx / dist : 1;
+        const nz = dist > 0.0001 ? dz / dist : 0;
+        x = obs.x + nx * minDist;
+        z = obs.z + nz * minDist;
+        normal.x = nx;
+        normal.z = nz;
+      }
+    }
+    for (let i = 0; i < this.breakables.length; i++) {
+      const obs = this.breakables[i];
+      if (obs.destroyed) continue;
+      const dx = x - obs.x;
+      const dz = z - obs.z;
+      const minDist = (obs.radius || 0.5) + radius * 0.8;
+      const distSq = dx * dx + dz * dz;
+      if (distSq < minDist * minDist) {
+        collided = true;
+        const dist = Math.sqrt(distSq);
         const nx = dist > 0.0001 ? dx / dist : 1;
         const nz = dist > 0.0001 ? dz / dist : 0;
         x = obs.x + nx * minDist;
@@ -3256,20 +3462,25 @@ vFloorWorldXZ = (modelMatrix * floorWp).xz;`
       }
     }
 
-    // Check wall tile collisions around (x, z)
-    const { gx, gz } = this.worldToGrid(x, z);
-    const halfTile = this.tileSize * 0.5;
+    // Check wall tile collisions around (x, z) with inlined grid math
+    const tileSize = this.tileSize;
+    const invTile = 1 / tileSize;
+    const gx = Math.floor((x - this.originX) * invTile);
+    const gz = Math.floor((z - this.originZ) * invTile);
+    const halfTile = tileSize * 0.5;
+    const rSq = radius * radius;
 
     for (let tz = gz - 1; tz <= gz + 1; tz++) {
+      const tileCenterZ = this.originZ + (tz + 0.5) * tileSize;
+      const minZ = tileCenterZ - halfTile;
+      const maxZ = tileCenterZ + halfTile;
       for (let tx = gx - 1; tx <= gx + 1; tx++) {
         const tile = this.getTileAtGrid(tx, tz);
         if (tile !== TILE.WALL && tile !== TILE.VOID && tile !== TILE.DOOR_CLOSED) continue;
 
-        const tileCenter = this.gridToWorld(tx, tz);
-        const minX = tileCenter.x - halfTile;
-        const maxX = tileCenter.x + halfTile;
-        const minZ = tileCenter.z - halfTile;
-        const maxZ = tileCenter.z + halfTile;
+        const tileCenterX = this.originX + (tx + 0.5) * tileSize;
+        const minX = tileCenterX - halfTile;
+        const maxX = tileCenterX + halfTile;
 
         const closestX = Math.max(minX, Math.min(x, maxX));
         const closestZ = Math.max(minZ, Math.min(z, maxZ));
@@ -3277,7 +3488,7 @@ vFloorWorldXZ = (modelMatrix * floorWp).xz;`
         const dz = z - closestZ;
         const distSq = dx * dx + dz * dz;
 
-        if (distSq < radius * radius) {
+        if (distSq < rSq) {
           collided = true;
           const dist = Math.sqrt(distSq);
           if (dist > 0.0001) {
@@ -3726,8 +3937,10 @@ vFloorWorldXZ = (modelMatrix * floorWp).xz;`
       if (b.destroyed) return false;
       const dx = b.x - ox;
       const dz = b.z - oz;
-      const dist = Math.hypot(dx, dz);
-      if (dist > range + b.radius) return false;
+      const maxR = range + b.radius;
+      const distSq = dx * dx + dz * dz;
+      if (distSq > maxR * maxR) return false;
+      const dist = Math.sqrt(distSq);
       if (dist < 0.65) return true;
       const dot = (dx / dist) * forwardX + (dz / dist) * forwardZ;
       return dot >= halfCos;
@@ -4073,6 +4286,7 @@ vFloorWorldXZ = (modelMatrix * floorWp).xz;`
     // Update room explored flag when player walks into or near a room
     if (px !== null && pz !== null) {
       for (const room of this.rooms) {
+        if (room.explored) continue;
         if (
           px >= room.x - 4 &&
           px <= room.x + room.w + 4 &&
@@ -4084,10 +4298,22 @@ vFloorWorldXZ = (modelMatrix * floorWp).xz;`
       }
     }
 
-    // Animate NPCs & update quest markers if available
-    for (const npc of this.npcs) {
+    const hasPos = px !== null && pz !== null;
+    const cullSq = 36 * 36;
+    this._questMarkerClock += dt;
+    const checkQuestMarkers = this._questMarkerClock >= 0.25;
+    if (checkQuestMarkers) this._questMarkerClock = 0;
+    const questsSys = checkQuestMarkers ? (this.gameContext?.quests || this.gameContext?.gameState?.quests) : null;
+
+    // Animate NPCs & update quest markers if available (distance-culled)
+    for (let i = 0; i < this.npcs.length; i++) {
+      const npc = this.npcs[i];
+      if (hasPos) {
+        const dx = npc.x - px;
+        const dz = npc.z - pz;
+        if (dx * dx + dz * dz >= cullSq) continue;
+      }
       npc.mesh?.userData?.animate?.(time, dt);
-      const questsSys = this.gameContext?.quests || this.gameContext?.gameState?.quests;
       if (questsSys?.getNpcMarker && npc.mesh?.userData?.setQuestMarker) {
         npc.mesh.userData.setQuestMarker(questsSys.getNpcMarker(npc.id));
       }
@@ -4096,21 +4322,41 @@ vFloorWorldXZ = (modelMatrix * floorWp).xz;`
     if (this.villageBuild) this.villageBuild.update(dt, time, playerPos);
 
     if (this.currentFloor === 0 && px !== null && pz !== null) {
-      const distToHotSprings = Math.hypot(px - HOT_SPRINGS.center.x, pz - HOT_SPRINGS.center.z);
-      if (distToHotSprings <= HOT_SPRINGS.radius) {
+      const hsDx = px - HOT_SPRINGS.center.x;
+      const hsDz = pz - HOT_SPRINGS.center.z;
+      if (hsDx * hsDx + hsDz * hsDz <= HOT_SPRINGS.radius * HOT_SPRINGS.radius) {
         const gs = this.context?.gameState || this.gameContext?.gameState;
         gs?.soakInHotSprings?.(dt);
       }
     }
 
-    // Animate Portals, Torches, Chests, Shrines, and Ground Loot
-    for (const portal of this.portals) {
+    // Animate Portals, Torches, PuzzleProps, Chests, Shrines, and Ground Loot (distance-culled at 36m)
+    for (let i = 0; i < this.portals.length; i++) {
+      const portal = this.portals[i];
+      if (hasPos) {
+        const dx = portal.x - px;
+        const dz = portal.z - pz;
+        if (dx * dx + dz * dz >= cullSq) continue;
+      }
       portal.mesh?.userData?.animate?.(time, dt);
     }
-    for (const torch of this.torches) {
-      torch.mesh?.userData?.animate?.(time, dt);
+    for (let i = 0; i < this.torches.length; i++) {
+      const torch = this.torches[i];
+      if (!torch.mesh) continue;
+      if (hasPos) {
+        const dx = torch.x - px;
+        const dz = torch.z - pz;
+        if (dx * dx + dz * dz >= cullSq) continue;
+      }
+      torch.mesh.userData?.animate?.(time, dt);
     }
-    for (const p of this.puzzleProps) {
+    for (let i = 0; i < this.puzzleProps.length; i++) {
+      const p = this.puzzleProps[i];
+      if (hasPos) {
+        const dx = (p.x || 0) - px;
+        const dz = (p.z || 0) - pz;
+        if (dx * dx + dz * dz >= cullSq) continue;
+      }
       p.mesh?.userData?.animate?.(time, dt);
     }
     if (this._lightPool.length) {
@@ -4122,7 +4368,13 @@ vFloorWorldXZ = (modelMatrix * floorWp).xz;`
       }
       this._tickLightPool(dt, time);
     }
-    for (const chest of this.chests) {
+    for (let i = 0; i < this.chests.length; i++) {
+      const chest = this.chests[i];
+      if (hasPos) {
+        const dx = chest.x - px;
+        const dz = chest.z - pz;
+        if (dx * dx + dz * dz >= cullSq) continue;
+      }
       chest.mesh?.userData?.animate?.(time, dt);
     }
     for (const shrine of this.shrines) {
@@ -4166,9 +4418,6 @@ vFloorWorldXZ = (modelMatrix * floorWp).xz;`
           loot.mesh.position.z = loot.targetZ;
           loot.mesh.position.y = 0.25 + Math.sin(time * 3 + (loot.startX || 0)) * 0.06;
           loot.mesh.userData?.animate?.(time, dt);
-          if (loot.mesh.userData?.orbitGroup) {
-            loot.mesh.userData.orbitGroup.rotation.y += dt * 2.4;
-          }
         }
         if (loot.position) {
           loot.position.x = loot.targetX;

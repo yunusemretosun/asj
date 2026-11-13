@@ -22,31 +22,31 @@ export const BASIC_COMBO = [
 
 /** Canonical ASJ skill definitions (Battle & Passive trees). */
 export const SKILL_DEFS = {
-  // ============================================================== BATTLE TREE (KNIGHT / BICHEON)
+  // ============================================================== BATTLE TREE (KNIGHT / AEGIS)
   // Row 0 (Tier 1)
   power_strike: {
-    id: 'power_strike', name: 'Soul Cut — Bicheon Smash', icon: '/assets/sro/icons/skills/sword_smash_a.png', sroCode: 'SKILL_CH_SWORD_SMASH_A', tree: 'Knight', classes: ['knight'], type: 'active', kind: 'melee_arc',
+    id: 'power_strike', name: 'Soul Cut — Aegis Smash', icon: '/assets/sro/icons/skills/sword_smash_a.png', sroCode: 'SKILL_CH_SWORD_SMASH_A', tree: 'Knight', classes: ['knight'], type: 'active', kind: 'melee_arc',
     tier: 1, row: 0, col: 0, maxLevel: 10, reqLevel: 1, requires: [],
     spCostBase: 8, spCostPerLv: 1.5, cooldown: 2.6, cooldownPerLv: -0.08,
     multBase: 3.1, multPerLv: 0.36, critBonus: 15, range: 3.5, radius: 3.5, angle: 2.2, knockback: 3.5, stun: 0.9,
     color: '#fbbf24', vfx: 'slash_arc', shake: 0.3,
-    desc: 'Unleash the iconic Bicheon jumping downward smash with +15% Crit Rate, heavy burst damage and stun.',
+    desc: 'Unleash the iconic Aegis jumping downward smash with +15% Crit Rate, heavy burst damage and stun.',
   },
   whirlwind: {
-    id: 'whirlwind', name: 'Illusion Chain — Bicheon Flurry', icon: '/assets/sro/icons/skills/sword_chain_a.png', sroCode: 'SKILL_CH_SWORD_CHAIN_A', tree: 'Knight', classes: ['knight'], type: 'active', kind: 'nova',
+    id: 'whirlwind', name: 'Illusion Chain — Aegis Flurry', icon: '/assets/sro/icons/skills/sword_chain_a.png', sroCode: 'SKILL_CH_SWORD_CHAIN_A', tree: 'Knight', classes: ['knight'], type: 'active', kind: 'nova',
     tier: 1, row: 0, col: 1, maxLevel: 10, reqLevel: 2, requires: [],
     spCostBase: 12, spCostPerLv: 2, cooldown: 4.2, cooldownPerLv: -0.12,
     multBase: 3.5, multPerLv: 0.40, hits: 3, range: 3.8, radius: 3.8, angle: Math.PI * 2, knockback: 2.4, stun: 0.4,
     color: '#f59e0b', vfx: 'spin_slash', shake: 0.25,
-    desc: 'Execute a blinding 3-pulse Bicheon sword flurry around you, slicing through nearby enemies.',
+    desc: 'Execute a blinding 3-pulse Aegis sword flurry around you, slicing through nearby enemies.',
   },
   battle_cry: {
-    id: 'battle_cry', name: 'Glacial Bicheon Force', icon: '/assets/sro/icons/skills/sword_shieldpd_a.png', sroCode: 'SKILL_CH_SWORD_SHIELDPD_A', tree: 'Knight', classes: ['knight'], type: 'buff', kind: 'buff',
+    id: 'battle_cry', name: 'Glacial Aegis Force', icon: '/assets/sro/icons/skills/sword_shieldpd_a.png', sroCode: 'SKILL_CH_SWORD_SHIELDPD_A', tree: 'Knight', classes: ['knight'], type: 'buff', kind: 'buff',
     tier: 1, row: 0, col: 2, maxLevel: 10, reqLevel: 2, requires: [],
     spCostBase: 14, spCostPerLv: 2, cooldown: 10, cooldownPerLv: -0.2,
     multBase: 0, multPerLv: 0, range: 3.5, radius: 3.5,
     buff: (lv) => ({
-      id: 'battle_cry', name: 'Glacial Bicheon Force', icon: '/assets/sro/icons/skills/sword_shieldpd_a.png', duration: 180 + lv * 15,
+      id: 'battle_cry', name: 'Glacial Aegis Force', icon: '/assets/sro/icons/skills/sword_shieldpd_a.png', duration: 180 + lv * 15,
       mods: { atkPct: 26 + lv * 4, defPct: 24 + lv * 3.5, allRes: 6 + lv },
     }),
     color: '#38bdf8', vfx: 'warcry_ring', shake: 0.18,
@@ -85,7 +85,7 @@ export const SKILL_DEFS = {
 
   // Row 2 (Tier 3)
   frost_nova: {
-    id: 'frost_nova', name: 'Bicheon Frost Nova', icon: '/assets/sro/icons/skills/cold_gigongjang_a.png', sroCode: 'SKILL_CH_COLD_GIGONGJANG_A', tree: 'Knight', classes: ['knight'], type: 'active', kind: 'nova', element: 'ice',
+    id: 'frost_nova', name: 'Aegis Frost Nova', icon: '/assets/sro/icons/skills/cold_gigongjang_a.png', sroCode: 'SKILL_CH_COLD_GIGONGJANG_A', tree: 'Knight', classes: ['knight'], type: 'active', kind: 'nova', element: 'ice',
     tier: 3, row: 2, col: 0, maxLevel: 10, reqLevel: 10, requires: ['flame_slash'],
     spCostBase: 18, spCostPerLv: 2.4, cooldown: 5.8, cooldownPerLv: -0.15,
     multBase: 3.3, multPerLv: 0.38, range: 5.0, radius: 5.0, angle: Math.PI * 2, knockback: 2.2, stun: 2.0, stunPerLv: 0.12,
@@ -435,7 +435,7 @@ Object.assign(SKILL_DEFS, {
     desc: 'Long barrier (2m+): heal, become untouchable for 1.4s, and gain colossal Defense (+68%) and Magic Attack.',
   },
 
-  // ============================================================== ARCHER TREE (PACHEON BOW)
+  // ============================================================== ARCHER TREE (RANGER BOW)
   ar_power_shot: {
     id: 'ar_power_shot', name: 'Demon Soul Arrow — Sniper', icon: '/assets/sro/icons/skills/bow_normal_a.png', sroCode: 'SKILL_CH_BOW_NORMAL_A', tree: 'Archer', classes: ['archer'], type: 'active', kind: 'projectile', pierce: true,
     tier: 1, row: 0, col: 0, maxLevel: 10, reqLevel: 1, requires: [],
@@ -608,9 +608,9 @@ Object.assign(SKILL_DEFS.ax_rending_chop, {
 
 export const SKILLS = SKILL_DEFS;
 
-/** SRO Authentic skill ID aliases mapped to canonical internal IDs */
+/** Legacy skill ID aliases mapped to canonical internal IDs */
 export const SKILL_ALIASES = {
-  // Knight (Bicheon Sword & Shield Mastery)
+  // Knight (Aegis Sword & Shield Mastery)
   k_slash: 'power_strike',
   k_shield_bash: 'shield_bash',
   k_war_cry: 'battle_cry',
@@ -620,7 +620,7 @@ export const SKILL_ALIASES = {
   k_iron_skin: 'aegis_barrier',
   k_avatar: 'blade_storm',
 
-  // Axeman (Heuksal Dual-Axe & Fire Force Mastery)
+  // Axeman (Bloodaxe Dual-Axe & Fire Force Mastery)
   a_cleave: 'ax_cleave',
   a_leap: 'ax_leaping_strike',
   a_blood_rage: 'ax_bloodrage',
@@ -640,7 +640,7 @@ export const SKILL_ALIASES = {
   w_mana_shield: 'wz_mana_ward',
   w_archon: 'wz_arcane_surge',
 
-  // Archer (Pacheon Bow Mastery)
+  // Archer (Ranger Bow Mastery)
   r_multi_shot: 'ar_multishot',
   r_poison_arrow: 'ar_power_shot',
   r_evade_roll: 'ar_evasive_roll',
@@ -698,7 +698,22 @@ export class SkillSystem {
     this.levels = {};
     this.cooldowns = {};
     this.cooldownTotals = {};
+    this._hasActiveCooldowns = false;
     this.hotbar = ['power_strike', null, null, null, null, null, null, null, null];
+    this._barSlots = DEFAULT_HOTBAR_KEYS.map((key, i) => ({
+      slot: i,
+      key,
+      id: '',
+      skillId: '',
+      name: '',
+      icon: '✨',
+      level: 1,
+      cooldown: 0,
+      cooldownMax: 0,
+      spCost: 0,
+      mpCost: 0,
+      ready: true,
+    }));
   }
 
   // ---- compatibility aliases -----------------------------------------------
@@ -743,6 +758,7 @@ export class SkillSystem {
     }
     this.cooldowns = {};
     this.cooldownTotals = {};
+    this._hasActiveCooldowns = false;
     this.hotbar = [
       starters[0]?.id || getStarterSkillId(cid),
       starters[1]?.id || null,
@@ -911,12 +927,24 @@ export class SkillSystem {
 
   // ---- Cooldowns & Casting ---------------------------------------------------
   update(dt) {
+    if (!this._hasActiveCooldowns) return;
     dt = clamp(num(dt), 0, 0.5);
-    for (const id of Object.keys(this.cooldowns)) {
-      if (this.cooldowns[id] > 0) {
-        this.cooldowns[id] = Math.max(0, this.cooldowns[id] - dt);
+    if (dt <= 0) return;
+    let anyActive = false;
+    const cds = this.cooldowns;
+    for (const id in cds) {
+      const rem = cds[id];
+      if (rem > 0) {
+        const next = rem - dt;
+        if (next > 0) {
+          cds[id] = next;
+          anyActive = true;
+        } else {
+          cds[id] = 0;
+        }
       }
     }
+    this._hasActiveCooldowns = anyActive;
   }
   updateCooldowns(dt) { this.update(dt); }
 
@@ -966,6 +994,7 @@ export class SkillSystem {
     const totalCd = this.getBaseCooldown(id, level);
     this.cooldowns[id] = totalCd;
     this.cooldownTotals[id] = totalCd;
+    if (totalCd > 0) this._hasActiveCooldowns = true;
 
     let healed = 0;
     if (g && (def.healPctBase || def.healFlat)) {
@@ -1106,29 +1135,44 @@ export class SkillSystem {
   }
   getTreeView() { return this.list(); }
 
+  _populateBarSlot(target, i, key) {
+    const id = this.hotbar[i];
+    if (!id || !SKILL_DEFS[id]) return null;
+    const def = SKILL_DEFS[id];
+    const rid = this._resolveId(id);
+    const level = Math.max(1, this.getLevel(rid));
+    const remaining = Math.max(0, num(this.cooldowns[rid] ?? this.cooldowns[id], 0));
+    const cdTotalRaw = this.cooldownTotals[rid] ?? this.cooldownTotals[id];
+    const baseCd = this.getBaseCooldown(rid, level);
+    const total = Math.max(remaining, cdTotalRaw != null ? num(cdTotalRaw, baseCd) : baseCd);
+    const spCost = this.getSpCost(rid, level);
+    target.slot = i;
+    target.key = key;
+    target.id = def.id;
+    target.skillId = def.id;
+    target.name = def.name;
+    target.icon = def.icon || '✨';
+    target.level = level;
+    target.cooldown = remaining;
+    target.cooldownMax = total || baseCd;
+    target.spCost = spCost;
+    target.mpCost = spCost;
+    target.ready = remaining <= 0 && (!this.game || this.game.hero.mp >= spCost);
+    return target;
+  }
+
+  /** Zero-allocation hotbar view for 60fps HUD updates; updates pre-allocated slot objects in `out`. */
+  fillSkillBar(out = []) {
+    const slots = this._barSlots;
+    for (let i = 0; i < DEFAULT_HOTBAR_KEYS.length; i++) {
+      out[i] = this._populateBarSlot(slots[i], i, DEFAULT_HOTBAR_KEYS[i]);
+    }
+    if (out.length !== DEFAULT_HOTBAR_KEYS.length) out.length = DEFAULT_HOTBAR_KEYS.length;
+    return out;
+  }
+
   getSkillBar() {
-    return DEFAULT_HOTBAR_KEYS.map((key, i) => {
-      const id = this.hotbar[i];
-      if (!id || !SKILL_DEFS[id]) return null;
-      const def = SKILL_DEFS[id];
-      const level = Math.max(1, this.getLevel(id));
-      const cd = this.getCooldown(id);
-      const spCost = this.getSpCost(id, level);
-      return {
-        slot: i,
-        key,
-        id: def.id,
-        skillId: def.id,
-        name: def.name,
-        icon: def.icon || '✨',
-        level,
-        cooldown: cd.remaining,
-        cooldownMax: cd.total || this.getBaseCooldown(id, level),
-        spCost,
-        mpCost: spCost,
-        ready: cd.ready && (!this.game || this.game.hero.mp >= spCost),
-      };
-    });
+    return DEFAULT_HOTBAR_KEYS.map((key, i) => this._populateBarSlot({}, i, key));
   }
 
   // ---- Save / Load -----------------------------------------------------------
@@ -1158,6 +1202,7 @@ export class SkillSystem {
     }
     this.cooldowns = {};
     this.cooldownTotals = {};
+    this._hasActiveCooldowns = false;
     if (this.game) this.game.markDirty();
   }
 }

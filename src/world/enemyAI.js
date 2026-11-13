@@ -96,8 +96,8 @@ export const UNIQUE_SKILL_LABELS = {
   poison_arrow: '🏹 Poison Arrow',
   arrow_volley: '🏹 Arrow Volley',
   pounce: '🐯 Pounce',
-  tiger_rend: '🐾 Tiger Rend',
-  roar_shockwave: '🦁 Tiger Roar',
+  tiger_rend: '🐾 Savage Rend',
+  roar_shockwave: '🦁 Beast Roar',
   venom_sting: '🦂 Venom Sting',
   whirlwind_strike: '🌀 Whirlwind Strike',
   acid_spit: '☠️ Acid Spit',
@@ -105,8 +105,8 @@ export const UNIQUE_SKILL_LABELS = {
   earth_stomp: '💥 Earth Stomp',
   // Unique Boss Skills
   flame_claw_leap: '🔥 Flame Claw Leap',
-  tiger_roar_ring: '🔥 Tiger Roar',
-  whitetiger_pack: '🐯 White Tiger Pack',
+  tiger_roar_ring: '🔥 Empress Roar',
+  whitetiger_pack: '🐾 Frostfang Pack',
   uruchi_whirlwind: '🌀 Whirlwind Cleave',
   bandit_ambush_volley: '🏹 Ambush Volley',
   earth_splitter: '💥 Earth Splitter',
@@ -159,6 +159,8 @@ export function isSkillInRange(skill, enemy, distToPlayer) {
   return distToPlayer <= (atkRange + 1.6);
 }
 
+export const OUTSKIRT_GIANT_KILL_THRESHOLD = 10;
+
 export const AI_STATE = {
   SLEEP: 'SLEEP',
   IDLE: 'IDLE',
@@ -173,11 +175,11 @@ export const AI_STATE = {
 
 export const MONSTER_CATALOG = {
   // =========================================================================
-  // Authentic Silkroad Online Mob Roster
+  // Arkenveil Outskirt & Cavern Mob Roster
   // =========================================================================
   mangyang: {
     type: 'mangyang',
-    name: 'Mangyang',
+    name: 'Sporeling Gremlin',
     glbPath: '/assets/sro/mobs/mangnyang.glb',
     targetHeight: 1.4,
     baseHp: 42,
@@ -197,7 +199,7 @@ export const MONSTER_CATALOG = {
   },
   small_eye_ghost: {
     type: 'small_eye_ghost',
-    name: 'Small-Eyed Ghost',
+    name: 'Wisp Stalker',
     glbPath: '/assets/sro/mobs/bigeyeghost_clon.glb',
     targetHeight: 1.35,
     baseHp: 44,
@@ -217,7 +219,7 @@ export const MONSTER_CATALOG = {
   },
   bigeye_ghost: {
     type: 'bigeye_ghost',
-    name: 'Big-Eyed Ghost',
+    name: 'Gloomgazer',
     glbPath: '/assets/sro/mobs/bigeyeghost.glb',
     targetHeight: 1.45,
     baseHp: 46,
@@ -237,7 +239,7 @@ export const MONSTER_CATALOG = {
   },
   old_weasel: {
     type: 'old_weasel',
-    name: 'Old Weasel',
+    name: 'Thornback Jackal',
     glbPath: '/assets/sro/mobs/gyo_clon.glb',
     targetHeight: 1.3,
     baseHp: 52,
@@ -257,7 +259,7 @@ export const MONSTER_CATALOG = {
   },
   gyo_weasel: {
     type: 'gyo_weasel',
-    name: 'Weasel Gyo',
+    name: 'Rabid Howler',
     glbPath: '/assets/sro/mobs/gyo.glb',
     targetHeight: 1.35,
     baseHp: 55,
@@ -277,7 +279,7 @@ export const MONSTER_CATALOG = {
   },
   water_ghost_slave: {
     type: 'water_ghost_slave',
-    name: 'Water Ghost Slave',
+    name: 'Mire Drowner',
     glbPath: '/assets/sro/mobs/waterghost_clon.glb',
     targetHeight: 1.44,
     baseHp: 64,
@@ -298,7 +300,7 @@ export const MONSTER_CATALOG = {
   },
   water_ghost: {
     type: 'water_ghost',
-    name: 'Water Ghost',
+    name: 'Brook Wraith',
     glbPath: '/assets/sro/mobs/waterghost.glb',
     targetHeight: 1.5,
     baseHp: 70,
@@ -319,7 +321,7 @@ export const MONSTER_CATALOG = {
   },
   broken_stone_ghost: {
     type: 'broken_stone_ghost',
-    name: 'Broken Stone Ghost',
+    name: 'Cracked Runestone',
     glbPath: '/assets/sro/mobs/stoneghost_clon.glb',
     targetHeight: 1.65,
     baseHp: 135,
@@ -339,7 +341,7 @@ export const MONSTER_CATALOG = {
   },
   stone_ghost: {
     type: 'stone_ghost',
-    name: 'Stone Ghost',
+    name: 'Mossbound Sentinel',
     glbPath: '/assets/sro/mobs/stoneghost.glb',
     targetHeight: 1.75,
     baseHp: 150,
@@ -359,7 +361,7 @@ export const MONSTER_CATALOG = {
   },
   tombstone_ghost: {
     type: 'tombstone_ghost',
-    name: 'Tomb Stone Ghost',
+    name: 'Crypt Marker',
     glbPath: '/assets/sro/mobs/tombstone.glb',
     targetHeight: 1.55,
     baseHp: 88,
@@ -380,7 +382,7 @@ export const MONSTER_CATALOG = {
   },
   tombstone: {
     type: 'tombstone',
-    name: 'Tomb Stone',
+    name: 'Cursed Obelisk',
     glbPath: '/assets/sro/mobs/tombstone.glb',
     targetHeight: 1.62,
     baseHp: 96,
@@ -401,7 +403,7 @@ export const MONSTER_CATALOG = {
   },
   decayed_yeoha: {
     type: 'decayed_yeoha',
-    name: 'Decayed Yeoha',
+    name: 'Rotting Bramblekin',
     glbPath: '/assets/sro/mobs/yeoha_clon.glb',
     targetHeight: 1.58,
     baseHp: 90,
@@ -421,7 +423,7 @@ export const MONSTER_CATALOG = {
   },
   yeoha: {
     type: 'yeoha',
-    name: 'Yeoha Tree Spirit',
+    name: 'Thornwood Dryad',
     glbPath: '/assets/sro/mobs/yeoha.glb',
     targetHeight: 1.65,
     baseHp: 95,
@@ -441,7 +443,7 @@ export const MONSTER_CATALOG = {
   },
   bandit_subordinate: {
     type: 'bandit_subordinate',
-    name: 'Bandit Subordinate',
+    name: 'Highway Cutthroat',
     glbPath: '/assets/sro/mobs/bandit_clon.glb',
     targetHeight: 1.76,
     baseHp: 82,
@@ -461,7 +463,7 @@ export const MONSTER_CATALOG = {
   },
   bandit: {
     type: 'bandit',
-    name: 'Black Tiger Bandit',
+    name: 'Blackblade Raider',
     glbPath: '/assets/sro/mobs/bandit.glb',
     targetHeight: 1.8,
     baseHp: 90,
@@ -481,7 +483,7 @@ export const MONSTER_CATALOG = {
   },
   bandit_archer: {
     type: 'bandit_archer',
-    name: 'Bandit Bowman',
+    name: 'Blackblade Scout',
     glbPath: '/assets/sro/mobs/banditarcher.glb',
     targetHeight: 1.8,
     baseHp: 75,
@@ -502,7 +504,7 @@ export const MONSTER_CATALOG = {
   },
   bandit_bowman: {
     type: 'bandit_bowman',
-    name: 'Bandit Sharpshooter',
+    name: 'Blackblade Sharpshooter',
     glbPath: '/assets/sro/mobs/banditarcher_clon.glb',
     targetHeight: 1.82,
     baseHp: 84,
@@ -523,7 +525,7 @@ export const MONSTER_CATALOG = {
   },
   young_tiger: {
     type: 'young_tiger',
-    name: 'Young Tiger',
+    name: 'Striped Cub',
     glbPath: '/assets/sro/mobs/tiger_clon.glb',
     targetHeight: 1.38,
     baseHp: 96,
@@ -543,7 +545,7 @@ export const MONSTER_CATALOG = {
   },
   tiger: {
     type: 'tiger',
-    name: 'Jangan Tiger',
+    name: 'Ashwood Tiger',
     glbPath: '/assets/sro/mobs/tiger.glb',
     targetHeight: 1.5,
     baseHp: 110,
@@ -563,7 +565,7 @@ export const MONSTER_CATALOG = {
   },
   black_tiger: {
     type: 'black_tiger',
-    name: 'Black Tiger',
+    name: 'Shadowpelt Tiger',
     glbPath: '/assets/sro/mobs/whitetiger_clon.glb',
     targetHeight: 1.56,
     baseHp: 126,
@@ -583,7 +585,7 @@ export const MONSTER_CATALOG = {
   },
   white_tiger: {
     type: 'white_tiger',
-    name: 'White Tiger',
+    name: 'Frostfang Tiger',
     glbPath: '/assets/sro/mobs/whitetiger.glb',
     targetHeight: 1.6,
     baseHp: 135,
@@ -603,7 +605,7 @@ export const MONSTER_CATALOG = {
   },
   blue_tiger: {
     type: 'blue_tiger',
-    name: 'Blue Mountain Tiger',
+    name: 'Stormpelt Tiger',
     glbPath: '/assets/sro/mobs/bluetiger.glb',
     targetHeight: 1.7,
     baseHp: 155,
@@ -623,7 +625,7 @@ export const MONSTER_CATALOG = {
   },
   chakji_worker: {
     type: 'chakji_worker',
-    name: 'Chakji Worker',
+    name: 'Hollowbark Brute',
     glbPath: '/assets/sro/mobs/chakji_clon.glb',
     targetHeight: 1.56,
     baseHp: 142,
@@ -643,7 +645,7 @@ export const MONSTER_CATALOG = {
   },
   chakji: {
     type: 'chakji',
-    name: 'Chakji Brute',
+    name: 'Hollowbark Marauder',
     glbPath: '/assets/sro/mobs/chakji.glb',
     targetHeight: 1.7,
     baseHp: 160,
@@ -703,7 +705,7 @@ export const MONSTER_CATALOG = {
   },
   hyungno: {
     type: 'hyungno',
-    name: 'Hyungno Ghost Soldier',
+    name: 'Duskblade Soldier',
     glbPath: '/assets/sro/mobs/hyungno.glb',
     targetHeight: 1.9,
     baseHp: 180,
@@ -765,11 +767,11 @@ export const MONSTER_CATALOG = {
   },
 
   // =========================================================================
-  // Mapped Legacy Entries (enhanced with Silkroad GLBs & exact target heights)
+  // Mapped Legacy Entries (enhanced with 3D models & exact target heights)
   // =========================================================================
   slime: {
     type: 'slime',
-    name: 'Cavern Slime (Mangyang)',
+    name: 'Cavern Slime',
     glbPath: '/assets/sro/mobs/mangnyang.glb',
     targetHeight: 1.4,
     baseHp: 38,
@@ -789,7 +791,7 @@ export const MONSTER_CATALOG = {
   },
   goblin: {
     type: 'goblin',
-    name: 'Goblin Raider (Weasel Gyo)',
+    name: 'Goblin Raider',
     glbPath: '/assets/sro/mobs/gyo.glb',
     targetHeight: 1.35,
     baseHp: 52,
@@ -809,7 +811,7 @@ export const MONSTER_CATALOG = {
   },
   bat: {
     type: 'bat',
-    name: 'Dusk Vampire Bat (Big-Eyed Ghost)',
+    name: 'Dusk Vampire Bat',
     glbPath: '/assets/sro/mobs/bigeyeghost.glb',
     targetHeight: 1.4,
     baseHp: 34,
@@ -829,7 +831,7 @@ export const MONSTER_CATALOG = {
   },
   wolf: {
     type: 'wolf',
-    name: 'Dire Shadow Wolf (Jangan Tiger)',
+    name: 'Dire Shadow Wolf',
     glbPath: '/assets/sro/mobs/tiger.glb',
     targetHeight: 1.5,
     baseHp: 64,
@@ -849,7 +851,7 @@ export const MONSTER_CATALOG = {
   },
   spider: {
     type: 'spider',
-    name: 'Venomfang Spider (Yeoha)',
+    name: 'Venomfang Spider',
     glbPath: '/assets/sro/mobs/yeoha.glb',
     targetHeight: 1.65,
     baseHp: 58,
@@ -869,7 +871,7 @@ export const MONSTER_CATALOG = {
   },
   skeleton: {
     type: 'skeleton',
-    name: 'Restless Skeleton (Bandit)',
+    name: 'Restless Skeleton',
     glbPath: '/assets/sro/mobs/bandit.glb',
     targetHeight: 1.8,
     baseHp: 78,
@@ -889,7 +891,7 @@ export const MONSTER_CATALOG = {
   },
   mage: {
     type: 'mage',
-    name: 'Abyssal Cultist Mage (Earth Ghost)',
+    name: 'Abyssal Cultist Mage',
     glbPath: '/assets/sro/mobs/earthghost.glb',
     targetHeight: 1.6,
     baseHp: 66,
@@ -910,7 +912,7 @@ export const MONSTER_CATALOG = {
   },
   orc: {
     type: 'orc',
-    name: 'Orc Vanguard (Chakji)',
+    name: 'Orc Vanguard',
     glbPath: '/assets/sro/mobs/chakji.glb',
     targetHeight: 1.7,
     baseHp: 115,
@@ -930,7 +932,7 @@ export const MONSTER_CATALOG = {
   },
   golem: {
     type: 'golem',
-    name: 'Runestone Golem (Stone Ghost)',
+    name: 'Runestone Golem',
     glbPath: '/assets/sro/mobs/stoneghost.glb',
     targetHeight: 1.75,
     baseHp: 165,
@@ -950,7 +952,7 @@ export const MONSTER_CATALOG = {
   },
   mummy: {
     type: 'mummy',
-    name: 'Cursed Mummy (Tomb Stone Ghost)',
+    name: 'Cursed Mummy',
     glbPath: '/assets/sro/mobs/tombstone.glb',
     targetHeight: 1.55,
     baseHp: 92,
@@ -970,7 +972,7 @@ export const MONSTER_CATALOG = {
   },
   zombie: {
     type: 'zombie',
-    name: 'Plague Zombie (Ghost Bug)',
+    name: 'Plague Zombie',
     glbPath: '/assets/sro/mobs/ghostbug.glb',
     targetHeight: 1.25,
     baseHp: 98,
@@ -990,7 +992,7 @@ export const MONSTER_CATALOG = {
   },
   lizardman: {
     type: 'lizardman',
-    name: 'Scaleblade Lizardman (Bandit Archer)',
+    name: 'Scaleblade Lizardman',
     glbPath: '/assets/sro/mobs/banditarcher.glb',
     targetHeight: 1.8,
     baseHp: 120,
@@ -1010,7 +1012,7 @@ export const MONSTER_CATALOG = {
   },
   wraith: {
     type: 'wraith',
-    name: 'Phantom Wraith (Water Ghost)',
+    name: 'Phantom Wraith',
     glbPath: '/assets/sro/mobs/waterghost.glb',
     targetHeight: 1.5,
     baseHp: 88,
@@ -1031,7 +1033,7 @@ export const MONSTER_CATALOG = {
   },
   gargoyle: {
     type: 'gargoyle',
-    name: 'Obsidian Gargoyle (Devil Bug)',
+    name: 'Obsidian Gargoyle',
     glbPath: '/assets/sro/mobs/devilbug.glb',
     targetHeight: 1.35,
     baseHp: 130,
@@ -1051,7 +1053,7 @@ export const MONSTER_CATALOG = {
   },
   stoneGolem: {
     type: 'stoneGolem',
-    name: 'Ancient Stone Golem (Stone Ghost)',
+    name: 'Ancient Stone Golem',
     glbPath: '/assets/sro/mobs/stoneghost.glb',
     targetHeight: 1.85,
     baseHp: 175,
@@ -1071,7 +1073,7 @@ export const MONSTER_CATALOG = {
   },
   hellHound: {
     type: 'hellHound',
-    name: 'Infernal Hell Hound (Jangan Tiger)',
+    name: 'Infernal Hell Hound',
     glbPath: '/assets/sro/mobs/tiger.glb',
     targetHeight: 1.6,
     baseHp: 125,
@@ -1091,7 +1093,7 @@ export const MONSTER_CATALOG = {
   },
   wizard: {
     type: 'wizard',
-    name: 'Archon Chaos Wizard (Gunpowder Ghost)',
+    name: 'Archon Chaos Wizard',
     glbPath: '/assets/sro/mobs/gunpowderghost_clon.glb',
     targetHeight: 1.5,
     baseHp: 110,
@@ -1112,7 +1114,7 @@ export const MONSTER_CATALOG = {
   },
   darkKnight: {
     type: 'darkKnight',
-    name: 'Abyssal Dark Knight (Hyungno)',
+    name: 'Abyssal Dark Knight',
     glbPath: '/assets/sro/mobs/hyungno.glb',
     targetHeight: 1.95,
     baseHp: 160,
@@ -1132,7 +1134,7 @@ export const MONSTER_CATALOG = {
   },
   demon: {
     type: 'demon',
-    name: 'Hellfire Demon (Hyeongcheon Guard)',
+    name: 'Hellfire Demon',
     glbPath: '/assets/sro/mobs/hyeongcheon.glb',
     targetHeight: 2.1,
     baseHp: 180,
@@ -1162,10 +1164,10 @@ MONSTER_CATALOG.lich = MONSTER_CATALOG.earth_ghost;
 MONSTER_CATALOG.abyssal_knight = MONSTER_CATALOG.darkKnight;
 MONSTER_CATALOG.void_stalker = MONSTER_CATALOG.white_tiger;
 
-// Silkroad Online Unique Boss Base Definitions (scaled cleanly by floor & BOSS_CATALOG multipliers)
+// Arkenveil Unique Boss Base Definitions (scaled cleanly by floor & BOSS_CATALOG multipliers)
 MONSTER_CATALOG.tigerwoman = {
   type: 'tigerwoman',
-  name: 'Tiger Girl',
+  name: 'Frostfang Empress',
   glbPath: '/assets/sro/mobs/tigerwoman.glb',
   targetHeight: 1.58,
   baseHp: 155,
@@ -1186,7 +1188,7 @@ MONSTER_CATALOG.tigerwoman = {
 
 MONSTER_CATALOG.uruchi = {
   type: 'uruchi',
-  name: 'Uruchi',
+  name: 'Warchief Drakmor',
   uniquePrefab: 'uruchi',
   glbPath: '/assets/sro/mobs/uruchi.glb',
   targetHeight: 2.15,
@@ -1208,7 +1210,7 @@ MONSTER_CATALOG.uruchi = {
 
 MONSTER_CATALOG.isyutaru = {
   type: 'isyutaru',
-  name: 'Isyutaru',
+  name: 'Lady Glaciera',
   uniquePrefab: 'isyutaru',
   glbPath: '/assets/sro/mobs/isyutaru.glb',
   targetHeight: 2.15,
@@ -1231,7 +1233,7 @@ MONSTER_CATALOG.isyutaru = {
 
 MONSTER_CATALOG.lord_yarkan = {
   type: 'lord_yarkan',
-  name: 'Lord Yarkan',
+  name: 'Valkor, Bone Sovereign',
   uniquePrefab: 'lord_yarkan',
   glbPath: '/assets/sro/mobs/bonelord.glb',
   targetHeight: 2.35,
@@ -1253,7 +1255,7 @@ MONSTER_CATALOG.lord_yarkan = {
 
 MONSTER_CATALOG.demon_shaitan = {
   type: 'demon_shaitan',
-  name: 'Demon Shaitan',
+  name: 'Malakor, Ember Archfiend',
   uniquePrefab: 'demon_shaitan',
   glbPath: '/assets/sro/mobs/tahomet.glb',
   targetHeight: 2.25,
@@ -1275,7 +1277,7 @@ MONSTER_CATALOG.demon_shaitan = {
 
 MONSTER_CATALOG.roc = {
   type: 'roc',
-  name: 'Roc',
+  name: 'Aetherion, Sky Sovereign',
   uniquePrefab: 'roc',
   glbPath: '/assets/sro/mobs/roc.glb',
   targetSpan: 4.3,
@@ -1297,7 +1299,7 @@ MONSTER_CATALOG.roc = {
 
 MONSTER_CATALOG.medusa = {
   type: 'medusa',
-  name: 'Medusa',
+  name: 'Vespera, Venom Queen',
   uniquePrefab: 'medusa',
   glbPath: '/assets/sro/mobs/whitesnake.glb',
   targetHeight: 2.20,
@@ -1358,7 +1360,7 @@ function addSroMobs(specs) {
 }
 
 addSroMobs([
-  // Donwhang Stone Cave & Western China
+  // Fungal Caverns & Echoing Galleries
   ['bug_ghost', 'Bug Ghost', 'bugghost.glb', 1.45, 'poison', 56, 13, 4, ['acid_spit']],
   ['work_earth_ghost', 'Earth Magician', 'workearthghost.glb', 1.65, 'earth', 74, 17, 6, ['earth_stomp'], { isRanged: true, attackRange: 4.5 }],
   ['soldier_earth_ghost', 'Earth Ghost Soldier', 'soldierearthghost.glb', 1.72, 'earth', 88, 19, 8, ['slash']],
@@ -1368,33 +1370,33 @@ addSroMobs([
   ['demon_horse', 'Demon Horse', 'demonhorse.glb', 1.88, 'fire', 108, 23, 8, ['charge'], { moveSpeed: 4.9 }],
   ['taese', 'Taese Bloodhound', 'taese.glb', 1.62, 'physical', 94, 20, 7, ['pounce'], { moveSpeed: 4.8 }],
 
-  // Oasis Kingdom & Karakoram
-  ['black_robber', 'Black Robber', 'blackrobber.glb', 1.75, 'physical', 96, 21, 7, ['slash']],
-  ['black_robber_archer', 'Black Robber Bowman', 'blackrobberarcher.glb', 1.75, 'physical', 78, 20, 5, ['arrow_volley', 'poison_arrow'], { isRanged: true, attackRange: 5.5 }],
+  // Blackblade Stronghold & Rimevault Peaks
+  ['black_robber', 'Blackblade Marauder', 'blackrobber.glb', 1.75, 'physical', 96, 21, 7, ['slash']],
+  ['black_robber_archer', 'Blackblade Bowman', 'blackrobberarcher.glb', 1.75, 'physical', 78, 20, 5, ['arrow_volley', 'poison_arrow'], { isRanged: true, attackRange: 5.5 }],
   ['red_eye_ghost', 'Red-Eyed Ghost', 'redeyeghost.glb', 1.5, 'dark', 72, 19, 5, ['curse_drain'], { isRanged: true, attackRange: 4.5 }],
   ['ong', 'Ong Swarmwalker', 'ong.glb', 1.38, 'poison', 82, 18, 6, ['acid_spit']],
   ['scorpion', 'Desert Scorpion', 'scorpion.glb', 1.35, 'poison', 88, 20, 7, ['acid_spit']],
   ['red_scorpion', 'Red Crimson Scorpion', 'redscorpion.glb', 1.48, 'poison', 110, 24, 9, ['acid_spit', 'poison_nova']],
   ['desert_trunkz', 'Blood Death Bug', 'deserttrunkz.glb', 1.65, 'earth', 125, 25, 11, ['earth_stomp']],
-  ['big_spider', 'Mujigi Venomweaver', 'bigspider.glb', 1.68, 'poison', 118, 24, 8, ['acid_spit']],
-  ['yeowa', 'Ujigi Spider', 'yeowa.glb', 1.58, 'poison', 112, 23, 8, ['pounce']],
-  ['ishade', 'Ishade Ice Fiend', 'ishade.glb', 1.75, 'ice', 122, 26, 9, ['frost_wave'], { isRanged: true, attackRange: 4.8 }],
+  ['big_spider', 'Silkfang Weaver', 'bigspider.glb', 1.68, 'poison', 118, 24, 8, ['acid_spit']],
+  ['yeowa', 'Venomclaw Spider', 'yeowa.glb', 1.58, 'poison', 112, 23, 8, ['pounce']],
+  ['ishade', 'Rime Ice Fiend', 'ishade.glb', 1.75, 'ice', 122, 26, 9, ['frost_wave'], { isRanged: true, attackRange: 4.8 }],
   ['planar', 'Planar Specter', 'planar.glb', 1.78, 'ice', 128, 27, 9, ['frost_wave', 'curse_drain'], { isRanged: true, attackRange: 4.6 }],
-  ['yeti', 'Karakoram Yeti', 'yeti.glb', 2.05, 'ice', 165, 30, 14, ['earth_stomp']],
-  ['penon_fighter', 'Penon Fighter', 'penon_f.glb', 1.92, 'ice', 158, 29, 13, ['whirlwind_strike', 'slash']],
-  ['penon_warrior', 'Sonar Penon Warrior', 'penon_w.glb', 2.02, 'ice', 175, 32, 14, ['earth_stomp', 'charge']],
-  ['snow_spider', 'Maong Frost Spider', 'spider.glb', 1.62, 'ice', 132, 26, 10, ['frost_wave']],
+  ['yeti', 'Frosthollow Yeti', 'yeti.glb', 2.05, 'ice', 165, 30, 14, ['earth_stomp']],
+  ['penon_fighter', 'Frostguard Fighter', 'penon_f.glb', 1.92, 'ice', 158, 29, 13, ['whirlwind_strike', 'slash']],
+  ['penon_warrior', 'Frostguard Warrior', 'penon_w.glb', 2.02, 'ice', 175, 32, 14, ['earth_stomp', 'charge']],
+  ['snow_spider', 'Rime Frost Spider', 'spider.glb', 1.62, 'ice', 132, 26, 10, ['frost_wave']],
   ['white_spider', 'Great White Spider', 'gwhitespider.glb', 1.85, 'ice', 152, 29, 12, ['pounce', 'frost_wave']],
 
-  // Qin-Shi Tomb / Jangan Cave
+  // Sunken Imperial Mausoleum
   ['tomb_stone_spirit', 'Tomb Stone Spirit', 'tombstoneghost.glb', 1.62, 'earth', 130, 26, 12, ['earth_stomp']],
   ['tomb_bug_ghost', 'Tomb Bug Ghost', 'tombbugghost.glb', 1.48, 'poison', 122, 25, 10, ['acid_spit']],
   ['bomb_stone_ghost', 'Bomb Tombstone Ghost', 'bombstoneghost.glb', 1.65, 'fire', 128, 29, 11, ['powder_blast'], { isRanged: true, attackRange: 4.5 }],
-  ['qinshi_tombstone', 'Qin-Shi Tombstone', 'qinshitombstone.glb', 1.72, 'earth', 148, 27, 15, ['earth_stomp']],
+  ['qinshi_tombstone', 'Sunken Obelisk', 'qinshitombstone.glb', 1.72, 'earth', 148, 27, 15, ['earth_stomp']],
   ['tomb_soldier', 'Terracotta Tomb Soldier', 'tombsoldier.glb', 1.82, 'physical', 145, 28, 12, ['slash']],
   ['tomb_archer', 'Terracotta Tomb Archer', 'tombarcher.glb', 1.8, 'physical', 125, 28, 9, ['arrow_volley'], { isRanged: true, attackRange: 5.8 }],
   ['tomb_general', 'Terracotta Tomb General', 'tombgeneral.glb', 1.98, 'physical', 185, 34, 15, ['whirlwind_strike', 'charge']],
-  ['royal_soldier', 'Qin-Shi Royal Guard', 'royalsoldier.glb', 1.95, 'physical', 192, 35, 16, ['whirlwind_strike', 'earth_stomp']],
+  ['royal_soldier', 'Sunken Royal Guard', 'royalsoldier.glb', 1.95, 'physical', 192, 35, 16, ['whirlwind_strike', 'earth_stomp']],
   ['snake_slave', 'Snake Slave', 'snakeslave.glb', 1.78, 'poison', 140, 28, 11, ['slash']],
   ['snake_man', 'Tomb Snake Warrior', 'snakeman.glb', 1.86, 'poison', 158, 31, 13, ['slash', 'acid_spit']],
   ['snake_demon', 'Snake Demon', 'snakedemon.glb', 1.95, 'poison', 180, 34, 14, ['poison_nova', 'whirlwind_strike']],
@@ -1406,7 +1408,7 @@ addSroMobs([
   ['north_guardian', 'Tomb North Guardian', 'northguardian.glb', 2.12, 'ice', 235, 39, 19, ['frost_wave', 'shockwave']],
   ['south_guardian', 'Tomb South Guardian', 'southguardian.glb', 2.12, 'fire', 235, 40, 18, ['infernal_nova', 'earth_stomp']],
 
-  // Flame Mountain & Taklamakan
+  // Caldera Sanctum & Sunspire Wastes
   ['flame_ghost', 'Flame Ghost', 'flame_ghost.glb', 1.7, 'fire', 162, 34, 13, ['powder_blast'], { isRanged: true, attackRange: 4.8 }],
   ['flame_evil', 'Flame Fiend', 'flame_evil.glb', 1.75, 'fire', 168, 35, 14, ['infernal_nova'], { isRanged: true, attackRange: 4.8 }],
   ['flame_salamander', 'Flame Salamander', 'flame_salamander.glb', 1.65, 'fire', 174, 34, 14, ['pounce', 'infernal_nova']],
@@ -1418,23 +1420,23 @@ addSroMobs([
   ['flame_giant', 'Flame Giant', 'flame_giant.glb', 2.18, 'fire', 255, 44, 21, ['earth_stomp', 'infernal_nova']],
   ['flame_gigantic', 'Molten Gigantic', 'flame_gigantic.glb', 2.25, 'fire', 270, 45, 22, ['shockwave', 'infernal_nova']],
   ['flame_crazy', 'Crazed Flame Demon', 'flame_crazy.glb', 1.95, 'fire', 225, 42, 17, ['whirlwind_strike', 'charge']],
-  ['bone_soldier', 'Taklamakan Bone Soldier', 'bonesoldier.glb', 1.82, 'dark', 175, 35, 15, ['slash']],
+  ['bone_soldier', 'Sunspire Bone Soldier', 'bonesoldier.glb', 1.82, 'dark', 175, 35, 15, ['slash']],
   ['bone_hunter', 'Bone Archer Hunter', 'bonehunter.glb', 1.8, 'dark', 158, 36, 12, ['arrow_volley'], { isRanged: true, attackRange: 5.6 }],
-  ['bone_mage', 'Niya Bone Shaman', 'bonemage.glb', 1.85, 'dark', 162, 38, 13, ['curse_drain'], { isRanged: true, attackRange: 5.2 }],
-  ['bone_general', 'Niya Bone General', 'bonegeneral.glb', 2.02, 'dark', 220, 41, 18, ['whirlwind_strike', 'charge']],
-  ['bone_lord', 'Niya Sovereign Lord', 'bonelord.glb', 2.15, 'dark', 250, 44, 20, ['shockwave', 'curse_drain']],
-  ['devil_eye', 'Niya Devil Eye', 'devileye.glb', 1.65, 'dark', 168, 37, 13, ['curse_drain'], { isRanged: true, attackRange: 5.2 }],
+  ['bone_mage', 'Sunspire Bone Shaman', 'bonemage.glb', 1.85, 'dark', 162, 38, 13, ['curse_drain'], { isRanged: true, attackRange: 5.2 }],
+  ['bone_general', 'Sunspire Bone General', 'bonegeneral.glb', 2.02, 'dark', 220, 41, 18, ['whirlwind_strike', 'charge']],
+  ['bone_lord', 'Sunspire Sovereign Lord', 'bonelord.glb', 2.15, 'dark', 250, 44, 20, ['shockwave', 'curse_drain']],
+  ['devil_eye', 'Sunspire Devil Eye', 'devileye.glb', 1.65, 'dark', 168, 37, 13, ['curse_drain'], { isRanged: true, attackRange: 5.2 }],
   ['edimmu', 'Edimmu Nightstalker', 'edimmu.glb', 1.88, 'dark', 190, 38, 15, ['pounce', 'curse_drain']],
   ['death_kara', 'Death Karkadann', 'deathkara.glb', 2.05, 'earth', 235, 42, 19, ['charge', 'earth_stomp']],
-  ['hyeongcheon', 'Hyeongcheon Destroyer', 'hyeongcheon.glb', 2.18, 'earth', 260, 45, 21, ['earth_stomp', 'whirlwind_strike']],
+  ['hyeongcheon', 'Doomforge Vanguard', 'hyeongcheon.glb', 2.18, 'earth', 260, 45, 21, ['earth_stomp', 'whirlwind_strike']],
 
-  // Alexandria Holy Water Temple (sd)
-  ['sand_mummy', 'Alexandria Mummy', 'mummy.glb', 1.82, 'poison', 215, 40, 17, ['acid_spit']],
+  // Sunken Sun Sanctum
+  ['sand_mummy', 'Crypt Mummy', 'mummy.glb', 1.82, 'poison', 215, 40, 17, ['acid_spit']],
   ['aker', 'Aker Lion Guardian', 'aker.glb', 2.08, 'earth', 265, 45, 21, ['charge', 'earth_stomp']],
   ['anubis', 'Anubis Temple Knight', 'anubis.glb', 2.15, 'dark', 280, 47, 22, ['whirlwind_strike', 'curse_drain']],
   ['heron', 'Heron Temple Striker', 'heron.glb', 1.98, 'lightning', 245, 43, 19, ['pounce', 'shockwave']],
   ['keisas', 'Keisas Berserker', 'keisas.glb', 2.05, 'physical', 270, 46, 20, ['whirlwind_strike', 'charge']],
-  ['apriest', 'Alexandria Dark Priest', 'apriest.glb', 1.88, 'dark', 215, 45, 16, ['curse_drain'], { isRanged: true, attackRange: 5.5 }],
+  ['apriest', 'Crypt Dark Priest', 'apriest.glb', 1.88, 'dark', 215, 45, 16, ['curse_drain'], { isRanged: true, attackRange: 5.5 }],
   ['spector', 'Spector Tomb Fiend', 'spector.glb', 1.9, 'dark', 225, 44, 17, ['curse_drain'], { isRanged: true, attackRange: 5.2 }],
   ['sphinx', 'Sphinx Sentinel', 'sphinx.glb', 2.12, 'earth', 295, 48, 24, ['desert_earthquake', 'charge']],
   ['sandman', 'Sandman Elemental', 'sandman.glb', 1.85, 'earth', 240, 42, 19, ['desert_earthquake']],
@@ -1449,8 +1451,8 @@ addSroMobs([
   ['selkis', 'Selkis Venom Guard', 'selkis.glb', 2.02, 'poison', 265, 46, 20, ['acid_spit', 'poison_nova']],
   ['seth', 'Seth Chaos Harbinger', 'seth.glb', 2.22, 'dark', 310, 50, 25, ['desert_earthquake', 'infernal_nova']],
 
-  // Jupiter Temple
-  ['babilion', 'Babilion Temple Guard', 'babilion.glb', 2.05, 'lightning', 280, 48, 22, ['whirlwind_strike']],
+  // Stormspire Temple
+  ['babilion', 'Sanctum Guard', 'babilion.glb', 2.05, 'lightning', 280, 48, 22, ['whirlwind_strike']],
   ['mino', 'Minotaur Enforcer', 'mino.glb', 2.18, 'earth', 305, 51, 24, ['charge', 'earth_stomp']],
   ['griffin', 'Storm Griffin', 'griffin.glb', 2.1, 'lightning', 290, 50, 22, ['pounce', 'shockwave']],
   ['charm_witch', 'Charm Witch', 'charm_witch.glb', 1.88, 'dark', 250, 49, 18, ['curse_drain'], { isRanged: true, attackRange: 5.5 }],
@@ -1461,48 +1463,48 @@ addSroMobs([
   ['dark_dog', 'Abyssal Cerberus', 'dark_dog.glb', 1.82, 'dark', 265, 48, 20, ['pounce']],
   ['devil_dark', 'Shadow Archdemon', 'devil_dark.glb', 2.12, 'dark', 300, 51, 24, ['curse_drain', 'shockwave']],
   ['immortal_warden', 'Immortal Temple Paladin', 'immotal.glb', 2.08, 'lightning', 295, 50, 23, ['whirlwind_strike', 'shockwave']],
-  ['nike_lion', 'Nike Winged Lion', 'nike_lion.glb', 2.15, 'lightning', 310, 52, 24, ['charge', 'shockwave']],
+  ['nike_lion', 'Winged Lion Guardian', 'nike_lion.glb', 2.15, 'lightning', 310, 52, 24, ['charge', 'shockwave']],
   ['the_earth', 'The Earth Titan', 'the_earth.glb', 2.25, 'earth', 340, 53, 27, ['desert_earthquake', 'earth_stomp']],
   ['yuno', 'Juno Astral Maiden', 'yuno.glb', 2.02, 'ice', 290, 51, 22, ['frost_wave'], { isRanged: true, attackRange: 5.6 }],
-  ['jupiter_sentinel', 'Jupiter Thunder Avatar', 'jupiter.glb', 2.24, 'lightning', 335, 54, 26, ['shockwave', 'charge']],
+  ['jupiter_sentinel', 'Stormspire Thunder Avatar', 'jupiter.glb', 2.24, 'lightning', 335, 54, 26, ['shockwave', 'charge']],
   ['baal', 'Baal Infernal Lord', 'baal.glb', 2.26, 'fire', 345, 55, 27, ['infernal_nova', 'whirlwind_strike']],
 
-  // Shambhala / Underworld Abyss (dm)
+  // Underworld Abyss
   ['wendigo', 'Abyssal Wendigo', 'wendigo.glb', 2.08, 'ice', 315, 52, 24, ['frost_wave', 'pounce']],
-  ['succubus', 'Shambhala Succubus', 'succubus.glb', 1.92, 'dark', 285, 52, 21, ['curse_drain'], { isRanged: true, attackRange: 5.6 }],
+  ['succubus', 'Abyssal Succubus', 'succubus.glb', 1.92, 'dark', 285, 52, 21, ['curse_drain'], { isRanged: true, attackRange: 5.6 }],
   ['void_devil', 'Void Devil', 'voiddevil.glb', 2.12, 'dark', 325, 54, 25, ['shockwave', 'curse_drain']],
   ['dark_guardian', 'Dark Abyss Guardian', 'darkguardian.glb', 2.18, 'dark', 340, 55, 27, ['whirlwind_strike', 'earth_stomp']],
   ['goat_demon', 'Horned Goat Demon', 'goatdemon.glb', 2.08, 'fire', 320, 53, 25, ['charge', 'infernal_nova']],
   ['garm', 'Garm Hellhound', 'garm.glb', 1.88, 'fire', 300, 52, 23, ['pounce', 'charge']],
   ['shamoot', 'Shamoot Fiend', 'shamoot.glb', 2.1, 'fire', 330, 54, 25, ['infernal_nova', 'whirlwind_strike']],
   ['underworld_knight', 'Underworld Doom Knight', 'knight.glb', 2.05, 'dark', 335, 54, 26, ['whirlwind_strike', 'charge']],
-  ['shambhala_mage', 'Shambhala Archmage', 'mage.glb', 1.94, 'dark', 290, 55, 22, ['curse_drain'], { isRanged: true, attackRange: 5.6 }],
+  ['shambhala_mage', 'Void Acolyte', 'mage.glb', 1.94, 'dark', 290, 55, 22, ['curse_drain'], { isRanged: true, attackRange: 5.6 }],
   ['narun', 'Narun Demonspawn', 'narun.glb', 2.15, 'dark', 342, 55, 26, ['shockwave', 'pounce']],
   ['dm_soldier', 'Asura Infernal Soldier', 'dmsolide.glb', 2.02, 'fire', 318, 53, 25, ['slash', 'whirlwind_strike']],
   ['andras', 'Andras Abyss Sovereign', 'andras.glb', 2.25, 'dark', 360, 57, 28, ['shockwave', 'curse_drain']],
 
-  // Roc Mountain — Wing Tribe Summit
-  ['rocky', 'Rocky Peak Bird', 'rocky.glb', 1.75, 'lightning', 320, 54, 24, ['pounce']],
+  // Celestial Summit — Wing Tribe Eyrie
+  ['rocky', 'Stormpeak Bird', 'rocky.glb', 1.75, 'lightning', 320, 54, 24, ['pounce']],
   ['feather_mask', 'Feather Mask Warrior', 'feathermask.glb', 1.95, 'lightning', 345, 56, 26, ['slash', 'whirlwind_strike']],
   ['wing_tribe', 'Wing Tribe Guardian', 'wingtribe.glb', 2.05, 'lightning', 360, 58, 28, ['whirlwind_strike', 'charge']],
   ['wing_tribe_spear', 'Wing Tribe Spearthrower', 'wingtribespear.glb', 2.02, 'lightning', 335, 58, 25, ['arrow_volley'], { isRanged: true, attackRange: 5.8 }],
-  ['mountain_spirit', 'Roc Peak Wind Spirit', 'spirits.glb', 1.9, 'lightning', 330, 57, 24, ['frost_wave'], { isRanged: true, attackRange: 5.5 }],
-  ['bone_roc', 'Bone Roc Scavenger', 'boneroc.glb', 2.15, 'dark', 375, 60, 29, ['pounce', 'shockwave']],
+  ['mountain_spirit', 'Stormpeak Wind Spirit', 'spirits.glb', 1.9, 'lightning', 330, 57, 24, ['frost_wave'], { isRanged: true, attackRange: 5.5 }],
+  ['bone_roc', 'Bone Sky Scavenger', 'boneroc.glb', 2.15, 'dark', 375, 60, 29, ['pounce', 'shockwave']],
   ['antelope', 'Peak Horned Antelope', 'antelope.glb', 1.85, 'physical', 330, 55, 25, ['charge']],
   ['mountain_goat', 'Rocky Mountain Goat', 'goat.glb', 1.78, 'earth', 328, 54, 25, ['charge', 'earth_stomp']],
-  ['devil_saytan', 'Devil Shaitan Disciple', 'devilsaytan.glb', 2.22, 'fire', 390, 62, 30, ['infernal_nova', 'whirlwind_strike']],
+  ['devil_saytan', 'Ember Cult Disciple', 'devilsaytan.glb', 2.22, 'fire', 390, 62, 30, ['infernal_nova', 'whirlwind_strike']],
 
-  // Secret S1F — Togui Village (Forgotten World)
-  ['togui_doll', 'Togui Cursed Doll', 'togui_doll.glb', 1.48, 'dark', 185, 38, 15, ['pounce']],
-  ['togui_boom', 'Togui Boom Mask', 'togui_boom.glb', 1.68, 'fire', 175, 42, 13, ['powder_blast'], { isRanged: true, attackRange: 4.8 }],
-  ['togui_soldier', 'Togui Warrior', 'togui_soldier.glb', 1.92, 'physical', 210, 40, 17, ['slash', 'whirlwind_strike']],
-  ['togui_magic', 'Togui Shaman', 'togui_magic.glb', 1.88, 'dark', 190, 42, 15, ['curse_drain'], { isRanged: true, attackRange: 5.4 }],
-  ['togui_strong', 'Togui Iron Brute', 'togui_strong.glb', 2.12, 'earth', 255, 45, 21, ['earth_stomp', 'charge']],
-  ['togui_general', 'Togui War General', 'togui_general.glb', 2.08, 'fire', 245, 44, 20, ['whirlwind_strike', 'charge']],
-  ['togui_elder', 'Togui Elder Soothsayer', 'togui_elder.glb', 1.98, 'dark', 230, 46, 18, ['curse_drain', 'poison_nova'], { isRanged: true, attackRange: 5.6 }],
-  ['togui_chieftain', 'Togui Sovereign Idol', 'togui_togui.glb', 2.25, 'fire', 280, 48, 22, ['shockwave', 'infernal_nova']],
+  // Forgotten Rift S1F — Ashen Totem Hollow
+  ['togui_doll', 'Ashen Totem', 'togui_doll.glb', 1.48, 'dark', 185, 38, 15, ['pounce']],
+  ['togui_boom', 'Cursed Boom Mask', 'togui_boom.glb', 1.68, 'fire', 175, 42, 13, ['powder_blast'], { isRanged: true, attackRange: 4.8 }],
+  ['togui_soldier', 'Ashen Tribe Warrior', 'togui_soldier.glb', 1.92, 'physical', 210, 40, 17, ['slash', 'whirlwind_strike']],
+  ['togui_magic', 'Ashen Tribe Shaman', 'togui_magic.glb', 1.88, 'dark', 190, 42, 15, ['curse_drain'], { isRanged: true, attackRange: 5.4 }],
+  ['togui_strong', 'Ashen Iron Brute', 'togui_strong.glb', 2.12, 'earth', 255, 45, 21, ['earth_stomp', 'charge']],
+  ['togui_general', 'Ashen War General', 'togui_general.glb', 2.08, 'fire', 245, 44, 20, ['whirlwind_strike', 'charge']],
+  ['togui_elder', 'Ashen Elder Soothsayer', 'togui_elder.glb', 1.98, 'dark', 230, 46, 18, ['curse_drain', 'poison_nova'], { isRanged: true, attackRange: 5.6 }],
+  ['togui_chieftain', 'Ashen Chieftain', 'togui_togui.glb', 2.25, 'fire', 280, 48, 22, ['shockwave', 'infernal_nova']],
 
-  // Secret S2F — Flame Ghost Shipwreck (Forgotten World)
+  // Forgotten Rift S2F — Dread Galleon Wreck
   ['ghost_pirate', 'Ghost Ship Pirate', 'ghost_pirate.glb', 1.9, 'dark', 230, 44, 18, ['slash']],
   ['ghost_marauder', 'Ghost Ship Marauder', 'ghost_marauder.glb', 1.98, 'physical', 255, 47, 20, ['whirlwind_strike', 'charge']],
   ['ghost_beast', 'Ghost Abyssal Beast', 'ghost_beast.glb', 2.02, 'poison', 265, 48, 21, ['pounce', 'acid_spit']],
@@ -1513,7 +1515,7 @@ addSroMobs([
   ['ghost_undine', 'Shipwreck Undine', 'ghost_undine.glb', 1.9, 'ice', 238, 48, 18, ['frost_wave'], { isRanged: true, attackRange: 5.5 }],
   ['ghost_king_nipper', 'Abyssal King Nipper', 'ghost_kingnipper.glb', 2.05, 'poison', 275, 49, 22, ['pounce', 'whirlwind_strike']],
   ['ghost_commander', 'Dread Ghost Commander', 'ghost_commander.glb', 2.15, 'dark', 305, 52, 24, ['whirlwind_strike', 'shockwave']],
-  ['ghost_wreck', 'Wrecked Captain Sereness', 'ghost_wreck.glb', 2.22, 'dark', 320, 54, 25, ['curse_drain', 'shockwave']]
+  ['ghost_wreck', 'Dread Captain Vane', 'ghost_wreck.glb', 2.22, 'dark', 320, 54, 25, ['curse_drain', 'shockwave']]
 ]);
 
 export const MONSTER_DEFS = MONSTER_CATALOG;
@@ -1596,7 +1598,7 @@ export const BOSS_CATALOG = {
     id: 'tiger_girl',
     legacyId: 'kimura',
     type: 'tigerwoman',
-    name: 'Tiger Girl',
+    name: 'Frostfang Empress',
     title: '',
     subtitle: 'Steppe Savagery Queen',
     glbPath: '/assets/sro/mobs/tigerwoman.glb',
@@ -1613,7 +1615,7 @@ export const BOSS_CATALOG = {
     summonPool: ['tiger', 'white_tiger'],
     summonBands: [0.8, 0.58, 0.35],
     summonCount: 3,
-    appearMsg: '🐅 [UNIQUE] Tiger Girl mounts her Blue Tiger and stalks the chamber!',
+    appearMsg: '🐅 [UNIQUE] Frostfang Empress mounts her Stormpelt Tiger and stalks the chamber!',
     skills: ['flame_claw_leap', 'tiger_dark_curse', 'tiger_roar_ring', 'whitetiger_pack', 'charge']
   },
   6: {
@@ -1622,9 +1624,9 @@ export const BOSS_CATALOG = {
     type: 'uruchi',
     uniquePrefab: 'uruchi',
     glbPath: '/assets/sro/mobs/uruchi.glb',
-    name: 'Uruchi',
+    name: 'Warchief Drakmor',
     title: '',
-    subtitle: 'Black Robber Overlord',
+    subtitle: 'Blackblade Overlord',
     targetHeight: 2.15,
     hpMult: 11.5,
     atkMult: 2.7,
@@ -1636,7 +1638,7 @@ export const BOSS_CATALOG = {
     summonPool: ['bandit', 'bandit_archer'],
     summonBands: [0.8, 0.6, 0.38],
     summonCount: 3,
-    appearMsg: '🔥 [UNIQUE] Overlord Uruchi rides forth atop his Armored War-Drake!',
+    appearMsg: '🔥 [UNIQUE] Warchief Drakmor rides forth atop his Armored War-Drake!',
     skills: ['uruchi_drake_breath', 'uruchi_whirlwind', 'bandit_ambush_volley', 'earth_splitter', 'summon']
   },
   9: {
@@ -1645,9 +1647,9 @@ export const BOSS_CATALOG = {
     type: 'isyutaru',
     uniquePrefab: 'isyutaru',
     glbPath: '/assets/sro/mobs/isyutaru.glb',
-    name: 'Isyutaru',
+    name: 'Lady Glaciera',
     title: '',
-    subtitle: 'Karakorum Frost Empress',
+    subtitle: 'Rimevault Frost Empress',
     targetHeight: 2.15,
     hpMult: 13.0,
     atkMult: 2.85,
@@ -1659,7 +1661,7 @@ export const BOSS_CATALOG = {
     summonPool: ['yeoha', 'water_ghost'],
     summonBands: [0.8, 0.58, 0.36],
     summonCount: 3,
-    appearMsg: '❄️ [UNIQUE] Frost Empress Isyutaru freezes the air with ancient mirrors!',
+    appearMsg: '❄️ [UNIQUE] Lady Glaciera freezes the air with ancient mirrors!',
     skills: ['isyutaru_blizzard', 'ice_lance_barrage', 'frost_prison_nova', 'isyutaru_ice_mirror_shield', 'summon']
   },
   12: {
@@ -1668,9 +1670,9 @@ export const BOSS_CATALOG = {
     type: 'lord_yarkan',
     uniquePrefab: 'lord_yarkan',
     glbPath: '/assets/sro/mobs/bonelord.glb',
-    name: 'Lord Yarkan',
+    name: 'Valkor, Bone Sovereign',
     title: '',
-    subtitle: 'Taklamakan Sand Monarch',
+    subtitle: 'Sunspire Sand Monarch',
     targetHeight: 2.35,
     hpMult: 14.5,
     atkMult: 3.1,
@@ -1682,7 +1684,7 @@ export const BOSS_CATALOG = {
     summonPool: ['hyungno', 'earth_ghost'],
     summonBands: [0.8, 0.58, 0.36],
     summonCount: 4,
-    appearMsg: '🏜️ [UNIQUE] Lord Yarkan ignites his solar wheel beneath the sands!',
+    appearMsg: '🏜️ [UNIQUE] Valkor, Bone Sovereign ignites his solar wheel beneath the sands!',
     skills: ['yarkan_magma_eruption', 'yarkan_sandstorm', 'desert_earthquake', 'solar_spear_volley', 'charge', 'summon']
   },
   15: {
@@ -1691,9 +1693,9 @@ export const BOSS_CATALOG = {
     type: 'demon_shaitan',
     uniquePrefab: 'demon_shaitan',
     glbPath: '/assets/sro/mobs/tahomet.glb',
-    name: 'Demon Shaitan',
+    name: 'Malakor, Ember Archfiend',
     title: '',
-    subtitle: 'Flame Mountain Archfiend',
+    subtitle: 'Caldera Archfiend',
     targetHeight: 2.25,
     hpMult: 16.5,
     atkMult: 3.35,
@@ -1705,7 +1707,7 @@ export const BOSS_CATALOG = {
     summonPool: ['devil_bug', 'gunpowder_ghost'],
     summonBands: [0.82, 0.6, 0.38],
     summonCount: 4,
-    appearMsg: '😈 [UNIQUE] Demon Shaitan tears open Flame Mountain with Hellfire!',
+    appearMsg: '😈 [UNIQUE] Malakor, Ember Archfiend tears open the Ember Abyss with Hellfire!',
     skills: ['hellfire_meteor_rain', 'abyssal_soul_drain', 'infernal_nova', 'charge', 'summon']
   },
   16: {
@@ -1714,7 +1716,7 @@ export const BOSS_CATALOG = {
     type: 'roc',
     uniquePrefab: 'roc',
     glbPath: '/assets/sro/mobs/roc.glb',
-    name: 'Roc',
+    name: 'Aetherion, Sky Sovereign',
     title: '',
     subtitle: 'Monarch of the Celestial Tempest',
     targetSpan: 4.3,
@@ -1728,7 +1730,7 @@ export const BOSS_CATALOG = {
     summonPool: ['blue_tiger', 'devil_bug', 'ghost_bug'],
     summonBands: [0.8, 0.6, 0.4, 0.22],
     summonCount: 4,
-    appearMsg: '🦅 [FINAL UNIQUE] Roc, Monarch of the Sky, descends with four storm wings!',
+    appearMsg: '🦅 [FINAL UNIQUE] Aetherion, Sky Sovereign descends with four storm wings!',
     skills: ['roc_hurricane_gale', 'roc_wing_slam', 'sky_feather_storm', 'thunder_judgment', 'abyssal_soul_drain', 'summon']
   },
   103: {
@@ -1737,7 +1739,7 @@ export const BOSS_CATALOG = {
     type: 'medusa',
     uniquePrefab: 'medusa',
     glbPath: '/assets/sro/mobs/whitesnake.glb',
-    name: 'Medusa',
+    name: 'Vespera, Venom Queen',
     title: '',
     subtitle: 'Abyssal Gorgon Queen',
     targetHeight: 2.20,
@@ -1751,7 +1753,7 @@ export const BOSS_CATALOG = {
     summonPool: ['chakji', 'water_ghost'],
     summonBands: [0.8, 0.55],
     summonCount: 3,
-    appearMsg: '🐍 [UNIQUE] Abyssal Gorgon Medusa awakens inside her sunken shrine!',
+    appearMsg: '🐍 [UNIQUE] Vespera, Venom Queen awakens inside her sunken shrine!',
     skills: ['venom_gaze', 'viper_orb_fan', 'poison_nova', 'serpent_coil_slam', 'summon']
   },
   13: {
@@ -1759,7 +1761,7 @@ export const BOSS_CATALOG = {
     type: 'seth',
     glbPath: '/assets/sro/mobs/seth.glb',
     name: 'Seth the Chaos Sovereign',
-    subtitle: 'Holy Water Sanctum Guardian',
+    subtitle: 'Sunken Sun Sanctum Guardian',
     targetHeight: 2.35,
     hpMult: 11.5,
     atkMult: 2.75,
@@ -1771,15 +1773,15 @@ export const BOSS_CATALOG = {
     summonPool: ['anubis', 'sphinx', 'sand_mummy'],
     summonBands: [0.8, 0.55],
     summonCount: 3,
-    appearMsg: '🏺 [UNIQUE] Seth the Chaos Sovereign rises inside the Holy Water Sanctum!',
+    appearMsg: '🏺 [UNIQUE] Seth the Chaos Sovereign rises inside the Sunken Sun Sanctum!',
     skills: ['desert_earthquake', 'infernal_nova', 'abyssal_soul_drain', 'charge', 'summon']
   },
   14: {
     id: 'jupiter_unique',
     type: 'baal',
     glbPath: '/assets/sro/mobs/baal.glb',
-    name: 'Baal of Jupiter',
-    subtitle: 'Infernal Warden of Olympus',
+    name: 'Baal of Stormspire',
+    subtitle: 'Infernal Warden of the Spire',
     targetHeight: 2.45,
     hpMult: 12.5,
     atkMult: 2.85,
@@ -1791,15 +1793,15 @@ export const BOSS_CATALOG = {
     summonPool: ['mino', 'babilion', 'griffin'],
     summonBands: [0.8, 0.55],
     summonCount: 3,
-    appearMsg: '⚡ [UNIQUE] Baal of Jupiter shakes the Olympic Hall!',
+    appearMsg: '⚡ [UNIQUE] Baal of Stormspire shakes the Stormspire Hall!',
     skills: ['hellfire_meteor_rain', 'infernal_nova', 'thunder_judgment', 'charge', 'summon']
   },
   101: {
     id: 'togui_unique',
     type: 'togui_chieftain',
     glbPath: '/assets/sro/mobs/togui_togui.glb',
-    name: 'Elder Togui Chieftain',
-    subtitle: 'Forgotten Mask Idol',
+    name: 'High Shaman Vorak',
+    subtitle: 'Cursed Mask Idol',
     targetHeight: 2.3,
     hpMult: 10.5,
     atkMult: 2.4,
@@ -1811,14 +1813,14 @@ export const BOSS_CATALOG = {
     summonPool: ['togui_doll', 'togui_boom', 'togui_soldier'],
     summonBands: [0.75, 0.45],
     summonCount: 3,
-    appearMsg: '👺 [UNIQUE] Elder Togui Chieftain awakens the Masked Tribe!',
+    appearMsg: '👺 [UNIQUE] High Shaman Vorak awakens the Masked Tribe!',
     skills: ['infernal_nova', 'shockwave', 'earth_stomp', 'summon']
   },
   102: {
     id: 'sereness_unique',
     type: 'ghost_wreck',
     glbPath: '/assets/sro/mobs/ghost_wreck.glb',
-    name: 'Captain Kid Sereness',
+    name: 'Dread Captain Vane',
     subtitle: 'Phantom Admiral of the Flame Wreck',
     targetHeight: 2.35,
     hpMult: 12.0,
@@ -1831,7 +1833,7 @@ export const BOSS_CATALOG = {
     summonPool: ['ghost_pirate', 'ghost_curse', 'ghost_seiren'],
     summonBands: [0.8, 0.5],
     summonCount: 3,
-    appearMsg: '🏴‍☠️ [UNIQUE] Captain Kid Sereness commands the Ghost Fleet!',
+    appearMsg: '🏴‍☠️ [UNIQUE] Dread Captain Vane commands the Ghost Fleet!',
     skills: ['abyssal_soul_drain', 'frost_prison_nova', 'shockwave', 'summon']
   }
 };
@@ -1855,16 +1857,16 @@ BOSS_CATALOG.roc = BOSS_CATALOG[16];
 BOSS_CATALOG.medusa = BOSS_CATALOG[103];
 
 Object.assign(UNIQUE_SKILL_LABELS, {
-  tiger_claw_frenzy: 'TIGRESS CLAW FRENZY',
+  tiger_claw_frenzy: 'EMPRESS CLAW FRENZY',
   tiger_dark_curse: 'STEPPE DARK CURSE',
   savage_roar: 'SAVAGE STEPPE ROAR',
   uruchi_drake_breath: 'WAR-DRAKE FLAME BREATH',
   uruchi_whirlwind: 'OVERLORD WHIRLWIND',
-  isyutaru_blizzard: 'KARAKORUM BLIZZARD',
+  isyutaru_blizzard: 'GLACIAL BLIZZARD',
   isyutaru_ice_mirror_shield: 'ICE MIRROR BARRIER',
   frost_prison_nova: 'FROST PRISON NOVA',
   ice_spear_volley: 'FROZEN LANCE VOLLEY',
-  yarkan_magma_eruption: 'TAKLAMAKAN MAGMA ERUPTION',
+  yarkan_magma_eruption: 'SCORCHING MAGMA ERUPTION',
   yarkan_sandstorm: 'SANDSTORM VORTEX',
   desert_earthquake: 'DESERT TECTONIC QUAKE',
   hellfire_meteor_rain: 'HELLFIRE METEOR RAIN',
@@ -1874,7 +1876,7 @@ Object.assign(UNIQUE_SKILL_LABELS, {
   roc_wing_slam: 'SKY SOVEREIGN WING SLAM',
   thunder_judgment: 'THUNDER JUDGMENT',
   sky_feather_storm: 'FEATHER STORM BARRAGE',
-  petrify_gaze: 'GORGON PETRIFY GAZE',
+  petrify_gaze: 'VENOM PETRIFY GAZE',
   venom_barrage: 'ABYSSAL VENOM BARRAGE',
   serpent_coil_slam: 'SERPENT COIL SLAM'
 });
@@ -1882,41 +1884,88 @@ Object.assign(UNIQUE_SKILL_LABELS, {
 export const FLOOR_BOSSES = BOSS_CATALOG;
 
 export const FLOOR_POOLS = {
-  // Jangan & Donwhang Stone Cave (Upper -> Inner Sanctum)
+  // Outskirts & Fungal Echo Caverns (Upper -> Inner Sanctum)
   1: ['mangyang', 'gyo_weasel', 'bigeye_ghost', 'tiger', 'bug_ghost', 'water_ghost', 'yeoha', 'work_earth_ghost'],
   2: ['bug_ghost', 'work_earth_ghost', 'soldier_earth_ghost', 'earth_ghost', 'stone_ghost', 'blindmon', 'yeoha', 'bandit', 'bandit_archer'],
   3: ['soldier_earth_ghost', 'blindmon', 'nachal', 'yacha', 'demon_horse', 'taese', 'chakji', 'stone_ghost', 'earth_ghost'],
 
-  // Oasis Kingdom & Karakoram Ice Citadel
+  // Oasis & Rimevault Stronghold
   4: ['black_robber', 'black_robber_archer', 'red_eye_ghost', 'ong', 'scorpion', 'red_scorpion', 'desert_trunkz', 'bandit', 'bandit_archer'],
   5: ['ishade', 'planar', 'yeti', 'penon_fighter', 'penon_warrior', 'snow_spider', 'white_spider', 'blue_tiger', 'white_tiger'],
   6: ['red_scorpion', 'desert_trunkz', 'big_spider', 'yeowa', 'black_robber', 'black_robber_archer', 'penon_fighter', 'penon_warrior', 'yeti', 'white_tiger', 'blue_tiger', 'gunpowder_ghost'],
 
-  // Qin-Shi Emperor's Tomb (Terracotta -> Viper -> Four Guardians)
+  // Sunken Imperial Mausoleum (Terracotta -> Viper -> Four Guardians)
   7: ['tombstone_ghost', 'tomb_stone_spirit', 'tomb_bug_ghost', 'bomb_stone_ghost', 'qinshi_tombstone', 'tomb_soldier', 'tomb_archer', 'tomb_general', 'royal_soldier'],
   8: ['snake_slave', 'snake_man', 'snake_demon', 'snake_general', 'snake_woman', 'black_snake', 'tomb_soldier', 'tomb_archer', 'devil_bug'],
   9: ['east_guardian', 'west_guardian', 'north_guardian', 'south_guardian', 'royal_soldier', 'tomb_general', 'snake_general', 'snake_woman', 'hyungno'],
 
-  // Flame Mountain & Taklamakan Necropolis
+  // Caldera Sanctum & Sunspire Necropolis
   10: ['flame_ghost', 'flame_evil', 'flame_salamander', 'flame_witch', 'flame_archer', 'ghost_bug', 'devil_bug'],
   11: ['bone_soldier', 'bone_hunter', 'bone_mage', 'bone_general', 'bone_lord', 'devil_eye', 'edimmu', 'death_kara', 'hyeongcheon'],
   12: ['flame_captain', 'flame_adjutant', 'flame_cow_king', 'flame_giant', 'flame_gigantic', 'flame_crazy', 'flame_witch', 'flame_archer', 'hyungno', 'hyeongcheon'],
 
-  // Alexandria Holy Water Temple, Jupiter Temple, Shambhala Abyss, Roc Mountain
+  // Sunken Sun Sanctum, Stormspire Temple, Underworld Abyss, Celestial Peak
   13: ['sand_mummy', 'aker', 'anubis', 'heron', 'keisas', 'apriest', 'spector', 'sphinx', 'sandman', 'sd_raider', 'bastet', 'mont', 'sekhmet', 'haroeris', 'osiris', 'isis', 'neith', 'selkis', 'seth'],
   14: ['babilion', 'mino', 'griffin', 'charm_witch', 'fear_serpent', 'fanaticism', 'desire_watcher', 'devil_dog', 'dark_dog', 'devil_dark', 'immortal_warden', 'nike_lion', 'the_earth', 'yuno', 'jupiter_sentinel', 'baal'],
   15: ['wendigo', 'succubus', 'void_devil', 'dark_guardian', 'goat_demon', 'garm', 'shamoot', 'underworld_knight', 'shambhala_mage', 'narun', 'dm_soldier', 'andras'],
   16: ['rocky', 'feather_mask', 'wing_tribe', 'wing_tribe_spear', 'mountain_spirit', 'bone_roc', 'antelope', 'mountain_goat', 'devil_saytan'],
 
-  // Forgotten World Secret Floors (Togui Village, Ghost Shipwreck, Medusa's Sanctum)
+  // Forgotten Rift Secret Floors (Ashen Totem Hollow, Dread Galleon Wreck, Vespera's Sanctum)
   101: ['togui_doll', 'togui_boom', 'togui_soldier', 'togui_magic', 'togui_strong', 'togui_general', 'togui_elder', 'togui_chieftain'],
   102: ['ghost_pirate', 'ghost_marauder', 'ghost_beast', 'ghost_curse', 'ghost_gluttony', 'ghost_specter', 'ghost_seiren', 'ghost_undine', 'ghost_king_nipper', 'ghost_commander', 'ghost_wreck'],
   103: ['snake_slave', 'snake_man', 'snake_demon', 'snake_general', 'snake_woman', 'black_snake', 'tomb_general', 'royal_soldier', 'east_guardian', 'west_guardian', 'north_guardian', 'south_guardian']
 };
 
+let _sharedEnemyUi = null;
+function getSharedEnemyUi() {
+  if (_sharedEnemyUi) return _sharedEnemyUi;
+  const markShared = (obj) => {
+    if (!obj) return obj;
+    obj.userData = obj.userData || {};
+    obj.userData.isCachedGLB = true;
+    obj.userData.isSharedAsset = true;
+    return obj;
+  };
+  const bgGeo = markShared(new THREE.PlaneGeometry(1, 1));
+  const bgMat = markShared(new THREE.MeshBasicMaterial({
+    color: 0x0f172a,
+    side: THREE.DoubleSide,
+    transparent: true,
+    opacity: 0.85
+  }));
+  const fillGeo = markShared(new THREE.PlaneGeometry(1, 1));
+  fillGeo.translate(0.5, 0, 0);
+  const telegraphGeo = markShared(new THREE.RingGeometry(0.18, 1.0, 24));
+  const telegraphMat = markShared(new THREE.MeshBasicMaterial({
+    color: 0xef4444,
+    side: THREE.DoubleSide,
+    transparent: true,
+    opacity: 0.0
+  }));
+  _sharedEnemyUi = {
+    bgGeo,
+    bgMat,
+    fillGeo,
+    fillMats: new Map(),
+    telegraphGeo,
+    telegraphMat,
+    getFillMat(color) {
+      let mat = this.fillMats.get(color);
+      if (!mat) {
+        mat = markShared(new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide }));
+        this.fillMats.set(color, mat);
+      }
+      return mat;
+    }
+  };
+  return _sharedEnemyUi;
+}
+
 function attachHealthBarAndTelegraph(enemy) {
   const root = enemy.mesh;
   if (!root || typeof root.add !== 'function') return;
+
+  const ui = getSharedEnemyUi();
 
   // Floating 3D health bar above monster
   const barGroup = new THREE.Group();
@@ -1928,22 +1977,18 @@ function attachHealthBarAndTelegraph(enemy) {
   const width = enemy.isBoss ? 1.45 : enemy.isGiant ? 1.25 : enemy.isElite ? 1.05 : 0.82;
   const height = enemy.isBoss ? 0.13 : enemy.isGiant ? 0.11 : 0.09;
 
-  const bgMesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(width + 0.04, height + 0.04),
-    new THREE.MeshBasicMaterial({ color: 0x0f172a, side: THREE.DoubleSide, transparent: true, opacity: 0.85 })
-  );
+  const bgMesh = new THREE.Mesh(ui.bgGeo, ui.bgMat);
+  bgMesh.scale.set(width + 0.04, height + 0.04, 1);
   bgMesh.userData.noFlash = true;
   barGroup.add(bgMesh);
 
   const fillColor = enemy.isBoss ? 0xef4444 : enemy.isGiant ? 0xf59e0b : enemy.isElite ? 0xfacc15 : 0x22c55e;
-  const fillGeo = new THREE.PlaneGeometry(width, height);
-  fillGeo.translate(width * 0.5, 0, 0);
-  const fillMesh = new THREE.Mesh(
-    fillGeo,
-    new THREE.MeshBasicMaterial({ color: fillColor, side: THREE.DoubleSide })
-  );
+  const fillMesh = new THREE.Mesh(ui.fillGeo, ui.getFillMat(fillColor));
+  fillMesh.scale.set(width, height, 1);
   fillMesh.position.set(-width * 0.5, 0, 0.01);
   fillMesh.userData.noFlash = true;
+  fillMesh.userData.barWidth = width;
+  fillMesh.userData.barHeight = height;
   barGroup.add(fillMesh);
 
   barGroup.visible = Boolean(enemy.isBoss || enemy.isGiant || enemy.isElite);
@@ -1951,16 +1996,9 @@ function attachHealthBarAndTelegraph(enemy) {
 
   // Ground telegraph warning ring (visible during TELEGRAPH / SKILL windup)
   const ringRadius = enemy.attackRange ? Math.max(1.1, Math.min(3.6, enemy.attackRange * 0.85)) : 1.4;
-  const telegraphMesh = new THREE.Mesh(
-    new THREE.RingGeometry(0.25, ringRadius, 24),
-    new THREE.MeshBasicMaterial({
-      color: 0xef4444,
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.0
-    })
-  );
-    telegraphMesh.rotation.x = -Math.PI / 2;
+  const telegraphMesh = new THREE.Mesh(ui.telegraphGeo, ui.telegraphMat);
+  telegraphMesh.scale.set(ringRadius, ringRadius, 1);
+  telegraphMesh.rotation.x = -Math.PI / 2;
   telegraphMesh.position.y = 0.04;
   telegraphMesh.visible = false;
   telegraphMesh.name = 'TelegraphRing';
@@ -2017,8 +2055,10 @@ export class EnemyAI {
     this.isVillageMob = Boolean(config.isVillageMob || config.isOutskirtMob);
     this.isChallengeMob = Boolean(config.isChallengeMob);
     this.campId = config.campId || null;
+    this.campName = config.campName || null;
     this.campLevel = config.campLevel ? Number(config.campLevel) : null;
-    this.respawnDelay = Number(config.respawnDelay || 12);
+    this.spawnOnce = Boolean(config.spawnOnce);
+    this.respawnDelay = Number(config.respawnDelay ?? 12);
     this.respawnTimer = 0;
     this.villageSafeHalf = Number(config.villageSafeHalf || 25.5);
     this.sleeping = Boolean(config.sleeping && !this.isBoss && !this.isGiant && !this.isOutskirtMob);
@@ -2028,9 +2068,16 @@ export class EnemyAI {
     this.skillCooldown = 2.5 + Math.random() * 2.5;
     this.awarenessTimer = 0;
     this.isAlerted = false;
+    this._returningHome = false;
+    this._leashTimer = 0;
+    this._lastAlertAt = -99;
     this.stunTimer = 0;
     // Active status effects keyed by STATUS id: { id, remaining, duration, tick, tickTimer, dotPerTick, slowPct, root, dmgTakenPct, color }
     this.statuses = {};
+    this._hasStatuses = false;
+    this._lodAcc = 0;
+    this._animAcc = 0;
+    this._deferredMeshCfg = null;
     this.statusRing = null;
     this.deathTimer = 0;
     this.dead = false;
@@ -2078,7 +2125,9 @@ export class EnemyAI {
     if (this.mesh) {
       this.mesh.position.set(this.x, 0, this.z);
       this.mesh.rotation.y = this.rotation;
-      attachHealthBarAndTelegraph(this);
+      if (!this.mesh.userData?.isDeferredStub) {
+        attachHealthBarAndTelegraph(this);
+      }
     }
   }
 
@@ -2091,8 +2140,10 @@ export class EnemyAI {
     if (this.hp < this.maxHp || this.isBoss || this.isGiant || this.isElite) {
       this.healthBarGroup.visible = true;
     }
+    if (!this.healthBarGroup.visible) return;
     const pct = Math.max(0, Math.min(1, this.hp / Math.max(1, this.maxHp)));
-    this.healthFillMesh.scale.x = Math.max(0.001, pct);
+    const bw = this.healthFillMesh.userData?.barWidth || 1;
+    this.healthFillMesh.scale.x = Math.max(0.001, pct) * bw;
     if (camera) {
       this.healthBarGroup.quaternion.copy(camera.quaternion);
     }
@@ -2121,7 +2172,22 @@ export class EnemyManager {
     this.currentFloor = 0;
     this.floorClearedNotified = false;
     this.elapsedTime = 0;
+    this._lastTime = 0;
+    this._lastPlayerPos = null;
     this.lastCallbacks = {};
+
+    this._frustum = new THREE.Frustum();
+    this._projScreenMat = new THREE.Matrix4();
+    this._cullSphere = new THREE.Sphere();
+    this._spatialCells = new Map();
+    this._cellPool = [];
+    this._cellPoolUsed = 0;
+    this._validSkillsScratch = [];
+    this._aliveNonBossDirty = true;
+    this._aliveNonBossCached = null;
+    this._aliveNonBossDungeonRef = null;
+    this.campKills = new Map();
+    this.activeOutskirtCamps = [];
   }
 
   _applyInitArgs(rendererOrOptions, models3dArg, dataArg) {
@@ -2220,7 +2286,10 @@ export class EnemyManager {
   }
 
   clearEnemies() {
-    for (const e of this.enemies) this.clearStatuses(e);
+    for (const e of this.enemies) {
+      e._deferredMeshCfg = null;
+      this.clearStatuses(e);
+    }
     while (this.rootGroup.children.length > 0) {
       const child = this.rootGroup.children.pop();
       this.rootGroup.remove(child);
@@ -2230,6 +2299,10 @@ export class EnemyManager {
     this.enemies = [];
     this.projectiles = [];
     this._pendingStrikes = [];
+    this._spatialCells.clear();
+    this.campKills.clear();
+    this._aliveNonBossDirty = true;
+    this._aliveNonBossCached = null;
   }
 
   suspendFloorEnemies() {
@@ -2245,6 +2318,9 @@ export class EnemyManager {
     }
     this.enemies = [];
     this.projectiles = [];
+    this._spatialCells.clear();
+    this._aliveNonBossDirty = true;
+    this._aliveNonBossCached = null;
     return saved;
   }
 
@@ -2256,6 +2332,7 @@ export class EnemyManager {
     }
     this.enemies = [...(saved.enemies || [])];
     this.floorClearedNotified = Boolean(saved.floorClearedNotified);
+    this._aliveNonBossDirty = true;
   }
 
   _clearAllEnemyProjectiles() {
@@ -2636,11 +2713,20 @@ export class EnemyManager {
     return this.enemies;
   }
 
+  getCampKillProgress(campId) {
+    const camp = this.activeOutskirtCamps?.find((c) => c.id === campId);
+    const required = Math.max(1, Number(camp?.giantKillCount || OUTSKIRT_GIANT_KILL_THRESHOLD));
+    const kills = this.campKills.get(campId) || 0;
+    const hasActiveGiant = this.enemies.some((m) => !m.dead && m.isGiant && m.campId === campId);
+    return { kills, required, hasActiveGiant };
+  }
+
   /**
    * Spawn low-level respawning monster camps outside the Oakhaven city walls (Lv 1..10 training).
    */
   spawnVillageOutskirts(villageData) {
     const camps = Array.isArray(villageData?.outskirtCamps) ? villageData.outskirtCamps : [];
+    this.activeOutskirtCamps = camps;
     const wallHalf = Number(villageData?.townWallHalf || 55) + 0.6;
     for (const camp of camps) {
       const spawns = Array.isArray(camp.spawns) ? camp.spawns : [];
@@ -2659,6 +2745,7 @@ export class EnemyManager {
             isOutskirtMob: true,
             isVillageMob: true,
             campId: camp.id,
+            campName: camp.name || camp.id,
             campLevel: mobLevel,
             respawnDelay: camp.respawnSeconds || 10,
             villageSafeHalf: wallHalf
@@ -2669,20 +2756,42 @@ export class EnemyManager {
     return this.enemies;
   }
 
+  _canEmitAlert(e, time = this._lastTime) {
+    if (!e || e.dead || e._returningHome || e.isAlerted) return false;
+    if (
+      e.state === AI_STATE.CHASE ||
+      e.state === AI_STATE.TELEGRAPH ||
+      e.state === AI_STATE.ATTACK ||
+      e.state === AI_STATE.SKILL ||
+      e.state === AI_STATE.STUN
+    ) {
+      return false;
+    }
+    return (time - (e._lastAlertAt ?? -99)) >= 8.0;
+  }
+
   /**
    * Wake a sleeping monster and all packmates sharing its packId (or nearby sleeping monsters).
    * Returns the array of monsters that woke up on this call.
    */
-  wakePack(enemyOrPackId) {
+  wakePack(enemyOrPackId, opts = {}) {
     const trigger = typeof enemyOrPackId === 'object' ? enemyOrPackId : null;
     const packId = typeof enemyOrPackId === 'string' ? enemyOrPackId : (trigger?.packId || null);
+    const time = this._lastTime;
+    const allowTriggerAlert = opts.allowTriggerAlert !== false;
     const woken = [];
-    for (const m of this.enemies) {
+    let alertTarget = null;
+
+    for (let i = 0; i < this.enemies.length; i++) {
+      const m = this.enemies[i];
       if (m.dead) continue;
+      if (m._returningHome && m !== trigger) continue;
       const inSamePack = packId && m.packId === packId;
-      const nearbyTrigger = trigger && Math.hypot(m.x - trigger.x, m.z - trigger.z) <= 6.5;
+      const nearbyTrigger = trigger && ((m.x - trigger.x) * (m.x - trigger.x) + (m.z - trigger.z) * (m.z - trigger.z)) <= 6.5 * 6.5;
       if (m === trigger || inSamePack || nearbyTrigger) {
-        if (m.sleeping || m.state === AI_STATE.SLEEP || m.state === AI_STATE.IDLE || m.state === AI_STATE.PATROL) {
+        const wasUnengaged = m.sleeping || m.state === AI_STATE.SLEEP || m.state === AI_STATE.IDLE || m.state === AI_STATE.PATROL;
+        const wasAlerted = Boolean(m.isAlerted);
+        if (wasUnengaged) {
           const wasSleeping = m.sleeping || m.state === AI_STATE.SLEEP;
           m.sleeping = false;
           m.isAlerted = true;
@@ -2690,15 +2799,44 @@ export class EnemyManager {
           if (m.state !== AI_STATE.STUN && m.state !== AI_STATE.TELEGRAPH && m.state !== AI_STATE.ATTACK && m.state !== AI_STATE.SKILL) {
             m.state = AI_STATE.CHASE;
           }
-          if (wasSleeping) woken.push(m);
+          if (wasSleeping || !wasAlerted) {
+            woken.push(m);
+          }
+          if (!wasAlerted && (time - (m._lastAlertAt ?? -99)) >= 8.0) {
+            if (m === trigger) {
+              if (allowTriggerAlert) alertTarget = m;
+            } else if (!alertTarget) {
+              alertTarget = m;
+            }
+          }
         }
       }
     }
-    if (woken.length > 0 && this.renderer?.spawnFloatingText) {
-      const lead = trigger || woken[0];
-      this.renderer.spawnFloatingText({ x: lead.x, y: 1.1, z: lead.z }, '!', { color: '#facc15', isCrit: true });
+
+    if (alertTarget && woken.length > 0 && this.renderer?.spawnFloatingText) {
+      alertTarget._lastAlertAt = time;
+      this.renderer.spawnFloatingText({ x: alertTarget.x, y: 1.1, z: alertTarget.z }, '!', { color: '#facc15', isCrit: true });
     }
     return woken;
+  }
+
+  _hydrateDeferredEnemyMesh(enemy) {
+    const cfg = enemy?._deferredMeshCfg;
+    if (!cfg) return;
+    enemy._deferredMeshCfg = null;
+    const stub = enemy.mesh;
+    if (stub && stub.parent) {
+      stub.parent.remove(stub);
+    }
+    const mesh = cfg.meshBuilder(cfg.meshType, cfg.opts);
+    mesh.position.set(enemy.x, 0, enemy.z);
+    mesh.rotation.y = enemy.rotation;
+    this.rootGroup.add(mesh);
+    enemy.mesh = mesh;
+    attachHealthBarAndTelegraph(enemy);
+    if (enemy._hasStatuses) {
+      this._refreshStatusRing(enemy);
+    }
   }
 
   _getMonsterPoolForFloor(floorNum, floorData = null) {
@@ -2715,11 +2853,41 @@ export class EnemyManager {
     return FLOOR_POOLS[13];
   }
 
-  spawnMonster({ type = 'goblin', floor = 1, x = 0, z = 0, isElite = false, isBoss = false, isGiant = false, packId = null, sleeping = false, customConfig = null, roomId = null, inBossRoom = false }) {
+  spawnMonster({
+    type = 'goblin',
+    floor = 1,
+    x = 0,
+    z = 0,
+    isElite = false,
+    isBoss = false,
+    isGiant = false,
+    packId = null,
+    sleeping = false,
+    customConfig = null,
+    roomId = null,
+    inBossRoom = false,
+    isOutskirtMob = false,
+    isVillageMob = false,
+    campId = null,
+    campName = null,
+    campLevel = null,
+    aggroRange = null,
+    spawnOnce = false,
+    respawnDelay = null,
+    villageSafeHalf = null
+  }) {
     const base = MONSTER_CATALOG[type] || MONSTER_CATALOG.goblin;
+    const resolvedOutskirt = Boolean(customConfig?.isOutskirtMob ?? isOutskirtMob);
+    const resolvedVillage = Boolean(customConfig?.isVillageMob ?? isVillageMob ?? resolvedOutskirt);
+    const resolvedCampId = customConfig?.campId ?? campId ?? null;
+    const resolvedCampName = customConfig?.campName ?? campName ?? null;
+    const resolvedCampLevel = customConfig?.campLevel ?? campLevel ?? null;
+    const resolvedSpawnOnce = Boolean(customConfig?.spawnOnce ?? spawnOnce);
+    const resolvedRespawnDelay = customConfig?.respawnDelay ?? respawnDelay ?? 12;
+    const resolvedVillageSafeHalf = customConfig?.villageSafeHalf ?? villageSafeHalf ?? 25.5;
     // rpg-systems: monster level is no longer the raw floor number; it comes from floorMonsterLevel(floor)
     // (floor 15 -> level 52) so every gear tier is reachable. customConfig.level overrides it.
-    const level = Math.max(1, Number(customConfig?.level) || floorMonsterLevel(floor));
+    const level = Math.max(1, Number(customConfig?.level ?? resolvedCampLevel) || (floor > 0 ? floorMonsterLevel(floor) : 1));
 
     // Level scaling curve matching ASJ progression
     const hpScale = 1 + (level - 1) * 0.34 + Math.pow(level - 1, 1.35) * 0.08;
@@ -2751,8 +2919,8 @@ export class EnemyManager {
     const glbUrl = customConfig?.glbPath ?? base.glbPath ?? null;
     const targetSpan = customConfig?.targetSpan ?? base.targetSpan ?? null;
     const targetHeight = targetSpan ? null : (customConfig?.targetHeight || (base.targetHeight ? base.targetHeight * (isGiant ? 1.6 : 1.0) : (isBoss ? 2.2 : isGiant ? 2.3 : 1.55)));
-
-    const mesh = meshBuilder(base.meshType || type, {
+    const meshType = base.meshType || type;
+    const meshOpts = {
       isElite,
       isBoss,
       isGiant,
@@ -2767,7 +2935,27 @@ export class EnemyManager {
       glbPath: glbUrl,
       targetHeight,
       targetSpan
-    });
+    };
+
+    const isOutskirt = resolvedOutskirt;
+    const distFromOriginSq = x * x + (z - 7.5) * (z - 7.5);
+    let nearLastPlayer = false;
+    if (this._lastPlayerPos) {
+      const pdx = x - this._lastPlayerPos.x;
+      const pdz = z - this._lastPlayerPos.z;
+      nearLastPlayer = (pdx * pdx + pdz * pdz) <= 48 * 48;
+    }
+    const deferMesh = typeof window !== 'undefined' && isOutskirt && !isBoss && !nearLastPlayer && distFromOriginSq > 48 * 48;
+
+    let mesh;
+    if (deferMesh) {
+      mesh = new THREE.Group();
+      mesh.name = `DeferredMonster_${type}`;
+      mesh.visible = false;
+      mesh.userData.isDeferredStub = true;
+    } else {
+      mesh = meshBuilder(meshType, meshOpts);
+    }
 
     this.rootGroup.add(mesh);
 
@@ -2776,7 +2964,7 @@ export class EnemyManager {
       type,
       name,
       title: customConfig?.title !== undefined ? customConfig.title : (isGiant ? 'Giant Miniboss' : isElite ? 'Elite Monster' : ''),
-      floor: customConfig?.isOutskirtMob ? 0 : Math.max(1, Number(floor) || 1), // 0 for outskirt mobs so F1+ dungeon quests stay clean
+      floor: isOutskirt ? 0 : Math.max(1, Number(floor) || 1), // 0 for outskirt mobs so F1+ dungeon quests stay clean
       level,
       isElite,
       isBoss,
@@ -2791,7 +2979,7 @@ export class EnemyManager {
       attackRange: base.isRanged
         ? Math.min(isBoss ? 14.5 : 13.5, Math.max(9.6, base.attackRange * (isBoss ? 1.35 : isGiant ? 1.22 : isElite ? 1.12 : 1)))
         : base.attackRange * (isBoss ? 1.45 : isGiant ? 1.35 : isElite ? 1.15 : 1),
-      aggroRange: isBoss ? 17.5 : isGiant ? 14.0 : (base.isRanged ? Math.max(15.0, base.aggroRange) : base.aggroRange),
+      aggroRange: Number(customConfig?.aggroRange ?? aggroRange) || (isBoss ? 17.5 : isGiant ? 14.0 : (base.isRanged ? Math.max(15.0, base.aggroRange) : base.aggroRange)),
       attackCooldown: base.attackCooldown,
       telegraphTime: base.telegraphTime,
       element,
@@ -2809,13 +2997,15 @@ export class EnemyManager {
       sleeping: Boolean(sleeping || customConfig?.sleeping),
       roomId: customConfig?.roomId ?? roomId,
       inBossRoom: Boolean(customConfig?.inBossRoom ?? inBossRoom),
-      isOutskirtMob: Boolean(customConfig?.isOutskirtMob),
-      isVillageMob: Boolean(customConfig?.isVillageMob || customConfig?.isOutskirtMob),
+      isOutskirtMob: isOutskirt,
+      isVillageMob: resolvedVillage,
       isChallengeMob: Boolean(customConfig?.isChallengeMob),
-      campId: customConfig?.campId || null,
-      campLevel: customConfig?.campLevel || null,
-      respawnDelay: customConfig?.respawnDelay || 12,
-      villageSafeHalf: customConfig?.villageSafeHalf || 25.5,
+      campId: resolvedCampId,
+      campName: resolvedCampName,
+      campLevel: resolvedCampLevel,
+      spawnOnce: resolvedSpawnOnce,
+      respawnDelay: resolvedRespawnDelay,
+      villageSafeHalf: resolvedVillageSafeHalf,
       x,
       z,
       mesh
@@ -2823,8 +3013,12 @@ export class EnemyManager {
     enemy.subtitle = customConfig?.subtitle || '';
     enemy.roomId = customConfig?.roomId ?? roomId;
     enemy.inBossRoom = Boolean(customConfig?.inBossRoom ?? inBossRoom);
+    if (deferMesh) {
+      enemy._deferredMeshCfg = { meshBuilder, meshType, opts: meshOpts };
+    }
 
     this.enemies.push(enemy);
+    this._aliveNonBossDirty = true;
     return enemy;
   }
 
@@ -2859,22 +3053,75 @@ export class EnemyManager {
   }
 
   getAliveNonBossCount(dungeon = null) {
-    const d = dungeon || this.gameContext?.dungeon || this.world?.dungeon;
+    const d = dungeon || this.gameContext?.dungeon || this.world?.dungeon || null;
+    if (!this._aliveNonBossDirty && this._aliveNonBossDungeonRef === d && this._aliveNonBossCached !== null) {
+      return this._aliveNonBossCached;
+    }
     const bossRoom = d?.bossRoom;
-    return this.enemies.filter((e) => {
-      if (e.dead || e.isBoss || e.summonedByBossId || e.isOutskirtMob || e.isChallengeMob) return false;
+    let count = 0;
+    for (let i = 0; i < this.enemies.length; i++) {
+      const e = this.enemies[i];
+      if (e.dead || e.isBoss || e.summonedByBossId || e.isOutskirtMob || e.isChallengeMob) continue;
       if (bossRoom) {
-        if (e.roomId !== undefined && e.roomId !== null && e.roomId === bossRoom.id) return false;
-        if (e.inBossRoom) return false;
-        const dist = Math.hypot(e.x - bossRoom.centerX, e.z - bossRoom.centerZ);
-        if (dist < Math.min(bossRoom.w, bossRoom.h) * 0.48) return false;
+        if (e.roomId !== undefined && e.roomId !== null && e.roomId === bossRoom.id) continue;
+        if (e.inBossRoom) continue;
+        const dx = e.x - bossRoom.centerX;
+        const dz = e.z - bossRoom.centerZ;
+        const halfMin = Math.min(bossRoom.w, bossRoom.h) * 0.48;
+        if (dx * dx + dz * dz < halfMin * halfMin) continue;
       }
-      return true;
-    }).length;
+      count++;
+    }
+    this._aliveNonBossCached = count;
+    this._aliveNonBossDungeonRef = d;
+    this._aliveNonBossDirty = false;
+    return count;
   }
 
   get aliveNonBosses() {
     return this.getAliveNonBossCount();
+  }
+
+  /**
+   * Allocation-free spatial iteration over alive enemies within range of (x, z).
+   * Supports (x, z, range, fn) or ({ x, z }, range, fn). Return false from fn to stop early.
+   */
+  forEachEnemyInRange(posOrX, zOrRadius = 2.5, rangeOrFn = 2.5, maybeFn = null) {
+    let x = 0;
+    let z = 0;
+    let range = 2.5;
+    let fn = null;
+    if (typeof posOrX === 'object' && posOrX !== null) {
+      x = Number(posOrX.x || 0);
+      z = Number(posOrX.z || 0);
+      range = Number(zOrRadius || 2.5);
+      fn = typeof rangeOrFn === 'function' ? rangeOrFn : maybeFn;
+    } else {
+      x = Number(posOrX || 0);
+      z = Number(zOrRadius || 0);
+      range = Number(rangeOrFn || 2.5);
+      fn = maybeFn;
+    }
+    if (typeof fn !== 'function') return;
+    for (let i = 0; i < this.enemies.length; i++) {
+      const e = this.enemies[i];
+      if (e.dead) continue;
+      const dx = e.x - x;
+      const dz = e.z - z;
+      const maxR = range + e.radius;
+      if (dx * dx + dz * dz <= maxR * maxR) {
+        if (fn(e) === false) break;
+      }
+    }
+  }
+
+  /** Allocation-free scan for the active alive Nemesis enemy. */
+  getActiveNemesis() {
+    for (let i = 0; i < this.enemies.length; i++) {
+      const e = this.enemies[i];
+      if (e.isNemesis && !e.dead) return e;
+    }
+    return null;
   }
 
   getActiveBoss() {
@@ -3001,15 +3248,26 @@ export class EnemyManager {
       }
     }
 
+    if (enemy._deferredMeshCfg) {
+      this._hydrateDeferredEnemyMesh(enemy);
+    }
     // Shock: +dmgTakenPct% damage taken (callers that already scaled pass statusScaled: true)
     const takenMult = options.statusScaled ? 1 : this.getDamageTakenMult(enemy);
     const dmg = Math.max(1, Math.round(rawDamage * takenMult));
     enemy.hp = Math.max(0, enemy.hp - dmg);
     if (!options.isDot) enemy.mesh?.userData?.triggerHitFlash?.(0.15);
+
+    const wasUnengaged = enemy.sleeping || enemy.state === AI_STATE.SLEEP || enemy.state === AI_STATE.IDLE || enemy.state === AI_STATE.PATROL;
+    const wasAlertedBefore = Boolean(enemy.isAlerted);
+    if (wasUnengaged && enemy.hp > 0) {
+      enemy._returningHome = false;
+      this.wakePack(enemy, { allowTriggerAlert: !wasAlertedBefore });
+    }
+    enemy.sleeping = false;
     enemy.isAlerted = true;
     enemy.awarenessTimer = 0;
-    if (enemy.sleeping || enemy.state === AI_STATE.SLEEP || enemy.packId) {
-      this.wakePack(enemy);
+    if (wasUnengaged && enemy.hp > 0 && enemy.state !== AI_STATE.STUN && enemy.state !== AI_STATE.TELEGRAPH && enemy.state !== AI_STATE.ATTACK && enemy.state !== AI_STATE.SKILL) {
+      enemy.state = AI_STATE.CHASE;
     }
 
     // Apply knockback
@@ -3241,13 +3499,93 @@ export class EnemyManager {
     return spawned;
   }
 
+  _spawnCampGiant(campId, triggerEnemy = null, worldArg = null) {
+    const camp = this.activeOutskirtCamps?.find((c) => c.id === campId) || {
+      id: campId,
+      name: triggerEnemy?.campName || campId,
+      level: triggerEnemy?.campLevel || triggerEnemy?.level || 1,
+      center: { x: triggerEnemy?.spawnX ?? triggerEnemy?.x ?? 0, z: triggerEnemy?.spawnZ ?? triggerEnemy?.z ?? 0 },
+      spawns: [{ type: triggerEnemy?.type || 'tiger' }]
+    };
+    const spawns = Array.isArray(camp.spawns) && camp.spawns.length > 0
+      ? camp.spawns
+      : [{ type: triggerEnemy?.type || 'tiger' }];
+    const pickType = spawns.find((s) => !MONSTER_CATALOG[s.type]?.isRanged)?.type || triggerEnemy?.type || spawns[0].type || 'tiger';
+    const cx = Number(camp.center?.x ?? triggerEnemy?.spawnX ?? 0);
+    const cz = Number(camp.center?.z ?? triggerEnemy?.spawnZ ?? 0);
+    const world = worldArg || this.gameContext?.dungeon || this.gameContext?.world || this.world;
+
+    let spawnX = cx;
+    let spawnZ = cz;
+    const isWalkable = typeof world?.isWalkable === 'function' ? (wx, wz) => world.isWalkable(wx, wz, 0.9) : null;
+    if (isWalkable && !isWalkable(spawnX, spawnZ)) {
+      const radii = [2.2, 4.2, 6.5];
+      let found = false;
+      for (let ri = 0; ri < radii.length && !found; ri++) {
+        const r = radii[ri];
+        for (let a = 0; a < 8; a++) {
+          const ang = (a / 8) * Math.PI * 2;
+          const tx = cx + Math.cos(ang) * r;
+          const tz = cz + Math.sin(ang) * r;
+          if (isWalkable(tx, tz)) {
+            spawnX = tx;
+            spawnZ = tz;
+            found = true;
+            break;
+          }
+        }
+      }
+    }
+
+    const giant = this.spawnMonster({
+      type: pickType,
+      floor: 0,
+      x: spawnX,
+      z: spawnZ,
+      isGiant: true,
+      isOutskirtMob: true,
+      isVillageMob: true,
+      campId,
+      packId: campId,
+      campName: camp.name,
+      campLevel: camp.level || triggerEnemy?.campLevel || triggerEnemy?.level || 1,
+      aggroRange: 14,
+      spawnOnce: true,
+      respawnDelay: 0,
+      villageSafeHalf: triggerEnemy?.villageSafeHalf ?? 55.6
+    });
+    if (!giant) return null;
+    giant.spawnOnce = true;
+
+    const hud = this.context?.hud || this.gameContext?.hud;
+    const cleanName = String(giant.name || '').replace(/^Giant\s+/i, '');
+    const msg = `⚠️ Giant ${cleanName} has emerged at ${camp.name || 'the outskirt camp'}!`;
+    hud?.toast?.(msg, 'levelup');
+    hud?.showToast?.(msg, 'levelup');
+    if (this.renderer?.spawnSkillEffect) {
+      this.renderer.spawnSkillEffect('shockwave', { x: spawnX, y: 0.4, z: spawnZ }, 0, { color: 0xf59e0b, radius: 3.4 });
+      this.renderer.spawnSkillEffect('spark', { x: spawnX, y: 0.9, z: spawnZ }, 0, { color: 0xfbbf24 });
+    }
+    if (this.renderer?.spawnHitSparks) {
+      this.renderer.spawnHitSparks(giant, 0xf59e0b, 16);
+    }
+    if (this.renderer?.shakeScreen) {
+      this.renderer.shakeScreen(0.32, 0.35);
+    } else if (this.renderer?.shake) {
+      this.renderer.shake(0.32, 0.35);
+    }
+    return giant;
+  }
+
   _handleEnemyDeath(enemy, options = {}) {
     if (enemy.dead) return;
     enemy.dead = true;
     enemy.isDead = true;
     enemy.state = AI_STATE.DEAD;
     enemy.deathTimer = 1.05;
-    if (enemy.isOutskirtMob) {
+    enemy._deferredMeshCfg = null;
+    this._aliveNonBossDirty = true;
+    if (enemy.isOutskirtMob && !enemy.spawnOnce) {
       enemy.respawnTimer = Math.max(3, Number(enemy.respawnDelay || 12));
     }
     this.clearStatuses(enemy);
@@ -3258,6 +3596,22 @@ export class EnemyManager {
     const ctx = this.gameContext || {};
     const world = options.world || ctx.dungeon || ctx.world;
     const gameState = options.gameState || ctx.gameState;
+
+    // Outskirt camp kill threshold -> spawn Giant Miniboss
+    if (!enemy.isBoss && enemy.isOutskirtMob && enemy.campId && !enemy.isGiant) {
+      const hasActiveGiant = this.enemies.some((m) => !m.dead && m.isGiant && m.campId === enemy.campId);
+      if (!hasActiveGiant) {
+        const camp = this.activeOutskirtCamps?.find((c) => c.id === enemy.campId);
+        const threshold = Math.max(1, Number(camp?.giantKillCount || OUTSKIRT_GIANT_KILL_THRESHOLD));
+        const next = (this.campKills.get(enemy.campId) || 0) + 1;
+        if (next >= threshold) {
+          this.campKills.set(enemy.campId, 0);
+          this._spawnCampGiant(enemy.campId, enemy, world);
+        } else {
+          this.campKills.set(enemy.campId, next);
+        }
+      }
+    }
 
     // Molten elite death explosion visual
     if (enemy.modifier?.deathNova && this.renderer?.spawnSkillEffect) {
@@ -3369,6 +3723,7 @@ export class EnemyManager {
           add.isDead = true;
           add.hp = 0;
           add.deathTimer = 0.25;
+          this._aliveNonBossDirty = true;
           if (add.telegraphMesh) add.telegraphMesh.visible = false;
           if (add.healthBarGroup) add.healthBarGroup.visible = false;
           this.clearStatuses(add);
@@ -3487,6 +3842,7 @@ export class EnemyManager {
       world = playerPosOrWorld;
       callbacks = worldOrCallbacks || {};
     }
+    this._lastTime = time;
     if (callbacks && Object.keys(callbacks).length > 0) {
       this.lastCallbacks = callbacks;
     }
@@ -3510,9 +3866,52 @@ export class EnemyManager {
     const playerController = this.gameContext?.player || (playerTarget?.receiveHit ? playerTarget : null);
     const px = Number(playerTarget?.x ?? playerTarget?.position?.x ?? playerController?.position?.x ?? 0);
     const pz = Number(playerTarget?.z ?? playerTarget?.position?.z ?? playerController?.position?.z ?? 0);
+    if (!this._lastPlayerPos) this._lastPlayerPos = { x: px, z: pz };
+    else {
+      this._lastPlayerPos.x = px;
+      this._lastPlayerPos.z = pz;
+    }
+
+    const cam = this.renderer?.camera || null;
+    let frustumValid = false;
+    if (cam && cam.projectionMatrix && cam.matrixWorldInverse) {
+      if (typeof cam.updateMatrixWorld === 'function') cam.updateMatrixWorld();
+      this._projScreenMat.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
+      this._frustum.setFromProjectionMatrix(this._projScreenMat);
+      frustumValid = true;
+    }
+
+    // Build reusable spatial hash grid (CELL = 4m) once per frame for O(1) neighbor separation
+    this._spatialCells.clear();
+    this._cellPoolUsed = 0;
+    for (let i = 0; i < this.enemies.length; i++) {
+      const em = this.enemies[i];
+      if (em.dead) continue;
+      const ddx = px - em.x;
+      const ddz = pz - em.z;
+      const activeMover = em.state === AI_STATE.CHASE || em.state === AI_STATE.SKILL || em._returningHome || em.isBoss;
+      if (!activeMover && ddx * ddx + ddz * ddz > 46 * 46) continue;
+      const cx = Math.floor(em.x * 0.25) + 4096;
+      const cz = Math.floor(em.z * 0.25) + 4096;
+      const key = (cx << 13) | cz;
+      let bucket = this._spatialCells.get(key);
+      if (!bucket) {
+        bucket = this._cellPool[this._cellPoolUsed];
+        if (!bucket) {
+          bucket = [];
+          this._cellPool[this._cellPoolUsed] = bucket;
+        } else {
+          bucket.length = 0;
+        }
+        this._cellPoolUsed++;
+        this._spatialCells.set(key, bucket);
+      }
+      bucket.push(em);
+    }
 
     this._updatePendingStrikes(dt, px, pz, playerController, callbacks);
 
+    let hydratedThisFrame = 0;
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
       if (!e.dead && e.reflectShieldTimer > 0) {
@@ -3529,31 +3928,38 @@ export class EnemyManager {
           e.mesh = null;
         }
         if (e.isOutskirtMob) {
-          e.respawnTimer -= dt;
-          if (e.respawnTimer <= 0) {
-            const lvl = e.campLevel || e.level || 1;
-            const respawned = this.spawnMonster({
-              type: e.type,
-              floor: 1,
-              x: e.spawnX,
-              z: e.spawnZ,
-              isElite: e.isElite,
-              packId: e.packId,
-              sleeping: false,
-              customConfig: {
-                level: lvl,
-                isOutskirtMob: true,
-                isVillageMob: true,
-                campId: e.campId,
-                campLevel: lvl,
-                respawnDelay: e.respawnDelay,
-                villageSafeHalf: e.villageSafeHalf
-              }
-            });
-            if (respawned && this.renderer?.spawnSkillEffect) {
-              this.renderer.spawnSkillEffect('spark', { x: e.spawnX, y: 0.6, z: e.spawnZ }, 0, { color: 0x4ade80 });
+          if (e.spawnOnce) {
+            if (e.deathTimer <= 0) {
+              this.enemies.splice(i, 1);
             }
-            this.enemies.splice(i, 1);
+          } else {
+            e.respawnTimer -= dt;
+            if (e.respawnTimer <= 0) {
+              const lvl = e.campLevel || e.level || 1;
+              const respawned = this.spawnMonster({
+                type: e.type,
+                floor: 1,
+                x: e.spawnX,
+                z: e.spawnZ,
+                isElite: e.isElite,
+                packId: e.packId,
+                sleeping: false,
+                customConfig: {
+                  level: lvl,
+                  isOutskirtMob: true,
+                  isVillageMob: true,
+                  campId: e.campId,
+                  campName: e.campName || null,
+                  campLevel: lvl,
+                  respawnDelay: e.respawnDelay,
+                  villageSafeHalf: e.villageSafeHalf
+                }
+              });
+              if (respawned && this.renderer?.spawnSkillEffect) {
+                this.renderer.spawnSkillEffect('spark', { x: e.spawnX, y: 0.6, z: e.spawnZ }, 0, { color: 0x4ade80 });
+              }
+              this.enemies.splice(i, 1);
+            }
           }
         }
         continue;
@@ -3562,28 +3968,79 @@ export class EnemyManager {
       const dx = px - e.x;
       const dz = pz - e.z;
       const distSq = dx * dx + dz * dz;
-      const distToPlayer = Math.sqrt(distSq);
 
-      // Performance LOD & distance culling for far non-boss enemies (> 58m hidden & throttled)
-      if (!e.isBoss && distSq > 58 * 58 && e.state !== AI_STATE.TELEGRAPH && e.state !== AI_STATE.SKILL) {
-        if (e.mesh && e.mesh.visible) e.mesh.visible = false;
-        e._lodAcc = (e._lodAcc || 0) + dt;
-        if (e._lodAcc < 0.45) continue;
+      // Hydrate deferred outskirt mesh smoothly as player approaches within 48m (max 3/frame)
+      if (e._deferredMeshCfg && hydratedThisFrame < 3 && distSq <= 48 * 48) {
+        this._hydrateDeferredEnemyMesh(e);
+        hydratedThisFrame++;
+      }
+
+      // Tight LOD & distance culling for far non-boss enemies (> 38m hidden & staggered 0.35s)
+      if (!e.isBoss && distSq > 38 * 38 && e.state !== AI_STATE.TELEGRAPH && e.state !== AI_STATE.SKILL && !e._pendingSkillCheck) {
+        if (e.mesh) {
+          if (e.mesh.visible) e.mesh.visible = false;
+          if (e.mesh.castShadow) e.mesh.castShadow = false;
+        }
+        e._lodAcc = (e._lodAcc || ((i % 5) * 0.07)) + dt;
+        if (e._lodAcc < 0.35) continue;
         const lodDt = e._lodAcc;
         e._lodAcc = 0;
         e.attackCooldown = Math.max(0, e.attackCooldown - lodDt);
         e.skillCooldown = Math.max(0, e.skillCooldown - lodDt);
-        if (e.hp < e.maxHp && e.state === AI_STATE.IDLE) {
+        this._updateStatuses(e, lodDt, time);
+        if (e.dead) continue;
+        if (e.hp < e.maxHp && (e.state === AI_STATE.IDLE || e._returningHome)) {
           e.hp = Math.min(e.maxHp, e.hp + Math.max(1, Math.round(e.maxHp * 0.04)));
+        }
+        if (e._returningHome) {
+          e._leashTimer = Math.max(0, (e._leashTimer || 0) - lodDt);
+          const hdx = e.spawnX - e.x;
+          const hdz = e.spawnZ - e.z;
+          const hDist = Math.hypot(hdx, hdz);
+          const safeOutsideWall = !e.isOutskirtMob || (Math.abs(e.x) >= e.villageSafeHalf + 1.5 || Math.abs(e.z) >= e.villageSafeHalf + 1.5);
+          if ((hDist <= 10 && safeOutsideWall) || e._leashTimer <= 0 || hDist < 0.5) {
+            e._returningHome = false;
+            e._leashTimer = 0;
+            e.isAlerted = false;
+            e.awarenessTimer = 0;
+            e.state = AI_STATE.IDLE;
+          }
         }
         continue;
       }
-      if (e.mesh && !e.mesh.visible) e.mesh.visible = true;
 
-      // Throttle bone mixer updates on medium-far mobs (30m..58m) while keeping movement smooth
-      const animDt = (!e.isBoss && distSq > 30 * 30)
-        ? ((e._animAcc = (e._animAcc || 0) + dt) >= 0.066 ? (() => { const d = e._animAcc; e._animAcc = 0; return d; })() : 0)
-        : dt;
+      const distToPlayer = Math.sqrt(distSq);
+
+      // Camera frustum + boss distance visibility culling
+      let inFrustum = true;
+      if (e.isBoss) {
+        if (distSq > 52 * 52 && e.state !== AI_STATE.TELEGRAPH && e.state !== AI_STATE.SKILL && !e._pendingSkillCheck) {
+          inFrustum = false;
+        }
+      } else if (frustumValid && distSq > 16 * 16) {
+        this._cullSphere.center.set(e.x, 0.8, e.z);
+        this._cullSphere.radius = Math.max(3.5, (e.radius || 0.6) * 4);
+        inFrustum = this._frustum.intersectsSphere(this._cullSphere);
+      }
+
+      const shouldRender = !e._deferredMeshCfg && inFrustum;
+      if (e.mesh && e.mesh.visible !== shouldRender) {
+        e.mesh.visible = shouldRender;
+      }
+
+      // Inline animation throttling (0 when off-frustum/hidden, 15 Hz beyond 22m)
+      let animDt = dt;
+      if (!shouldRender) {
+        animDt = 0;
+      } else if (!e.isBoss && distSq > 22 * 22) {
+        e._animAcc = (e._animAcc || 0) + dt;
+        if (e._animAcc >= 0.066) {
+          animDt = e._animAcc;
+          e._animAcc = 0;
+        } else {
+          animDt = 0;
+        }
+      }
 
       // Status effects (DoT ticks, timers, ring/tint). May kill the enemy.
       this._updateStatuses(e, dt, time);
@@ -3592,8 +4049,10 @@ export class EnemyManager {
       // Frozen (non-boss): a statue - no movement, no attacks, no cooldown progress
       if (this._isRooted(e)) {
         if (e.telegraphMesh) e.telegraphMesh.visible = false;
-        this._applyStatusTint(e, dt);
-        e.syncHealthBar(this.renderer?.camera);
+        if (shouldRender) {
+          this._applyStatusTint(e, dt);
+          e.syncHealthBar(cam);
+        }
         continue;
       }
 
@@ -3620,12 +4079,14 @@ export class EnemyManager {
 
       if (e.state === AI_STATE.STUN) {
         e.stunTimer -= dt;
-        e.mesh?.userData?.animate?.('hit', time, dt);
+        if (animDt > 0) e.mesh?.userData?.animate?.('hit', time, animDt);
         if (e.stunTimer <= 0) {
           e.state = AI_STATE.CHASE;
         }
-        this._applyStatusTint(e, dt);
-        e.syncHealthBar(this.renderer?.camera);
+        if (shouldRender) {
+          this._applyStatusTint(e, dt);
+          e.syncHealthBar(cam);
+        }
         continue;
       }
 
@@ -3638,7 +4099,12 @@ export class EnemyManager {
         e.skillCooldown <= 0 &&
         e.state === AI_STATE.CHASE
       ) {
-        const validSkills = e.skills.filter((s) => isSkillInRange(s, e, distToPlayer));
+        const validSkills = this._validSkillsScratch;
+        validSkills.length = 0;
+        for (let si = 0; si < e.skills.length; si++) {
+          const sk = e.skills[si];
+          if (isSkillInRange(sk, e, distToPlayer)) validSkills.push(sk);
+        }
         if (validSkills.length > 0) {
           const chosenSkill = validSkills[Math.floor(Math.random() * validSkills.length)];
           e.pendingSkill = chosenSkill;
@@ -3686,24 +4152,29 @@ export class EnemyManager {
         case AI_STATE.IDLE: {
           e.stateTimer -= dt;
           if (animDt > 0) e.mesh?.userData?.animate?.('idle', time, animDt);
-          if (distToPlayer <= e.aggroRange) {
+          if (distToPlayer <= e.aggroRange && !e._returningHome) {
             e.rotation = Math.atan2(dx, dz);
             if (!e.isAlerted) {
               e.isAlerted = true;
               e.awarenessTimer = 0.3 + Math.random() * 0.2;
-              if (this.renderer?.spawnFloatingText) {
-                this.renderer.spawnFloatingText({ x: e.x, y: 1.1, z: e.z }, '!', { color: '#facc15', isCrit: true });
+              if ((time - (e._lastAlertAt ?? -99)) >= 8.0) {
+                e._lastAlertAt = time;
+                if (this.renderer?.spawnFloatingText) {
+                  this.renderer.spawnFloatingText({ x: e.x, y: 1.1, z: e.z }, '!', { color: '#facc15', isCrit: true });
+                }
               }
             }
             if (e.awarenessTimer > 0) {
               e.awarenessTimer -= dt;
               break;
             }
-            if (e.packId) this.wakePack(e);
+            if (e.packId) this.wakePack(e, { allowTriggerAlert: false });
             else e.state = AI_STATE.CHASE;
           } else {
-            e.isAlerted = false;
-            e.awarenessTimer = 0;
+            if (distToPlayer > e.aggroRange * 1.35) {
+              e.isAlerted = false;
+              e.awarenessTimer = 0;
+            }
             if (e.stateTimer <= 0) {
               const angle = Math.random() * Math.PI * 2;
               const r = 1.5 + Math.random() * 2.5;
@@ -3720,13 +4191,35 @@ export class EnemyManager {
 
         case AI_STATE.PATROL: {
           e.stateTimer -= dt;
+          if (e._returningHome) {
+            e._leashTimer = Math.max(0, (e._leashTimer || 0) - dt);
+            const hdx = e.spawnX - e.x;
+            const hdz = e.spawnZ - e.z;
+            const hDist = Math.hypot(hdx, hdz);
+            const safeOutsideWall = !e.isOutskirtMob || (Math.abs(e.x) >= e.villageSafeHalf + 1.5 || Math.abs(e.z) >= e.villageSafeHalf + 1.5);
+            if ((hDist <= 10 && safeOutsideWall) || e._leashTimer <= 0 || hDist < 0.5) {
+              e._returningHome = false;
+              e._leashTimer = 0;
+              e.isAlerted = false;
+              e.awarenessTimer = 0;
+              e.state = AI_STATE.IDLE;
+              e.stateTimer = 1.2 + Math.random() * 1.5;
+            } else {
+              this._moveEnemy(e, hdx / hDist, hdz / hDist, e.moveSpeed * 1.15, dt, world);
+              if (animDt > 0) e.mesh?.userData?.animate?.('walk', time, animDt);
+            }
+            break;
+          }
           if (distToPlayer <= e.aggroRange) {
             e.rotation = Math.atan2(dx, dz);
             if (!e.isAlerted) {
               e.isAlerted = true;
               e.awarenessTimer = 0.3 + Math.random() * 0.2;
-              if (this.renderer?.spawnFloatingText) {
-                this.renderer.spawnFloatingText({ x: e.x, y: 1.1, z: e.z }, '!', { color: '#facc15', isCrit: true });
+              if ((time - (e._lastAlertAt ?? -99)) >= 8.0) {
+                e._lastAlertAt = time;
+                if (this.renderer?.spawnFloatingText) {
+                  this.renderer.spawnFloatingText({ x: e.x, y: 1.1, z: e.z }, '!', { color: '#facc15', isCrit: true });
+                }
               }
             }
             if (e.awarenessTimer > 0) {
@@ -3734,7 +4227,7 @@ export class EnemyManager {
               if (animDt > 0) e.mesh?.userData?.animate?.('idle', time, animDt);
               break;
             }
-            if (e.packId) this.wakePack(e);
+            if (e.packId) this.wakePack(e, { allowTriggerAlert: false });
             else e.state = AI_STATE.CHASE;
             break;
           }
@@ -3744,8 +4237,10 @@ export class EnemyManager {
           if (pDist < 0.35 || e.stateTimer <= 0) {
             e.state = AI_STATE.IDLE;
             e.stateTimer = 1.2 + Math.random() * 1.5;
-            e.isAlerted = false;
-            e.awarenessTimer = 0;
+            if (distToPlayer > e.aggroRange * 1.35) {
+              e.isAlerted = false;
+              e.awarenessTimer = 0;
+            }
           } else {
             this._moveEnemy(e, pdx / pDist, pdz / pDist, e.moveSpeed * 0.55, dt, world);
             if (animDt > 0) e.mesh?.userData?.animate?.('walk', time, animDt);
@@ -3757,21 +4252,25 @@ export class EnemyManager {
           if (e.isOutskirtMob) {
             const spawnDist = Math.hypot(e.x - e.spawnX, e.z - e.spawnZ);
             const nearTownWall = Math.abs(e.x) < e.villageSafeHalf && Math.abs(e.z) < e.villageSafeHalf;
-            if (spawnDist > 26 || nearTownWall) {
+            const leashR = e.isGiant ? 34 : 26;
+            if (spawnDist > leashR || nearTownWall) {
+              e._returningHome = true;
+              e._leashTimer = 3.0;
               e.patrolTarget = { x: e.spawnX, z: e.spawnZ };
               e.state = AI_STATE.PATROL;
-              e.stateTimer = 2.4;
-              e.isAlerted = false;
+              e.stateTimer = 3.0;
               e.awarenessTimer = 0;
               e.hp = Math.min(e.maxHp, e.hp + Math.round(e.maxHp * 0.25));
-              e.syncHealthBar?.(this.renderer?.camera);
+              e.syncHealthBar?.(cam);
               break;
             }
           }
           if (distToPlayer > e.aggroRange * 1.6 && !e.isBoss) {
             e.state = AI_STATE.IDLE;
             e.stateTimer = 1.0;
-            e.isAlerted = false;
+            if (distToPlayer > e.aggroRange * 1.35) {
+              e.isAlerted = false;
+            }
             e.awarenessTimer = 0;
             break;
           }
@@ -3811,7 +4310,7 @@ export class EnemyManager {
             e.telegraphMesh.visible = true;
             e.telegraphMesh.material.opacity = 0.35 + Math.sin(time * 18) * 0.2;
           }
-          e.mesh?.userData?.animate?.('telegraph', time, dt);
+          if (animDt > 0) e.mesh?.userData?.animate?.('telegraph', time, animDt);
 
           if (e.stateTimer <= 0) {
             if (e.telegraphMesh) e.telegraphMesh.visible = false;
@@ -3835,7 +4334,7 @@ export class EnemyManager {
 
         case AI_STATE.ATTACK: {
           e.stateTimer -= dt;
-          e.mesh?.userData?.animate?.('attack', time, dt);
+          if (animDt > 0) e.mesh?.userData?.animate?.('attack', time, animDt);
           if (e.stateTimer <= 0) {
             e.attackCooldown = e.attackCooldownMax;
             e.state = AI_STATE.CHASE;
@@ -3899,7 +4398,7 @@ export class EnemyManager {
               e.pendingSkill = null;
             }
           }
-          e.mesh?.userData?.animate?.('skill', time, dt);
+          if (animDt > 0) e.mesh?.userData?.animate?.('skill', time, animDt);
           if (e.stateTimer <= 0) {
             e.pendingSkill = null;
             e.skillTravelDist = 0;
@@ -3920,8 +4419,10 @@ export class EnemyManager {
         e.mesh.position.set(e.x, 0, e.z);
         e.mesh.rotation.y = e.rotation;
       }
-      this._applyStatusTint(e, dt);
-      e.syncHealthBar(this.renderer?.camera);
+      if (shouldRender) {
+        this._applyStatusTint(e, dt);
+        e.syncHealthBar(cam);
+      }
     }
 
     // Update active enemy projectiles (arrows, elemental bolts, acid spit)
@@ -3997,6 +4498,7 @@ export class EnemyManager {
     }
 
     enemy.statuses[id] = entry;
+    enemy._hasStatuses = true;
     if (!prev && this.renderer?.spawnFloatingText) {
       this.renderer.spawnFloatingText({ x: enemy.x, y: 0.9, z: enemy.z }, entry.name, { color: colorToCss(entry.color) });
     }
@@ -4024,7 +4526,7 @@ export class EnemyManager {
   /** Movement speed multiplier from Chill / Freeze (strongest slow wins). */
   getSpeedMult(enemyOrId) {
     const enemy = this._resolveEnemy(enemyOrId);
-    if (!enemy?.statuses) return 1;
+    if (!enemy?._hasStatuses || !enemy?.statuses) return 1;
     let slow = 0;
     for (const id in enemy.statuses) slow = Math.max(slow, enemy.statuses[id].slowPct || 0);
     return Math.max(0, 1 - Math.min(100, slow) / 100);
@@ -4039,15 +4541,22 @@ export class EnemyManager {
     if (!enemy) return;
     const hadTint = Boolean(enemy._statusTinted);
     enemy.statuses = {};
+    enemy._hasStatuses = false;
     if (hadTint) this._restoreTint(enemy);
     this._removeStatusRing(enemy);
   }
 
   _updateStatuses(enemy, dt, time = 0) {
+    if (!enemy._hasStatuses) return;
     const st = enemy.statuses;
-    if (!st) return;
+    if (!st) {
+      enemy._hasStatuses = false;
+      return;
+    }
     let changed = false;
-    for (const id of Object.keys(st)) {
+    let activeCount = 0;
+    for (const id in st) {
+      if (!Object.prototype.hasOwnProperty.call(st, id)) continue;
       const s = st[id];
       if (s.dotPerTick > 0 && s.tick > 0) {
         s.tickTimer -= dt;
@@ -4064,8 +4573,11 @@ export class EnemyManager {
       if (s.remaining <= 0) {
         delete st[id];
         changed = true;
+      } else {
+        activeCount++;
       }
     }
+    if (activeCount === 0) enemy._hasStatuses = false;
     if (changed) this._refreshStatusRing(enemy);
     if (enemy.statusRing) {
       enemy.statusRing.rotation.z = time * 2.4;
@@ -4148,19 +4660,46 @@ export class EnemyManager {
   }
 
   _moveEnemy(enemy, dirX, dirZ, speed, dt, world) {
-    // Soft separation from other alive enemies so they surround the player naturally
+    // Soft separation from nearby alive enemies using spatial hash grid (fallback to linear scan outside update)
     let sepX = 0;
     let sepZ = 0;
-    for (const other of this.enemies) {
-      if (other === enemy || other.dead) continue;
-      const ox = enemy.x - other.x;
-      const oz = enemy.z - other.z;
-      const dist = Math.hypot(ox, oz);
-      const minSep = enemy.radius + other.radius + 0.25;
-      if (dist > 0.001 && dist < minSep) {
-        const push = (minSep - dist) / minSep;
-        sepX += (ox / dist) * push * 1.4;
-        sepZ += (oz / dist) * push * 1.4;
+    if (this._spatialCells.size > 0) {
+      const cx = Math.floor(enemy.x * 0.25) + 4096;
+      const cz = Math.floor(enemy.z * 0.25) + 4096;
+      for (let ox = -1; ox <= 1; ox++) {
+        for (let oz = -1; oz <= 1; oz++) {
+          const bucket = this._spatialCells.get(((cx + ox) << 13) | (cz + oz));
+          if (!bucket) continue;
+          for (let bi = 0; bi < bucket.length; bi++) {
+            const other = bucket[bi];
+            if (other === enemy || other.dead) continue;
+            const ddx = enemy.x - other.x;
+            const ddz = enemy.z - other.z;
+            const minSep = enemy.radius + other.radius + 0.25;
+            const distSq = ddx * ddx + ddz * ddz;
+            if (distSq > 0.000001 && distSq < minSep * minSep) {
+              const dist = Math.sqrt(distSq);
+              const push = (minSep - dist) / minSep;
+              sepX += (ddx / dist) * push * 1.4;
+              sepZ += (ddz / dist) * push * 1.4;
+            }
+          }
+        }
+      }
+    } else {
+      for (let i = 0; i < this.enemies.length; i++) {
+        const other = this.enemies[i];
+        if (other === enemy || other.dead) continue;
+        const ox = enemy.x - other.x;
+        const oz = enemy.z - other.z;
+        const minSep = enemy.radius + other.radius + 0.25;
+        const distSq = ox * ox + oz * oz;
+        if (distSq > 0.000001 && distSq < minSep * minSep) {
+          const dist = Math.sqrt(distSq);
+          const push = (minSep - dist) / minSep;
+          sepX += (ox / dist) * push * 1.4;
+          sepZ += (oz / dist) * push * 1.4;
+        }
       }
     }
 

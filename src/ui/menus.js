@@ -79,10 +79,24 @@ export class MenuManager {
     this.ctx = null; this.host = null; this._hostSig = null; this._unsub = [];
     this.current = null; this.data = null; this.state = {};
     this._items = new Map(); this._drag = null; this._refreshT = 0;
+    this._dlgT = null; this._alchFlashT = null;
+    this._dlgTextEl = null; this._dlgTypedEl = null;
+    this._tipW = 0; this._tipH = 0; this._tipUid = null;
+    this._lastRenderedMenu = null; this._lastRenderedTab = null;
     this._build();
     this._bindHost(ctx);
     this._onKey = this._onKey.bind(this);
+    this._onResize = () => {
+      if (this.tip && this.tip.classList.contains('on')) {
+        this._tipW = this.tip.offsetWidth || 250;
+        this._tipH = this.tip.offsetHeight || 160;
+      } else {
+        this._tipW = 0;
+        this._tipH = 0;
+      }
+    };
     window.addEventListener('keydown', this._onKey, true);
+    window.addEventListener('resize', this._onResize);
     this._onMenuEvt = (e) => { const d = e.detail || {}; if (d.toggle) this.toggleMenu(d.name, d.data); else this.openMenu(d.name, d.data); };
     window.addEventListener('arc-ui-menu', this._onMenuEvt);
     this._onToastEvt = (e) => this._toast(e.detail && e.detail.msg, e.detail && e.detail.type);
@@ -127,7 +141,8 @@ export class MenuManager {
     m.addEventListener('dragleave', (e) => { const t = e.target.closest('[data-drop]'); if (t) t.classList.remove('dragover'); });
     m.addEventListener('drop', (e) => this._onDrop(e));
     m.addEventListener('dragend', () => { this._drag = null; m.querySelectorAll('.dragging,.dragover').forEach((n) => n.classList.remove('dragging', 'dragover')); });
-    document.addEventListener('mousedown', (e) => { if (!this.ctxMenu.contains(e.target)) this.ctxMenu.classList.remove('on'); });
+    this._onDocMouseDown = (e) => { if (!this.ctxMenu.contains(e.target)) this.ctxMenu.classList.remove('on'); };
+    document.addEventListener('mousedown', this._onDocMouseDown);
   }
 
   _bindHost(ctx) {
@@ -161,6 +176,11 @@ export class MenuManager {
   toggle(name, data) { this.toggleMenu(name, data); }
   open(name, data) { this.openMenu(name, data); }
   closeAll() {
+    clearInterval(this._dlgT); this._dlgT = null;
+    clearTimeout(this._refreshT); this._refreshT = 0;
+    clearTimeout(this._alchFlashT); this._alchFlashT = null;
+    this._dlgTextEl = null; this._dlgTypedEl = null;
+    this._lastRenderedMenu = null; this._lastRenderedTab = null;
     if (!this.current) return;
     const prev = this.current;
     this._alchCancel(true);
@@ -172,6 +192,10 @@ export class MenuManager {
   openMenu(name, data) {
     const n = ALIASES[String(name || '').toLowerCase()] || name;
     if (!n) return;
+    if (this.current === 'dialogue' && n !== 'dialogue') {
+      clearInterval(this._dlgT); this._dlgT = null;
+      this._dlgTextEl = null; this._dlgTypedEl = null;
+    }
     this._lastOpenAt = performance.now();
     const was = !!this.current;
     if (this.current !== n) this.state = {};
@@ -274,8 +298,18 @@ export class MenuManager {
   _render() {
     if (!this.current) return;
     this._items.clear();
-    if (!this.host) { this._title = TITLES[this.current]; this._frame(this.current, h('div', 'arc-empty', 'Game not ready.')); return; }
-    const scroll = this.modal.querySelector('.arc-modal-body'); const st = scroll ? scroll.scrollTop : 0;
+    this._tipUid = null;
+    if (!this.host) {
+      this._title = TITLES[this.current];
+      this._frame(this.current, h('div', 'arc-empty', 'Game not ready.'));
+      this._lastRenderedMenu = this.current;
+      this._lastRenderedTab = this.state.tab || '';
+      return;
+    }
+    const curTab = this.state.tab || '';
+    const sameView = this.current === this._lastRenderedMenu && curTab === (this._lastRenderedTab || '');
+    const scroll = sameView ? this.modal.querySelector('.arc-modal-body') : null;
+    const st = scroll ? scroll.scrollTop : 0;
     this._title = null;
     try {
       switch (this.current) {
@@ -298,7 +332,12 @@ export class MenuManager {
       console.error('[menus] render failed', err);
       this._frame(this.current, h('div', 'arc-empty', 'This menu failed to load: ' + esc(err.message)));
     }
-    const b = this.modal.querySelector('.arc-modal-body'); if (b) b.scrollTop = st;
+    this._lastRenderedMenu = this.current;
+    this._lastRenderedTab = this.state.tab || '';
+    if (sameView && st) {
+      const b = this.modal.querySelector('.arc-modal-body');
+      if (b) b.scrollTop = st;
+    }
   }
 
   // --------------------------------------------------------- item widgets
@@ -365,26 +404,34 @@ export class MenuManager {
   _onOver(e) {
     const el = e.target.closest('[data-uid]');
     if (!el || !this.modal.contains(el)) return;
-    const it = this._items.get(el.dataset.uid);
+    const uid = el.dataset.uid;
+    const it = this._items.get(uid);
     if (!it) return;
-    let cmp = null;
-    const inv = this.host.getInventory ? this.host.getInventory() : null;
-    const isEq = inv && inv.equipment && Object.values(inv.equipment).some((q) => q && String(q.uid) === String(it.uid));
-    if (inv && isEquipItem(it) && !isEq) cmp = inv.equipment[it.slot] || null;
-    let html = this._tipCard(it, cmp, isEq);
-    if (cmp) html += this._tipCard(cmp, null, true);
-    this.tip.innerHTML = html; this.tip.classList.add('on');
+    if (this._tipUid !== uid || !this.tip.classList.contains('on')) {
+      this._tipUid = uid;
+      let cmp = null;
+      const inv = this.host.getInventory ? this.host.getInventory() : null;
+      const isEq = inv && inv.equipment && Object.values(inv.equipment).some((q) => q && String(q.uid) === String(it.uid));
+      if (inv && isEquipItem(it) && !isEq) cmp = inv.equipment[it.slot] || null;
+      let html = this._tipCard(it, cmp, isEq);
+      if (cmp) html += this._tipCard(cmp, null, true);
+      this.tip.innerHTML = html;
+      this.tip.classList.add('on');
+      this._tipW = this.tip.offsetWidth || 250;
+      this._tipH = this.tip.offsetHeight || 160;
+    }
     this._moveTip(e);
   }
   _moveTip(e) {
     if (!this.tip.classList.contains('on')) return;
-    const w = this.tip.offsetWidth, hgt = this.tip.offsetHeight;
+    const w = this._tipW || 250, hgt = this._tipH || 160;
     let x = e.clientX + 16, y = e.clientY + 12;
     if (x + w > innerWidth - 6) x = e.clientX - w - 16;
     if (y + hgt > innerHeight - 6) y = Math.max(6, innerHeight - hgt - 6);
-    this.tip.style.left = Math.max(6, x) + 'px'; this.tip.style.top = y + 'px';
+    const tx = Math.round(Math.max(6, x)), ty = Math.round(y);
+    this.tip.style.transform = `translate3d(${tx}px, ${ty}px, 0)`;
   }
-  _hideTip() { this.tip.classList.remove('on'); }
+  _hideTip() { this.tip.classList.remove('on'); this._tipUid = null; }
 
   // --------------------------------------------------------- event routing
   _onClick(e) {
@@ -498,7 +545,24 @@ export class MenuManager {
     const it = this._items.get(String(uid)); if (!it) return;
     const S = this.state;
     switch (this.current) {
-      case 'inventory': S.sel = String(uid); this._render(); break;
+      case 'inventory': {
+        S.sel = String(uid);
+        const infoEl = this.modal.querySelector('.inv-info');
+        if (infoEl) {
+          this.modal.querySelectorAll('.item-slot.selected').forEach((n) => n.classList.remove('selected'));
+          const slotEl = e && e.target ? e.target.closest('[data-uid]') : null;
+          if (slotEl) slotEl.classList.add('selected');
+          const inv = this.host.getInventory() || { equipment: {} };
+          const eqv = inv.equipment || {};
+          const eqSlotOfSel = Object.keys(eqv).find((k) => eqv[k] && String(eqv[k].uid) === String(it.uid)) || null;
+          const qSlots = this.host.getPotionSlots ? this.host.getPotionSlots() : [];
+          const skillBar = this.host.getSkillBar ? this.host.getSkillBar() : [];
+          infoEl.innerHTML = this._invInfoHTML(it, eqSlotOfSel, qSlots, skillBar);
+        } else {
+          this._render();
+        }
+        break;
+      }
       case 'compose': if (isEquipItem(it)) this._alchSelect(it.uid); else this._say('Only equipment can be enhanced.', false); break;
       case 'shop': this._shopClick(it, e); break;
       case 'storage': this._storageClick(it); break;
@@ -755,7 +819,8 @@ export class MenuManager {
         <div class="arc-msg"></div>
       </div></div>`;
     const mk = (id, kind, cur, max, txt) => {
-      const b = h('div', 'arc-bar ' + kind, `<div class="fill" style="width:${max > 0 ? Math.min(100, 100 * cur / max) : 0}%"></div><div class="label">${txt}</div>`);
+      const ratio = max > 0 ? Math.min(1, Math.max(0, cur / max)).toFixed(4) : 0;
+      const b = h('div', 'arc-bar ' + kind, `<div class="fill" style="transform:scaleX(${ratio})"></div><div class="label">${txt}</div>`);
       el.querySelector(id).appendChild(b);
     };
     mk('#cs-hp', 'hp', p.hp, p.maxHp, `HP ${Math.ceil(p.hp || 0)} / ${p.maxHp || 0}`);
@@ -765,6 +830,26 @@ export class MenuManager {
   }
 
   // ------------------------------------------------------------ INVENTORY
+  _invInfoHTML(sel, eqSlotOfSel, qSlots, skillBar) {
+    if (!sel) {
+      return '<span style="color:var(--arc-text-mute)">Click an item for actions. Double-click to equip/use, right-click for menu, drag to equip/unequip.</span>';
+    }
+    const isEq = Boolean(eqSlotOfSel);
+    const quickBtns = (!isEq && isQuickUsable(sel)) ? `<div class="inv-quickbar"><span>Slot 6-9:</span>${[0, 1, 2, 3].map((qi) => {
+      const q = qSlots[qi];
+      const occupiedBySkill = !!(skillBar[5 + qi]);
+      const isCur = !occupiedBySkill && q && q.item && ((sel.baseId && q.item.baseId === sel.baseId) || String(q.item.uid) === String(sel.uid));
+      const tip = occupiedBySkill ? `Slot ${qi + 6}: ${skillBar[5 + qi].name} (click to replace)` : (isCur ? `Unbind from Slot ${qi + 6}` : `Assign to key ${qi + 6}`);
+      return `<button class="hk-btn ${isCur ? 'cur' : ''}" data-act="quickassign" data-slot="${qi}" data-uid="${esc(sel.uid)}" data-base-id="${esc(sel.baseId || '')}" title="${esc(tip)}">${qi + 6}</button>`;
+    }).join('')}</div>` : '';
+    const infoBtns = `<div class="inv-actions">
+        ${isEq ? `<button class="arc-btn small" data-act="unequip" data-slot="${esc(eqSlotOfSel)}">Unequip</button>`
+        : `${isEquipItem(sel) ? `<button class="arc-btn small good" data-act="equip" data-uid="${esc(sel.uid)}">Equip</button>` : `<button class="arc-btn small good" data-act="use" data-uid="${esc(sel.uid)}">Use</button>`}
+           <button class="arc-btn small" data-act="sell" data-uid="${esc(sel.uid)}">Sell ${sel.value || 0} G</button>
+           <button class="arc-btn small danger" data-act="drop" data-uid="${esc(sel.uid)}">Drop</button>`}${quickBtns}</div>`;
+    return `<b class="rc-text r-${rarityOf(sel)}">${esc(sel.name)}</b><div style="color:var(--arc-text-mute)">${esc(RARITY_NAME[rarityOf(sel)] || '')} ${esc(sel.type || '')}${sel.level ? ' · Lv ' + sel.level : ''}</div>` + infoBtns;
+  }
+
   _rInventory() {
     const inv = this.host.getInventory() || { bag: [], equipment: {}, gold: 0, bagSize: 40 };
     const S = this.state, eqv = inv.equipment || {};
@@ -775,7 +860,6 @@ export class MenuManager {
     const sel = S.sel ? all.find((q) => q && String(q.uid) === S.sel) : null;
     if (!sel) S.sel = null;
     const eqSlotOfSel = sel ? Object.keys(eqv).find((k) => eqv[k] && String(eqv[k].uid) === String(sel.uid)) : null;
-    const isEq = Boolean(eqSlotOfSel);
     let equipHTML = SLOT_ORDER.map((s) => {
       const phLabel = (s === 'shield' && isAxeman) ? 'Offhand Axe' : SLOT_LABEL[s];
       return `<div class="eq-${s}">${this._slotHTML(eqv[s], { drag: true, drop: 'equip:' + s, ph: phLabel, big: true, selected: sel && eqv[s] && String(eqv[s].uid) === S.sel })}</div>`;
@@ -784,34 +868,21 @@ export class MenuManager {
     for (let i = 0; i < size; i++) { const it = inv.bag[i]; bagHTML += this._slotHTML(it, { drag: true, drop: 'bag', selected: sel && it && String(it.uid) === S.sel }); }
     const qSlots = this.host.getPotionSlots ? this.host.getPotionSlots() : [];
     const skillBar = this.host.getSkillBar ? this.host.getSkillBar() : [];
-    const quickBtns = (sel && !isEq && isQuickUsable(sel)) ? `<div class="inv-quickbar"><span>Slot 6-9:</span>${[0, 1, 2, 3].map((qi) => {
-      const q = qSlots[qi];
-      const occupiedBySkill = !!(skillBar[5 + qi]);
-      const isCur = !occupiedBySkill && q && q.item && ((sel.baseId && q.item.baseId === sel.baseId) || String(q.item.uid) === String(sel.uid));
-      const tip = occupiedBySkill ? `Slot ${qi + 6}: ${skillBar[5 + qi].name} (click to replace)` : (isCur ? `Unbind from Slot ${qi + 6}` : `Assign to key ${qi + 6}`);
-      return `<button class="hk-btn ${isCur ? 'cur' : ''}" data-act="quickassign" data-slot="${qi}" data-uid="${esc(sel.uid)}" data-base-id="${esc(sel.baseId || '')}" title="${esc(tip)}">${qi + 6}</button>`;
-    }).join('')}</div>` : '';
-    const infoBtns = sel ? `<div class="inv-actions">
-        ${isEq ? `<button class="arc-btn small" data-act="unequip" data-slot="${esc(eqSlotOfSel)}">Unequip</button>`
-        : `${isEquipItem(sel) ? `<button class="arc-btn small good" data-act="equip" data-uid="${esc(sel.uid)}">Equip</button>` : `<button class="arc-btn small good" data-act="use" data-uid="${esc(sel.uid)}">Use</button>`}
-           <button class="arc-btn small" data-act="sell" data-uid="${esc(sel.uid)}">Sell ${sel.value || 0} G</button>
-           <button class="arc-btn small danger" data-act="drop" data-uid="${esc(sel.uid)}">Drop</button>`}${quickBtns}</div>` : '';
     const el = h('div');
     el.innerHTML = `<div class="inv-layout">
       <div>
         <div class="arc-section-title">Equipment</div>
         <div class="equip-paper">${equipHTML}</div>
-        <div class="inv-info">${sel ? `<b class="rc-text r-${rarityOf(sel)}">${esc(sel.name)}</b><div style="color:var(--arc-text-mute)">${esc(RARITY_NAME[rarityOf(sel)] || '')} ${esc(sel.type || '')}${sel.level ? ' · Lv ' + sel.level : ''}</div>` + infoBtns
-          : '<span style="color:var(--arc-text-mute)">Click an item for actions. Double-click to equip/use, right-click for menu, drag to equip/unequip.</span>'}</div>
+        <div class="inv-info">${this._invInfoHTML(sel, eqSlotOfSel, qSlots, skillBar)}</div>
       </div>
       <div>
         <div class="inv-top"><div class="arc-section-title" style="flex:1;margin:0">Bag (${inv.bag.length}/${size})</div>
           <span class="arc-gold" style="margin-left:12px">${Math.floor(inv.gold || 0).toLocaleString()} G</span></div>
         <div class="inv-grid">${bagHTML}</div>
         <div class="inv-actions"><div class="item-slot big" data-drop="trash" style="border-style:dashed;font-size:11px;width:auto;padding:0 14px;color:var(--arc-text-mute)">🗑 Drop here</div>
-          ${this.host.quickSellJunk ? '<button class="arc-btn small warning" data-act="quicksell" title="Tüm normal ve sihirli çöp eşyaları hızlıca sat">Hızlı Sat</button>' : ''}
+          ${this.host.quickSellJunk ? '<button class="arc-btn small warning" data-act="quicksell" title="Quickly sell all normal and magic junk items">Quick Sell</button>' : ''}
           ${this.host.sortBag ? '<button class="arc-btn small" data-act="sortbag">Sort</button>' : ''}
-          ${this.host.expandBag ? '<button class="arc-btn small" data-act="openmenu" data-menu="townhall" data-tab="expand" title="Çanta ve Depo kapasitesini altınla genişlet">🎒+ Expand</button>' : ''}</div>
+          ${this.host.expandBag ? '<button class="arc-btn small" data-act="openmenu" data-menu="townhall" data-tab="expand" title="Expand Bag and Vault capacity with gold">🎒+ Expand</button>' : ''}</div>
         <div class="arc-msg"></div>
       </div></div>`;
     const b = this._frame('inventory', el);
@@ -961,13 +1032,18 @@ export class MenuManager {
     const uid = String(S.alchUid), opts = this._alchOpts();
     const f = this._fuse = { uid, opts, t0: performance.now(), dur: ALCHEMY.fuseSeconds * 1000, raf: 0 };
     this._render();
+    const fillEl = this.modal.querySelector('#alc-fill');
+    const lblEl = this.modal.querySelector('#alc-fuse-t');
+    let lastLbl = '';
     const tick = () => {
       if (this._fuse !== f) return;
       if (!this.current || this.current !== 'compose' || this.state.alchUid !== uid || !this._alchFind(uid)) { this._alchCancel(true); return; }
       const k = Math.min(1, (performance.now() - f.t0) / f.dur);
-      const fill = this.modal.querySelector('#alc-fill'), lbl = this.modal.querySelector('#alc-fuse-t');
-      if (fill) fill.style.width = (k * 100).toFixed(1) + '%';
-      if (lbl) lbl.textContent = Math.max(0, (f.dur * (1 - k)) / 1000).toFixed(1) + 's';
+      if (fillEl) fillEl.style.transform = `scaleX(${k.toFixed(4)})`;
+      if (lblEl) {
+        const sTxt = Math.max(0, (f.dur * (1 - k)) / 1000).toFixed(1) + 's';
+        if (sTxt !== lastLbl) { lastLbl = sTxt; lblEl.textContent = sTxt; }
+      }
       if (k >= 1) { this._fuse = null; this._alchFinish(uid, opts); return; }
       f.raf = requestAnimationFrame(tick);
     };
@@ -1176,7 +1252,7 @@ export class MenuManager {
           </div>
         </div>
 
-        ${fusing ? `<div class="alc-fuse"><div class="alc-fuse-bar"><div class="alc-fuse-fill" id="alc-fill" style="width:${(frac * 100).toFixed(1)}%"></div></div><span id="alc-fuse-t">${((1 - frac) * ALCHEMY.fuseSeconds).toFixed(1)}s</span></div>` : ''}
+        ${fusing ? `<div class="alc-fuse"><div class="alc-fuse-bar"><div class="alc-fuse-fill" id="alc-fill" style="transform:scaleX(${frac.toFixed(4)})"></div></div><span id="alc-fuse-t">${((1 - frac) * ALCHEMY.fuseSeconds).toFixed(1)}s</span></div>` : ''}
         ${resHTML}
         ${statHTML ? `<div class="alc-stats">${statHTML}</div>` : ''}
         <div class="arc-msg"></div>`;
@@ -1228,7 +1304,7 @@ export class MenuManager {
     const chronicles = (this.host.getStoryChronicles ? this.host.getStoryChronicles() : (this.host?.ctx?.gameState?.getStoryChronicles?.() || [])) || [];
     const chronHtml = chronicles.length
       ? `<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--arc-line)">
-          <div class="arc-section-title">📖 Hikaye Günlüğü (Story Chronicles · ${chronicles.filter((c) => c.cleared).length} Kat Temizlendi)</div>
+          <div class="arc-section-title">📖 Story Chronicles (${chronicles.filter((c) => c.cleared).length} Floors Cleared)</div>
           <div class="arc-scroll" style="max-height:118px;display:flex;flex-direction:column;gap:6px">
             ${chronicles.slice().reverse().map((c) => `<div style="font-size:12px;padding:6px 8px;background:rgba(15,23,42,.55);border-left:3px solid ${c.cleared ? '#34d399' : '#38bdf8'};border-radius:4px">
               <div style="font-weight:700;color:${c.cleared ? '#6ee7b7' : '#93c5fd'}">${c.cleared ? '✓ ' : ''}${esc(c.title)}</div>
@@ -1248,8 +1324,8 @@ export class MenuManager {
     const heroLv = Number(p.level || 1);
     const el = h('div');
     const gateNote = heroLv < 10
-      ? `<div style="margin-bottom:8px;padding:6px 10px;border-radius:6px;background:rgba(245,158,11,.14);border:1px solid rgba(245,158,11,.45);color:#fde68a;font-size:12px">⚠️ Zindan kapıları <b>Seviye 10</b> gerektirir (Mevcut: <b>Lv ${heroLv}/10</b>). Şehrin 4 açık kapısından dışarıdaki kamplarda kasıl!</div>`
-      : '<div style="margin-bottom:8px;color:var(--arc-text-dim)">Bir katı tamamen temizlediğinde bir sonraki geçit ve hikaye bölümü açılır.</div>';
+      ? `<div style="margin-bottom:8px;padding:6px 10px;border-radius:6px;background:rgba(245,158,11,.14);border:1px solid rgba(245,158,11,.45);color:#fde68a;font-size:12px">⚠️ Dungeon gates require <b>Level 10</b> (Current: <b>Lv ${heroLv}/10</b>). Train in the outdoor hunting grounds outside the 4 town gates!</div>`
+      : '<div style="margin-bottom:8px;color:var(--arc-text-dim)">Clear a floor completely to unlock the next portal and story chapter.</div>';
     el.innerHTML = `${gateNote}
       <div class="floor-grid arc-scroll">${fl.map((f) => {
         const minLv = f.floor === 0 ? 1 : (f.minDungeonLevel || 10);
@@ -1257,7 +1333,7 @@ export class MenuManager {
         const canEnter = Boolean(f.unlocked && levelOk);
         return `<div class="floor-card ${canEnter ? '' : 'locked'} ${f.current ? 'current' : ''}" ${canEnter ? `data-act="floor" data-floor="${f.floor}"` : ''}>
         <div class="fnum">${f.floor === 0 ? '🏠' : f.floor}</div><div class="fname">${esc(f.name || 'Floor ' + f.floor)}</div>
-        <div class="frec" style="${heroLv < f.recommendedLevel ? 'color:var(--arc-bad)' : ''}">${f.recommendedLevel ? 'Rec. Lv ' + f.recommendedLevel : ''}${f.cleared ? ' · ✓ Temizlendi' : ''}${!levelOk ? ` · 🔒 Lv ${minLv}` : ''}</div>
+        <div class="frec" style="${heroLv < f.recommendedLevel ? 'color:var(--arc-bad)' : ''}">${f.recommendedLevel ? 'Rec. Lv ' + f.recommendedLevel : ''}${f.cleared ? ' · ✓ Cleared' : ''}${!levelOk ? ` · 🔒 Lv ${minLv}` : ''}</div>
         ${f.bossName ? `<div class="frec">☠ ${esc(f.bossName)}</div>` : ''}</div>`;
       }).join('') || '<div class="arc-empty">No floors available.</div>'}</div><div class="arc-msg"></div>`;
     this._frame('map', el);
@@ -1272,7 +1348,9 @@ export class MenuManager {
         d = { ...d, options: [{ label: 'Open Storage Vault', action: 'storage' }, ...d.options] };
       }
       S.dlg = { d, i: 0, typed: 0, done: false, npcId: d.npcId };
+      this._dlgDraw();
       this._dlgType();
+      return;
     }
     this._dlgDraw();
   }
@@ -1285,28 +1363,42 @@ export class MenuManager {
     const el = h('div', 'dlg-wrap');
     const opts = (d.options || []);
     const optsHTML = last && full ? opts.map((o, k) => `<button class="arc-btn" data-act="dlgopt" data-i="${k}">${esc(o.label || o.text || o.id || '…')}</button>`).join('') + (opts.some((o) => /leave|bye|close|goodbye/i.test(o.label || '')) ? '' : '<button class="arc-btn danger" data-act="close">Leave</button>') : '';
+    const textInner = `<span class="dlg-typed">${esc(line.slice(0, typed))}</span>${full ? (last ? '' : ' <span class="caret">▼</span>') : '<span class="caret">▌</span>'}`;
     el.innerHTML = `<div class="arc-modal-title"><span>${esc(d.name || 'Villager')}</span><button class="arc-close" data-act="close">✕</button></div>
       <div style="padding:16px"><div class="dlg-box"><div class="dlg-portrait">${esc(d.icon || '🧑')}</div>
-      <div class="dlg-text" data-act="dlgnext">${esc(line.slice(0, typed))}${full ? '' : '<span class="caret">▌</span>'}${full && !last ? ' <span class="caret">▼</span>' : ''}</div></div>
+      <div class="dlg-text" data-act="dlgnext">${textInner}</div></div>
       <div class="dlg-options">${optsHTML}</div></div>`;
     this.modal.className = 'arc-modal arc-frame dlg-modal';
     this.modal.textContent = ''; this.modal.appendChild(el);
+    this._dlgTextEl = el.querySelector('.dlg-text');
+    this._dlgTypedEl = el.querySelector('.dlg-typed');
   }
   _dlgType() {
     const S = this.state; clearInterval(this._dlgT);
     this._dlgT = setInterval(() => {
-      const dl = S.dlg; if (!dl || this.current !== 'dialogue') { clearInterval(this._dlgT); return; }
+      const dl = S.dlg; if (!dl || this.current !== 'dialogue') { clearInterval(this._dlgT); this._dlgT = null; return; }
       const lines = dl.d.lines && dl.d.lines.length ? dl.d.lines : ['…'];
       const line = lines[Math.min(dl.i, lines.length - 1)];
-      if (dl.typed < line.length) { dl.typed = Math.min(line.length, dl.typed + 2); this._dlgDraw(); } else clearInterval(this._dlgT);
+      if (dl.typed < line.length) {
+        dl.typed = Math.min(line.length, dl.typed + 2);
+        if (dl.typed < line.length && this._dlgTypedEl && this._dlgTypedEl.isConnected) {
+          this._dlgTypedEl.textContent = line.slice(0, dl.typed);
+        } else {
+          if (dl.typed >= line.length) { clearInterval(this._dlgT); this._dlgT = null; }
+          this._dlgDraw();
+        }
+      } else {
+        clearInterval(this._dlgT);
+        this._dlgT = null;
+      }
     }, 22);
   }
   _dlgAdvance() {
     const dl = this.state.dlg; if (!dl) return;
     const lines = dl.d.lines && dl.d.lines.length ? dl.d.lines : ['…'];
     const line = lines[Math.min(dl.i, lines.length - 1)];
-    if (dl.typed < line.length) { dl.typed = line.length; clearInterval(this._dlgT); this._dlgDraw(); return; }
-    if (dl.i < lines.length - 1) { dl.i++; dl.typed = 0; this._dlgType(); this._dlgDraw(); return; }
+    if (dl.typed < line.length) { dl.typed = line.length; clearInterval(this._dlgT); this._dlgT = null; this._dlgDraw(); return; }
+    if (dl.i < lines.length - 1) { dl.i++; dl.typed = 0; this._dlgDraw(); this._dlgType(); return; }
     if (!(dl.d.options && dl.d.options.length)) this.closeAll();
   }
   _dlgOption(k) {
@@ -1428,7 +1520,7 @@ export class MenuManager {
       <div><div class="arc-section-title">Your Bag — click to sell</div>
         <div class="inv-grid" style="grid-template-columns:repeat(4,48px)">${inv.bag.map((it) => this._slotHTML(it)).join('') || '<div class="arc-empty" style="grid-column:1/-1">Empty</div>'}</div>
         <div class="inv-actions" style="margin-top:8px;display:flex;align-items:center;justify-content:space-between">
-          ${this.host.quickSellJunk ? '<button class="arc-btn small warning" data-act="quicksell" title="Tüm normal ve sihirli çöp eşyaları hızlıca sat">Hızlı Sat (Çöp)</button>' : ''}
+          ${this.host.quickSellJunk ? '<button class="arc-btn small warning" data-act="quicksell" title="Quickly sell all normal and magic junk items">Quick Sell (Junk)</button>' : ''}
           <div style="margin-left:auto">Gold: <b class="arc-gold">${Math.floor(inv.gold || 0).toLocaleString()} G</b></div>
         </div></div></div><div class="arc-msg"></div>`;
     this._frame('shop', el);
@@ -1508,7 +1600,7 @@ export class MenuManager {
         ? `<div class="arc-empty" style="padding:36px 20px">
             <div style="font-size:28px;margin-bottom:8px">🐾</div>
             <div style="font-weight:700;color:#f8fafc;margin-bottom:6px">No Companions Owned Yet</div>
-            <div style="font-size:12px;color:#94a3b8;line-height:1.5">Visit <b>Beast Tamer Zara</b> in Oakhaven Town Center to purchase Silkroad Grab &amp; Combat Companions with Gold.</div>
+            <div style="font-size:12px;color:#94a3b8;line-height:1.5">Visit <b>Beast Tamer Zara</b> in Oakhaven Town Center to purchase Grab &amp; Combat Companions with Gold.</div>
           </div>`
         : `<div class="arc-empty" style="padding:40px 20px">No companion currently active. Choose a companion from your roster!</div>`;
     }
@@ -1518,7 +1610,7 @@ export class MenuManager {
       <div style="display:flex;flex-direction:column;gap:12px">
         <div style="display:flex;justify-content:space-between;align-items:center">
           <div class="arc-section-title" style="margin:0">Owned Companions (${pets.length})</div>
-          <span style="font-size:12px;color:var(--arc-text-mute)">Silkroad Online Grab & Combat Pets</span>
+          <span style="font-size:12px;color:var(--arc-text-mute)">Grab & Combat Pets</span>
         </div>
         <div class="pet-roster-grid">
     `;
@@ -1601,7 +1693,7 @@ export class MenuManager {
       <div class="petshop-banner">
         <div>
           <div style="font-weight:700;color:#fde68a;font-size:14px">Oakhaven Exotic Menagerie</div>
-          <div style="font-size:12px;color:#cbd5e1">Imported Silkroad companions — bind one to automatically loot treasure or fight beside you.</div>
+          <div style="font-size:12px;color:#cbd5e1">Loyal guild-trained companions — bind one to automatically loot treasure or fight beside you.</div>
         </div>
         <div class="petshop-gold">Your Gold: <b>🪙 ${gold.toLocaleString()} G</b></div>
       </div>
@@ -1621,7 +1713,7 @@ export class MenuManager {
     const level = summary.level || p.level || 1;
     const kills = summary.kills ?? 0;
     const deaths = summary.deaths ?? 0;
-    const bossName = esc(summary.bossName || 'Roc');
+    const bossName = esc(summary.bossName || 'Aetherion, Sky Sovereign');
     const bonusGold = summary.bonusGold ?? 0;
     const bonusExp = summary.bonusExp ?? 0;
 
@@ -1629,14 +1721,14 @@ export class MenuManager {
     el.innerHTML = `
       <div class="story-ending-crest">👑</div>
       <h2 class="story-ending-title">THE SKY SOVEREIGN HAS FALLEN</h2>
-      <p class="story-ending-sub">${bossName}, Sovereign of Mountain Roc Peak, lies vanquished by <b>${heroName}</b>.</p>
+      <p class="story-ending-sub">${bossName}, Sovereign of Celestial Peak, lies vanquished by <b>${heroName}</b>.</p>
       <div class="story-ending-lore">
-        With the final thunderous roar fading across the Mountain Roc Peak sky nest, the rift sealing Arkenveil's sixteen abyssal floors dissolves into golden dawn.
-        Word of your triumph echoes from Oakhaven's stone plaza to the farthest Silkroad caravans — the realm is saved, and your legend is eternal.
+        With the final thunderous roar fading across the Celestial Peak sky nest, the rift sealing Arkenveil's sixteen abyssal floors dissolves into golden dawn.
+        Word of your triumph echoes from Oakhaven's stone plaza to the farthest Oakhaven merchant caravans — the realm is saved, and your legend is eternal.
       </div>
       <div class="story-ending-stats">
         <div><span>Champion</span><b>${heroName} (Lv.${level})</b></div>
-        <div><span>Final Floor</span><b>Floor 16 — Mountain Roc Peak — Sky Nest</b></div>
+        <div><span>Final Floor</span><b>Floor 16 — Celestial Peak — Sky Nest Sanctum</b></div>
         <div><span>Monsters Slain</span><b>${kills}</b></div>
         <div><span>Falls in Battle</span><b>${deaths}</b></div>
       </div>
@@ -1831,7 +1923,7 @@ export class MenuManager {
               <div class="townhall-icon">💎</div>
               <div style="flex:1"><div class="townhall-title">Relic Emporium</div><div class="townhall-sub">High-Tier Coffers, Magic Stones &amp; Zerk Scrolls</div></div>
             </div>
-            <div class="townhall-desc">Spend excess Gold on Mystery War Coffers (4,500 G), Imperial Relic Coffers (16,000 G), SRO Blue Stones, Astral Stones, and Zerk/EXP Scrolls.</div>
+            <div class="townhall-desc">Spend excess Gold on Mystery War Coffers (4,500 G), Imperial Relic Coffers (16,000 G), Arcane Blue Stones, Astral Stones, and Zerk/EXP Scrolls.</div>
             <div class="townhall-foot" style="justify-content:flex-end">
               <button class="arc-btn primary" data-act="openshop" data-shop="curio">Browse Relic Emporium</button>
             </div>
@@ -1841,7 +1933,7 @@ export class MenuManager {
               <div class="townhall-icon">${activePet ? (activePet.icon || '🐾') : '🐾'}</div>
               <div style="flex:1"><div class="townhall-title">Companion Royal Feast</div><div class="townhall-sub">${activePet ? `${esc(activePet.name)} · Lv.${activePet.level}` : 'No summoned companion'}</div></div>
             </div>
-            <div class="townhall-desc">Treat your active Silkroad companion to a Royal Feast for +500 Pet EXP to level up its passive &amp; combat power faster.</div>
+            <div class="townhall-desc">Treat your active guild companion to a Royal Feast for +500 Pet EXP to level up its passive &amp; combat power faster.</div>
             <div class="townhall-foot">
               <span class="townhall-cost ${canFeed ? '' : 'poor'}">🪙 2,500 G</span>
               <button class="arc-btn ${canFeed ? 'primary' : ''}" data-act="petfeed" ${canFeed ? '' : 'disabled'}>🍖 Feed Royal Feast</button>
@@ -1867,8 +1959,14 @@ export class MenuManager {
   }
 
   dispose() {
+    this._alchCancel(true);
+    clearInterval(this._dlgT); this._dlgT = null;
+    clearTimeout(this._refreshT); this._refreshT = 0;
+    clearTimeout(this._alchFlashT); this._alchFlashT = null;
     window.removeEventListener('keydown', this._onKey, true);
+    window.removeEventListener('resize', this._onResize);
     window.removeEventListener('arc-ui-menu', this._onMenuEvt);
+    if (this._onDocMouseDown) document.removeEventListener('mousedown', this._onDocMouseDown);
     this._unsub.forEach((f) => f && f());
     this.overlay.remove(); this.tip.remove(); this.ctxMenu.remove();
   }

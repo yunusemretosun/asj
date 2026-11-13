@@ -74,7 +74,7 @@ export const TOWN_TRAINING_DEFS = {
   },
   fortune: {
     id: 'fortune',
-    name: 'Silkroad Caravan Guild',
+    name: 'Oakhaven Merchant Guild',
     icon: '🪙',
     maxRank: 10,
     baseCost: 2200,
@@ -109,7 +109,7 @@ export const TOWN_BLESSINGS = {
   caravan: {
     id: 'blessing_caravan',
     key: 'caravan',
-    name: 'Blessing of Silkroad Caravan',
+    name: 'Blessing of Oakhaven Merchant Guild',
     icon: '🐫',
     cost: 2500,
     duration: 600,
@@ -123,7 +123,7 @@ export const TOWN_BLESSINGS = {
     icon: '👑',
     cost: 4500,
     duration: 600,
-    desc: 'Activates War, Iron Citadel & Silkroad Caravan blessings simultaneously for 10 minutes!',
+    desc: 'Activates War, Iron Citadel & Oakhaven Merchant Guild blessings simultaneously for 10 minutes!',
     bundle: ['war', 'citadel', 'caravan'],
   },
 };
@@ -230,105 +230,107 @@ export function calcDamage(att = {}, def = {}, opts = {}) {
 export const STORY_CHRONICLES = {
   0: {
     floor: 0,
-    title: 'Prologue: Oakhaven Sınır Muhafızı',
-    summary: 'Oakhaven çevresindeki 4 açık av sahasında Seviye 10’a ulaşarak Donwhang Taş Mağarası mührünü kır.'
+    title: 'Prologue: Oakhaven Frontier Warden',
+    summary: 'Reach Level 10 across the four open hunting grounds around Oakhaven to break the seal of the Whispering Stone Caverns.'
   },
   1: {
     floor: 1,
-    title: 'Bölüm 1: Donwhang Kapıları Temizlendi (B1F)',
-    summary: 'Üst taş galerilerdeki Mangyang ve Gyo Weasel sürüleri bastırıldı; yeraltı izleri derinleşiyor.'
+    title: 'Chapter 1: Cavern Gates Cleared (B1F)',
+    summary: 'The stone-fang packs and cavern stalkers in the upper galleries of the Whispering Stone Caverns have been driven back as deeper trails emerge.'
   },
   2: {
     floor: 2,
-    title: 'Bölüm 2: Toprak Mahzenlerinin Yankısı (B2F)',
-    summary: 'Earth Ghost muhafızları düşürüldü; Tiger Girl’ün inine giden geçit artık savunmasız.'
+    title: 'Chapter 2: Echoes of the Earthen Vaults (B2F)',
+    summary: 'The stonebound wraith wardens have fallen; the passage leading into the Frostfang Empress’s lair now lies undefended.'
   },
   3: {
     floor: 3,
-    title: 'Bölüm 3: Tiger Girl’ün İninin Düşüşü (B3F)',
-    summary: 'Donwhang Mağarası tamamen temizlendi! Tiger Girl’ün bozgunu Karakorum yolundaki haydutları panikletti.'
+    title: 'Chapter 3: Fall of the Frostfang Lair (B3F)',
+    summary: 'The Whispering Stone Caverns are completely cleared! The defeat of the Frostfang Empress sent raiders fleeing toward Ironcrest Crags.'
   },
   4: {
     floor: 4,
-    title: 'Bölüm 4: Vaha Akıncıları Püskürtüldü (B4F)',
-    summary: 'Black Robber öncü birliği çökertildi; Karakorum buz mağaralarının haritası ele geçirildi.'
+    title: 'Chapter 4: Crag Raiders Repelled (B4F)',
+    summary: 'The Ironcrest raider vanguard was shattered, revealing charts of the frozen passages beneath Frosthollow.'
   },
   5: {
     floor: 5,
-    title: 'Bölüm 5: Buzul Tuzağının Kırılışı (B5F)',
-    summary: 'Ishade, Yeti ve Penon muhafızları donmuş galerilerde bozguna uğratıldı; kale kapıları göründü.'
+    title: 'Chapter 5: Breaking the Glacial Snare (B5F)',
+    summary: 'Frost beasts, icebound stalkers, and glacial sentinels were routed in the frozen halls, exposing the citadel gates.'
   },
   6: {
     floor: 6,
-    title: 'Bölüm 6: Uruchi’nin Kalesi Fetholundu (B6F)',
-    summary: 'Black Robber Citadel tamamen arındırıldı! Eski ipek kervanlarından Qin-Shi’nin mühürlü mezarına giden rota açıldı.'
+    title: 'Chapter 6: Frosthollow Citadel Conquered (B6F)',
+    summary: 'Ironcrest Crags & Frosthollow are purified! Warchief Drakmor’s defeat opened the ancient road to the Sunken Sovereign Vaults.'
   },
   7: {
     floor: 7,
-    title: 'Bölüm 7: Terracotta Muhafızları Uyandı (B7F)',
-    summary: 'İmparator Qin-Shi’nin İlk Galerisi temizlendi; taş mezar mühürleri çözülmeye başladı.'
+    title: 'Chapter 7: Stone Wardens Awakened (B7F)',
+    summary: 'The outer gallery of the Sunken Sovereign Vaults has been cleared, and the ancient tomb seals are beginning to yield.'
   },
   8: {
     floor: 8,
-    title: 'Bölüm 8: Yılan Kanadının Çöküşü (B8F)',
-    summary: 'Snake Woman ve Black Snake lejyonları temizlendi; Merkez Tapınaktaki Isyutaru’nun mührü zayıfladı.'
+    title: 'Chapter 8: Collapse of the Frostbound Wing (B8F)',
+    summary: 'The sunken vault legions have been swept aside, weakening the seal guarding Lady Glaciera in the central sanctum.'
   },
   9: {
     floor: 9,
-    title: 'Bölüm 9: İmparatorluk Mezarı Arındırıldı (B9F)',
-    summary: 'Dört Muhafız ve Isyutaru alt edildi! Taklamakan’ın kavurucu sınırı Alev Dağı’na geçiş açıldı.'
+    title: 'Chapter 9: The Sovereign Vaults Purified (B9F)',
+    summary: 'The four vault guardians and Lady Glaciera have been vanquished! The path now opens to the Scorched Sunspire Ruins.'
   },
   10: {
     floor: 10,
-    title: 'Bölüm 10: Kül Geçidinde Zafer (B10F)',
-    summary: 'Flame Witch ve Devil Bug akınları kırıldı; bazalt galeriler aşılmaya hazır.'
+    title: 'Chapter 10: Victory at the Ash Pass (B10F)',
+    summary: 'Cinder witches and ash-shell swarms in the Scorched Sunspire Ruins were broken; the basalt galleries lie ready to cross.'
   },
   11: {
     floor: 11,
-    title: 'Bölüm 11: Ölüm Kemikleri Nekropolü (B11F)',
-    summary: 'Bone Lord ve Hyeongcheon birlikleri yok edildi; Lord Yarkan’ın zirvesi yaklaştı.'
+    title: 'Chapter 11: Necropolis of Scorched Bone (B11F)',
+    summary: 'Bone reavers and charred dreadguards have been destroyed as the summit of Valkor, Bone Sovereign draws near.'
   },
   12: {
     floor: 12,
-    title: 'Bölüm 12: Alev Dağının Efendisi Düştü (B12F)',
-    summary: 'Lord Yarkan ve Flame Giant ordusu tamamen temizlendi! Kutsal Su Tapınağı’nın efsanevi kapısı açıldı.'
+    title: 'Chapter 12: Fall of the Bone Sovereign (B12F)',
+    summary: 'Valkor, Bone Sovereign and his cinder-forged legion are eradicated! The legendary gate of the Sunlit Crypt has opened.'
   },
   13: {
     floor: 13,
-    title: 'Bölüm 13: Firavunlar Tapınağı Mührü (B13F)',
-    summary: 'Kutsal Su Tapınağı’ndaki Anubis, Isis, Osiris ve Kaos Tanrısı Seth alt edildi; Jüpiter’e giden göksel köprü belirdi.'
+    title: 'Chapter 13: Seal of the Sunlit Crypt (B13F)',
+    summary: 'The radiant wardens of the Sunlit Crypt have been overcome, revealing the celestial bridge toward the deeper sanctum.'
   },
   14: {
     floor: 14,
-    title: 'Bölüm 14: İbadet Salonunun Kurtuluşu (B14F)',
-    summary: 'Babilion, Yuno, The Earth ve Baal bozguna uğratıldı; Shambhala Uçurumu’nun son kilidi açıldı.'
+    title: 'Chapter 14: Liberation of the Sanctum Hall (B14F)',
+    summary: 'The abyssal heralds were defeated in battle, unlocking the final seal into the Ashen Abyss.'
   },
   15: {
     floor: 15,
-    title: 'Bölüm 15: Koruyucunun Odası Temizlendi (B15F)',
-    summary: 'Demon Shaitan ve Shambhala iblisleri yok edildi! Roc Dağı Zirvesi’ndeki son karşılaşma başladı.'
+    title: 'Chapter 15: The Ashen Abyss Cleared (B15F)',
+    summary: 'Malakor, Ember Archfiend and his abyssal fiends have been banished! The final ascent to Skycrown Citadel has begun.'
   },
   16: {
     floor: 16,
-    title: 'Final Bölümü: Gökyüzü Yuvasının Kurtarıcısı (B16F)',
-    summary: 'Roc ve gökyüzü ordusu tamamen temizlendi! Arkenveil ve İpek Yolu barışa kavuştu.'
+    title: 'Final Chapter: Savior of Skycrown Citadel (B16F)',
+    summary: 'Aetherion, Sky Sovereign and the skybound host have been vanquished! Peace has returned to Oakhaven and all of Arkenveil.'
   },
   101: {
     floor: 101,
-    title: 'Unutulan Dünya: Togui Köyü Arındırıldı (S1F)',
-    summary: 'Lanetli bebek tapınağı ve Elder Togui Chieftain yok edildi.'
+    title: 'Forgotten Realm: Ashen Totem Hollow Purified (S1F)',
+    summary: 'The cursed totem shrine and the Elder Totem Chieftain of Ashen Totem Hollow have been destroyed.'
   },
   102: {
     floor: 102,
-    title: 'Unutulan Dünya: Hayalet Kalyon Temizlendi (S2F)',
-    summary: 'Batık Kalyon’un hayalet tayfası ve Captain Kid Sereness sonsuza dek susturuldu.'
+    title: 'Forgotten Realm: Shattered Armada Cove Cleared (S2F)',
+    summary: 'The spectral crew of Shattered Armada Cove and their phantom captain have been silenced forever.'
   },
   103: {
     floor: 103,
-    title: 'Gizli Tapınak: Beyaz Yılan Medusa Düştü (S3F)',
-    summary: 'Qin-Shi B6F Tapınağı’ndaki Medusa ve kraliyet yılan muhafızları tamamen temizlendi.'
+    title: 'Hidden Sanctum: Vespera, Venom Queen Fallen (S3F)',
+    summary: 'Vespera, Venom Queen and her royal serpent guards in the Serpent Queen’s Sanctum have been completely vanquished.'
   }
 };
+
+const EMPTY_HUD_BUFFS = Object.freeze([]);
 
 // =============================================================================
 // GameState
@@ -341,6 +343,8 @@ export class GameState extends Emitter {
     this.storage = opts.storage !== undefined ? opts.storage : (typeof localStorage !== 'undefined' ? localStorage : null);
     this._statsDirty = true;
     this._stats = null;
+    this._hudSummaryCache = {};
+    this._expiredBuffIds = [];
     this.activeSlot = 0;
     this._nemesis = null;
     this._lastGoldLost = 0;
@@ -602,7 +606,7 @@ export class GameState extends Emitter {
       atkMin,
       atkMax,
       atk: Math.round((atkMin + atkMax) / 2),
-      // INT -> MATK tuned with weapon scaling so Wizard elemental spells hit with authentic Silkroad power
+      // INT -> MATK tuned with weapon scaling so Wizard elemental spells hit with authentic arcane power
       matk: Math.round(((wMin + wMax) * 0.45 + int * 2.0 + L * 1.25 + num(m.matk) * 1.4) * pct('matkPct')),
       def: Math.round((num(m.def) + str * 0.55 + dex * 0.25 + L * 0.85) * pct('defPct')),
       critRate: Math.round(clamp(5 + lck * 0.3 + dex * 0.1 + num(m.critRate), 0, 75) * 10) / 10,
@@ -1153,7 +1157,7 @@ export class GameState extends Emitter {
       }
       this.emit('chronicle', entry);
       if (firstClear) {
-        this.emit('toast', `📖 Hikaye Güncellendi: ${meta.title}`, 'quest');
+        this.emit('toast', `📖 Chronicle Updated: ${meta.title}`, 'quest');
       }
     }
     if (this.quests) this.quests.onFloorCleared(floor);
@@ -1193,33 +1197,48 @@ export class GameState extends Emitter {
     if (this.skills) this.skills.update(dt);
     if (this.inventory) this.inventory.update(dt);
     if (h.dead) return;
-    const s = this.getStats();
+    let s = this.getStats();
     // buffs & DoT/HoT
-    let expired = false;
-    for (const b of h.buffs) {
-      b.remaining -= dt;
-      b._tick += dt;
-      while (b._tick >= 1) {
-        b._tick -= 1;
-        if (b.hot) this.heal(num(b.hot.hps), num(b.hot.mps));
-        if (b.dot) this.takeDamage(num(b.dot.dps), { raw: true, canDodge: false, canBlock: false, ignoreInvuln: true, noDot: true });
+    if (h.buffs.length > 0) {
+      let expired = false;
+      for (let i = 0; i < h.buffs.length; i++) {
+        const b = h.buffs[i];
+        b.remaining -= dt;
+        b._tick += dt;
+        while (b._tick >= 1) {
+          b._tick -= 1;
+          if (b.hot) this.heal(num(b.hot.hps), num(b.hot.mps));
+          if (b.dot) this.takeDamage(num(b.dot.dps), { raw: true, canDodge: false, canBlock: false, ignoreInvuln: true, noDot: true });
+        }
+        if (b.remaining <= 0) expired = true;
       }
-      if (b.remaining <= 0) expired = true;
-    }
-    if (expired) {
-      const gone = h.buffs.filter((b) => b.remaining <= 0);
-      h.buffs = h.buffs.filter((b) => b.remaining > 0);
-      this.markDirty();
-      this.clampVitals();
-      for (const b of gone) this.emit('buff', b.id, false);
+      if (h.dead) return;
+      if (expired) {
+        const goneIds = this._expiredBuffIds;
+        goneIds.length = 0;
+        let writeIdx = 0;
+        for (let i = 0; i < h.buffs.length; i++) {
+          const b = h.buffs[i];
+          if (b.remaining > 0) {
+            h.buffs[writeIdx++] = b;
+          } else {
+            goneIds.push(b.id);
+          }
+        }
+        h.buffs.length = writeIdx;
+        this.markDirty();
+        this.clampVitals();
+        s = this.getStats();
+        for (let i = 0; i < goneIds.length; i++) this.emit('buff', goneIds[i], false);
+      }
     }
     if (h.dead) return;
     // regeneration
     const hp0 = h.hp, mp0 = h.mp;
-    h.hp = Math.min(s.maxHp, h.hp + s.hpRegen * dt);
-    h.mp = Math.min(s.maxMp, h.mp + s.mpRegen * dt);
+    if (h.hp < s.maxHp) h.hp = Math.min(s.maxHp, h.hp + s.hpRegen * dt);
+    if (h.mp < s.maxMp) h.mp = Math.min(s.maxMp, h.mp + s.mpRegen * dt);
     if (this._staminaDelay > 0) this._staminaDelay -= dt;
-    else h.stamina = Math.min(s.maxStamina, h.stamina + s.staminaRegen * dt);
+    else if (h.stamina < s.maxStamina) h.stamina = Math.min(s.maxStamina, h.stamina + s.staminaRegen * dt);
     this._regenAcc += dt;
     if (this._regenAcc > 0.25 && (h.hp !== hp0 || h.mp !== mp0)) {
       this._regenAcc = 0;
@@ -1229,6 +1248,65 @@ export class GameState extends Emitter {
   }
 
   // -------------------------------------------------------------- snapshot for UI
+  /**
+   * Low-/zero-allocation summary for 60fps HUD updates. Populates and returns `out`
+   * (defaulting to the internal `_hudSummaryCache`) without cloning appearance,
+   * attributes, nemesis, or buff arrays.
+   */
+  getHudSummary(out = this._hudSummaryCache) {
+    const target = out && typeof out === 'object' ? out : this._hudSummaryCache;
+    const s = this.getStats();
+    const h = this.hero;
+    const cls = this.heroClass;
+    const charge = h.berserkCharge || 0;
+    const mpFloor = Math.floor(h.mp);
+
+    target.name = h.name;
+    target.classId = cls.id;
+    target.className = cls.name;
+    target.classIcon = cls.icon;
+    target.classColor = cls.css;
+    target.attackStyle = cls.attackStyle;
+    target.appearance = h.appearance || null;
+    target.level = h.level;
+    target.hp = Math.ceil(h.hp);
+    target.maxHp = s.maxHp;
+    target.mp = mpFloor;
+    target.maxMp = s.maxMp;
+    target.sp = mpFloor;
+    target.maxSp = s.maxMp;
+    target.stamina = Math.floor(h.stamina);
+    target.maxStamina = s.maxStamina;
+    target.combo = h.combo;
+    target.exp = h.exp;
+    target.expToNext = expToNext(h.level);
+    target.gold = h.gold;
+    target.ap = h.ap;
+    target.skillPoints = h.sp;
+    target.berserkCharge = charge;
+    target.berserkActive = !!h.berserkActive;
+    target.berserkRemaining = Math.max(0, h.berserkRemaining || 0);
+    target.berserkOrbs = berserkOrbs(charge);
+    target.restedExp = h.restedExp || 0;
+    target.isSoaking = !!h.isSoaking;
+    target.nemesis = this._nemesis || null;
+    target.nemesisKills = h.nemesisKills || 0;
+    const statsOut = target.stats && typeof target.stats === 'object'
+      ? target.stats
+      : (target.stats = { str: 0, dex: 0, int: 0, lck: 0 });
+    statsOut.str = s.str;
+    statsOut.dex = s.dex;
+    statsOut.int = s.int;
+    statsOut.lck = s.lck;
+    target.baseStats = h.attrs;
+    target.derived = s;
+    target.buffs = h.buffs.length > 0 ? h.buffs : EMPTY_HUD_BUFFS;
+    target.dead = h.dead;
+    target.floor = this.progress.currentFloor;
+    target.maxFloor = this.progress.maxFloor;
+    return target;
+  }
+
   getPlayerSnapshot() {
     const s = this.getStats();
     const h = this.hero;
@@ -1443,11 +1521,11 @@ export class GameState extends Emitter {
     return this;
   }
 
-  /** Mark the main story as completed upon defeating the Final Unique (Roc on Floor 16). */
+  /** Mark the main story as completed upon defeating the Final Sovereign (Aetherion, Sky Sovereign on Floor 16). */
   completeStory(boss = null) {
     const firstTime = !this.progress.storyCompleted;
     this.progress.storyCompleted = true;
-    const bossName = (boss && (boss.name || boss.id)) || 'Roc';
+    const bossName = (boss && (boss.name || boss.id)) || 'Aetherion, Sky Sovereign';
     if (!this.progress.bossesDefeated.includes(bossName)) {
       this.progress.bossesDefeated.push(bossName);
     }
@@ -1531,8 +1609,10 @@ export function createUIHost(game, extras = {}) {
   const host = {
     game,
     getPlayer: () => game.getPlayerSnapshot(),
+    getHudSummary: (out) => game.getHudSummary(out),
     getStats: () => game.getStats(),
     getSkillBar: () => game.skills.getSkillBar(),
+    fillSkillBar: (out) => game.skills.fillSkillBar(out),
     getPotionSlots: () => inv().getQuickSlotView(),
     getInventory: () => inv().getView(),
     getSkills: () => game.skills.getTreeView(),

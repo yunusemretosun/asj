@@ -5,12 +5,22 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 let _gltfLoader = null;
 let _texLoader = null;
 const _gltfCache = new Map();
+const _gltfPromiseCache = new Map();
 const _modelBoundsCache = new Map();
 const _texCache = new Map();
+
+function markSharedAsset(obj) {
+  if (!obj) return obj;
+  obj.userData = obj.userData || {};
+  obj.userData.isCachedGLB = true;
+  obj.userData.isSharedAsset = true;
+  return obj;
+}
 
 function getGLTFLoader() {
   if (!_gltfLoader && typeof window !== 'undefined') {
@@ -117,35 +127,43 @@ export function loadSROProp(url, {
     return holder;
   }
 
-  loader.load(
-    url,
-    (gltf) => {
-      gltf.scene.traverse((child) => {
-        if (child.geometry) {
-          child.geometry.userData = child.geometry.userData || {};
-          child.geometry.userData.isCachedGLB = true;
+  let pending = _gltfPromiseCache.get(url);
+  if (!pending) {
+    pending = new Promise((resolve, reject) => {
+      loader.load(
+        url,
+        (gltf) => {
+          gltf.scene.traverse((child) => {
+            if (child.geometry) markSharedAsset(child.geometry);
+            const mats = Array.isArray(child.material) ? child.material : child.material ? [child.material] : [];
+            for (const m of mats) {
+              if (m) markSharedAsset(m);
+            }
+          });
+          const box = new THREE.Box3().setFromObject(gltf.scene);
+          const size = new THREE.Vector3();
+          box.getSize(size);
+          const bounds = { min: box.min.clone(), max: box.max.clone(), size };
+          _modelBoundsCache.set(url, bounds);
+          _gltfCache.set(url, gltf.scene);
+          _gltfPromiseCache.delete(url);
+          resolve({ scene: gltf.scene, bounds });
+        },
+        undefined,
+        (err) => {
+          _gltfPromiseCache.delete(url);
+          reject(err);
         }
-        const mats = Array.isArray(child.material) ? child.material : child.material ? [child.material] : [];
-        for (const m of mats) {
-          if (m) {
-            m.userData = m.userData || {};
-            m.userData.isCachedGLB = true;
-          }
-        }
-      });
-      const box = new THREE.Box3().setFromObject(gltf.scene);
-      const size = new THREE.Vector3();
-      box.getSize(size);
-      const bounds = { min: box.min.clone(), max: box.max.clone(), size };
-      _modelBoundsCache.set(url, bounds);
-      _gltfCache.set(url, gltf.scene);
-      applyInstance(gltf.scene, bounds);
-    },
-    undefined,
-    (err) => {
+      );
+    });
+    _gltfPromiseCache.set(url, pending);
+  }
+
+  pending
+    .then(({ scene, bounds }) => applyInstance(scene, bounds))
+    .catch((err) => {
       console.warn(`[SRO] Failed to load prop ${url}:`, err);
-    }
-  );
+    });
 
   return holder;
 }
@@ -174,11 +192,13 @@ export function loadSROSprite(url, { width = 1, height = 1, position = [0, 0, 0]
 
   if (isFlat) {
     const geo = new THREE.PlaneGeometry(width, height);
+    const isCutout = opacity >= 0.99;
     const mat = new THREE.MeshStandardMaterial({
       map: texture,
-      transparent: true,
+      transparent: !isCutout,
       opacity,
-      alphaTest: 0.05,
+      alphaTest: isCutout ? 0.35 : 0.05,
+      depthWrite: isCutout,
       roughness: 0.35,
       metalness: 0.1,
       side: THREE.DoubleSide
@@ -203,6 +223,111 @@ export function loadSROSprite(url, { width = 1, height = 1, position = [0, 0, 0]
   return holder;
 }
 
+let _cofferGeos = null;
+const _cofferMats = new Map();
+
+function getCofferGeos() {
+  if (_cofferGeos) return _cofferGeos;
+
+  const bodyWood = new THREE.BoxGeometry(0.82, 0.38, 0.56);
+  bodyWood.translate(0, 0.27, 0);
+
+  const trimParts = [];
+  const plinth = new THREE.BoxGeometry(0.88, 0.08, 0.62);
+  plinth.translate(0, 0.04, 0);
+  trimParts.push(plinth);
+  for (const sx of [-0.41, 0.41]) {
+    for (const sz of [-0.28, 0.28]) {
+      const corner = new THREE.BoxGeometry(0.08, 0.4, 0.08);
+      corner.translate(sx, 0.27, sz);
+      trimParts.push(corner);
+    }
+  }
+  const bandFront = new THREE.BoxGeometry(0.83, 0.06, 0.57);
+  bandFront.translate(0, 0.27, 0);
+  trimParts.push(bandFront);
+  const bodyTrim = mergeGeometries(trimParts, false);
+  for (const g of trimParts) g.dispose();
+
+  const innerGlow = new THREE.BoxGeometry(0.72, 0.08, 0.46);
+  innerGlow.translate(0, 0.44, 0);
+
+  const lidBase = new THREE.BoxGeometry(0.84, 0.12, 0.58);
+  lidBase.translate(0, 0.06, 0.28);
+  const archCyl = new THREE.CylinderGeometry(0.28, 0.28, 0.84, 16, 1, false, 0, Math.PI);
+  archCyl.rotateZ(Math.PI / 2);
+  archCyl.translate(0, 0.12, 0.28);
+  const lidWood = mergeGeometries([lidBase, archCyl], false);
+  lidBase.dispose();
+  archCyl.dispose();
+
+  const lidTrimParts = [];
+  for (const lx of [-0.3, 0, 0.3]) {
+    const archTrim = new THREE.CylinderGeometry(0.285, 0.285, 0.05, 16, 1, false, 0, Math.PI);
+    archTrim.rotateZ(Math.PI / 2);
+    archTrim.translate(lx, 0.12, 0.28);
+    lidTrimParts.push(archTrim);
+  }
+  const lockHasp = new THREE.BoxGeometry(0.14, 0.18, 0.06);
+  lockHasp.translate(0, 0.02, 0.57);
+  lidTrimParts.push(lockHasp);
+  const lidTrim = mergeGeometries(lidTrimParts, false);
+  for (const g of lidTrimParts) g.dispose();
+
+  const lockJewel = new THREE.OctahedronGeometry(0.06, 0);
+  lockJewel.translate(0, 0.02, 0.60);
+
+  _cofferGeos = {
+    bodyWood: markSharedAsset(bodyWood),
+    bodyTrim: markSharedAsset(bodyTrim),
+    innerGlow: markSharedAsset(innerGlow),
+    lidWood: markSharedAsset(lidWood),
+    lidTrim: markSharedAsset(lidTrim),
+    lockJewel: markSharedAsset(lockJewel)
+  };
+  return _cofferGeos;
+}
+
+function getCofferMats(tierStr) {
+  const isBoss = tierStr.includes('boss');
+  const isRare = tierStr.includes('rare') || tierStr.includes('epic') || isBoss;
+  const isUnique = tierStr.includes('unique') || tierStr.includes('legend');
+  const key = isBoss ? 'boss' : isUnique ? 'unique' : isRare ? 'rare' : 'normal';
+  let cached = _cofferMats.get(key);
+  if (cached) return cached;
+
+  const woodColor = isBoss || isUnique ? 0x221310 : isRare ? 0x6e1b12 : 0x422213;
+  const trimColor = isBoss || isUnique ? 0xfacc15 : isRare ? 0xd4a437 : 0x8a7455;
+  const gemColor = isBoss ? 0xef4444 : isUnique ? 0xa855f7 : isRare ? 0x10b981 : 0x38bdf8;
+
+  cached = {
+    woodMat: markSharedAsset(new THREE.MeshStandardMaterial({
+      color: woodColor,
+      roughness: 0.42,
+      metalness: 0.25
+    })),
+    trimMat: markSharedAsset(new THREE.MeshStandardMaterial({
+      color: trimColor,
+      roughness: 0.28,
+      metalness: 0.85
+    })),
+    gemMat: markSharedAsset(new THREE.MeshStandardMaterial({
+      color: gemColor,
+      emissive: new THREE.Color(gemColor),
+      emissiveIntensity: 0.9,
+      roughness: 0.15,
+      metalness: 0.3
+    })),
+    innerGlowMat: markSharedAsset(new THREE.MeshBasicMaterial({
+      color: isBoss ? 0xfef08a : isRare ? 0xfde047 : 0x7dd3fc,
+      transparent: true,
+      opacity: 0.95
+    }))
+  };
+  _cofferMats.set(key, cached);
+  return cached;
+}
+
 /**
  * Ornate Silkroad coffer styling for treasure chests
  */
@@ -210,63 +335,14 @@ export function createSilkroadCofferMesh(tier = 'normal', isOpen = false) {
   const root = new THREE.Group();
   root.name = `SilkroadCoffer_${tier}`;
 
-  const tierStr = String(tier || 'normal').toLowerCase();
-  const isBoss = tierStr.includes('boss');
-  const isRare = tierStr.includes('rare') || tierStr.includes('epic') || isBoss;
-  const isUnique = tierStr.includes('unique') || tierStr.includes('legend');
+  const geos = getCofferGeos();
+  const { woodMat, trimMat, gemMat, innerGlowMat } = getCofferMats(String(tier || 'normal').toLowerCase());
 
-  const woodColor = isBoss || isUnique ? 0x221310 : isRare ? 0x6e1b12 : 0x422213;
-  const trimColor = isBoss || isUnique ? 0xfacc15 : isRare ? 0xd4a437 : 0x8a7455;
-  const gemColor = isBoss ? 0xef4444 : isUnique ? 0xa855f7 : isRare ? 0x10b981 : 0x38bdf8;
-
-  const woodMat = new THREE.MeshStandardMaterial({
-    color: woodColor,
-    roughness: 0.42,
-    metalness: 0.25
-  });
-  const trimMat = new THREE.MeshStandardMaterial({
-    color: trimColor,
-    roughness: 0.28,
-    metalness: 0.85
-  });
-  const gemMat = new THREE.MeshStandardMaterial({
-    color: gemColor,
-    emissive: new THREE.Color(gemColor),
-    emissiveIntensity: 0.9,
-    roughness: 0.15,
-    metalness: 0.3
-  });
-  const innerGlowMat = new THREE.MeshBasicMaterial({
-    color: isBoss ? 0xfef08a : isRare ? 0xfde047 : 0x7dd3fc,
-    transparent: true,
-    opacity: 0.95
-  });
-
-  // Base plinth
-  const plinth = new THREE.Mesh(new THREE.BoxGeometry(0.88, 0.08, 0.62), trimMat);
-  plinth.position.y = 0.04;
-  root.add(plinth);
-
-  // Main coffer body
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.38, 0.56), woodMat);
-  body.position.y = 0.27;
-  root.add(body);
-
-  // Gilded metal corner brackets & bands
-  for (const sx of [-0.41, 0.41]) {
-    for (const sz of [-0.28, 0.28]) {
-      const corner = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.4, 0.08), trimMat);
-      corner.position.set(sx, 0.27, sz);
-      root.add(corner);
-    }
-  }
-  const bandFront = new THREE.Mesh(new THREE.BoxGeometry(0.83, 0.06, 0.57), trimMat);
-  bandFront.position.y = 0.27;
-  root.add(bandFront);
+  root.add(new THREE.Mesh(geos.bodyWood, woodMat));
+  root.add(new THREE.Mesh(geos.bodyTrim, trimMat));
 
   // Inner treasure chamber glow
-  const innerGlow = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.08, 0.46), innerGlowMat);
-  innerGlow.position.y = 0.44;
+  const innerGlow = new THREE.Mesh(geos.innerGlow, innerGlowMat);
   innerGlow.visible = Boolean(isOpen);
   root.add(innerGlow);
 
@@ -275,35 +351,9 @@ export function createSilkroadCofferMesh(tier = 'normal', isOpen = false) {
   lidPivot.position.set(0, 0.46, -0.28);
   root.add(lidPivot);
 
-  const lidBase = new THREE.Mesh(new THREE.BoxGeometry(0.84, 0.12, 0.58), woodMat);
-  lidBase.position.set(0, 0.06, 0.28);
-  lidPivot.add(lidBase);
-
-  const archCyl = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.28, 0.28, 0.84, 16, 1, false, 0, Math.PI),
-    woodMat
-  );
-  archCyl.rotation.z = Math.PI / 2;
-  archCyl.position.set(0, 0.12, 0.28);
-  lidPivot.add(archCyl);
-
-  for (const lx of [-0.3, 0, 0.3]) {
-    const archTrim = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.285, 0.285, 0.05, 16, 1, false, 0, Math.PI),
-      trimMat
-    );
-    archTrim.rotation.z = Math.PI / 2;
-    archTrim.position.set(lx, 0.12, 0.28);
-    lidPivot.add(archTrim);
-  }
-
-  const lockHasp = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.18, 0.06), trimMat);
-  lockHasp.position.set(0, 0.02, 0.57);
-  lidPivot.add(lockHasp);
-
-  const lockJewel = new THREE.Mesh(new THREE.OctahedronGeometry(0.06, 0), gemMat);
-  lockJewel.position.set(0, 0.02, 0.60);
-  lidPivot.add(lockJewel);
+  lidPivot.add(new THREE.Mesh(geos.lidWood, woodMat));
+  lidPivot.add(new THREE.Mesh(geos.lidTrim, trimMat));
+  lidPivot.add(new THREE.Mesh(geos.lockJewel, gemMat));
 
   root.userData.isOpen = Boolean(isOpen);
   root.userData.lid = lidPivot;
@@ -352,7 +402,7 @@ const KIND_DEFS = {
 
 function kindGeometry(kind) {
   let g = geoCache.get(kind);
-  if (!g) { g = KIND_DEFS[kind].g(); geoCache.set(kind, g); }
+  if (!g) { g = markSharedAsset(KIND_DEFS[kind].g()); geoCache.set(kind, g); }
   return g;
 }
 
@@ -372,6 +422,7 @@ function kindMaterial(kind) {
       emissiveIntensity: d.m.ei || 0
     });
   }
+  markSharedAsset(m);
   matCache.set(kind, m);
   return m;
 }
@@ -1777,7 +1828,7 @@ export function decorateBossArenaProps(gen, b, room, rand, entrance = null) {
 // ---------------------------------------------------------------------------------------------
 const puzzleMats = {};
 function pmat(key, opts) {
-  if (!puzzleMats[key]) puzzleMats[key] = new THREE.MeshStandardMaterial(opts);
+  if (!puzzleMats[key]) puzzleMats[key] = markSharedAsset(new THREE.MeshStandardMaterial(opts));
   return puzzleMats[key];
 }
 

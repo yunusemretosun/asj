@@ -32,6 +32,20 @@ export class PetController {
     this.bobTimer = 0;
     this.actionLockTimer = 0;
     this.lockedClipName = null;
+    this._scanBestEnemy = null;
+    this._scanBestDistSq = 0;
+    this._scanOriginX = 0;
+    this._scanOriginZ = 0;
+    this._onScanEnemy = (e) => {
+      if (!e || e.dead || e.isDead || e.hp <= 0) return;
+      const dx = e.x - this._scanOriginX;
+      const dz = e.z - this._scanOriginZ;
+      const dSq = dx * dx + dz * dz;
+      if (dSq <= this._scanBestDistSq) {
+        this._scanBestEnemy = e;
+        this._scanBestDistSq = dSq;
+      }
+    };
 
     // Listen for pet system changes
     if (this.petSystem && typeof this.petSystem.on === 'function') {
@@ -114,8 +128,8 @@ export class PetController {
       groundAtZero: true,
       centerXZ: true,
       hideFallback: false,
-      castShadow: true,
-      receiveShadow: true,
+      castShadow: false,
+      receiveShadow: false,
       onLoaded: (clone, { animations }) => {
         let rootBone = null;
         clone.traverse((b) => {
@@ -172,10 +186,12 @@ export class PetController {
 
     if (!this.player?.position) return;
     const pPos = this.player.position;
-    const distToHero = Math.hypot(this.position.x - pPos.x, this.position.z - pPos.z);
+    const dxHero = this.position.x - pPos.x;
+    const dzHero = this.position.z - pPos.z;
+    const distToHeroSq = dxHero * dxHero + dzHero * dzHero;
 
     // 1. Leash Teleport (if hero dashed far away or changed room)
-    if (distToHero > 16.0) {
+    if (distToHeroSq > 256.0) {
       this.position.x = pPos.x - 1.2;
       this.position.y = pPos.y || 0;
       this.position.z = pPos.z - 1.2;
@@ -196,17 +212,21 @@ export class PetController {
       this.lootScanTimer = 0.22;
       const lootList = this.dungeon?.groundLoot || [];
       const radius = def.lootRadius || 8.0;
+      const radiusSq = radius * radius;
       let nearest = null;
-      let nearestDist = Infinity;
+      let nearestDistSq = Infinity;
       const now = Date.now();
 
-      for (const item of lootList) {
+      for (let i = 0; i < lootList.length; i++) {
+        const item = lootList[i];
         if (!item || item.collected) continue;
         if (item.canPickupAfter && now < item.canPickupAfter) continue;
-        const d = Math.hypot(item.x - this.position.x, item.z - this.position.z);
-        if (d <= radius && d < nearestDist) {
+        const dx = item.x - this.position.x;
+        const dz = item.z - this.position.z;
+        const dSq = dx * dx + dz * dz;
+        if (dSq <= radiusSq && dSq < nearestDistSq) {
           nearest = item;
-          nearestDist = d;
+          nearestDistSq = dSq;
         }
       }
 
@@ -219,18 +239,31 @@ export class PetController {
     // 3. Combat Assistance Scanning (Wolf & Tiger Combat Pets)
     if (def.role === 'combat' || def.role === 'hybrid') {
       this.combatTimer -= dt;
-      if (this.combatTimer <= 0 && this.state === 'follow' && distToHero <= 8.0) {
+      if (this.combatTimer <= 0 && this.state === 'follow' && distToHeroSq <= 64.0) {
         const em = this.enemyManager || this.dungeon?.gameContext?.enemyManager || null;
-        const enemies = em?.enemies || this.dungeon?.enemies || this.renderer?.scene?.userData?.enemies || [];
-        // Scan for closest engaged monster near player
         let bestEnemy = null;
-        let bestDist = 5.5;
-        for (const e of enemies) {
-          if (!e || e.dead || e.isDead || e.hp <= 0) continue;
-          const ed = Math.hypot(e.x - pPos.x, e.z - pPos.z);
-          if (ed <= bestDist) {
-            bestEnemy = e;
-            bestDist = ed;
+        if (em && typeof em.forEachEnemyInRange === 'function') {
+          this._scanBestEnemy = null;
+          this._scanBestDistSq = 30.25; // 5.5 * 5.5
+          this._scanOriginX = pPos.x;
+          this._scanOriginZ = pPos.z;
+          em.forEachEnemyInRange(pPos.x, pPos.z, 5.5, this._onScanEnemy);
+          bestEnemy = this._scanBestEnemy;
+          this._scanBestEnemy = null;
+        } else {
+          const enemies = em?.enemies || this.dungeon?.enemies || this.renderer?.scene?.userData?.enemies || [];
+          // Scan for closest engaged monster near player
+          let bestDistSq = 30.25; // 5.5 * 5.5
+          for (let i = 0; i < enemies.length; i++) {
+            const e = enemies[i];
+            if (!e || e.dead || e.isDead || e.hp <= 0) continue;
+            const dx = e.x - pPos.x;
+            const dz = e.z - pPos.z;
+            const edSq = dx * dx + dz * dz;
+            if (edSq <= bestDistSq) {
+              bestEnemy = e;
+              bestDistSq = edSq;
+            }
           }
         }
         if (bestEnemy) {

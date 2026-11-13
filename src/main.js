@@ -103,6 +103,7 @@ async function bootstrap() {
     renderer.setEnvironmentTheme('village');
     renderer.applyAtmosphere?.(hubData.atmosphere || null);
     renderer.brightenWorldMaterials?.(dungeon.rootGroup || renderer.scene);
+    renderer.invalidateShadows?.();
     player.resetPosition(hubData.spawnPoint || { x: 0, y: 0, z: 4.2 });
     petController.resetPosition(hubData.spawnPoint || { x: 0, y: 0, z: 4.2 });
     if (enemyManager?.spawnFloorEnemies) {
@@ -130,7 +131,7 @@ async function bootstrap() {
 
     const heroLv = Number(gameState?.hero?.level || 1);
     if (heroLv < MIN_DUNGEON_LEVEL) {
-      const gateMsg = `Zindanlar Level ${MIN_DUNGEON_LEVEL} gerektirir! Oakhaven çevresindeki 4 açık kapıdan dışarıdaki kamplarda kasıl (Lv ${heroLv}/${MIN_DUNGEON_LEVEL}).`;
+      const gateMsg = `Dungeons require Level ${MIN_DUNGEON_LEVEL}! Train at the hunting camps outside Oakhaven's 4 open gates (Lv ${heroLv}/${MIN_DUNGEON_LEVEL}).`;
       gameContext.hud?.toast?.(gateMsg, 'warn');
       return false;
     }
@@ -143,6 +144,7 @@ async function bootstrap() {
     renderer.setEnvironmentTheme(floorData.theme || 'cave');
     renderer.applyAtmosphere?.(floorData.atmosphere || null);
     renderer.brightenWorldMaterials?.(dungeon.rootGroup || renderer.scene);
+    renderer.invalidateShadows?.();
     player.resetPosition(floorData.spawnPoint || { x: 0, y: 0, z: 0 });
     petController.resetPosition(floorData.spawnPoint || { x: 0, y: 0, z: 0 });
 
@@ -178,7 +180,7 @@ async function bootstrap() {
     const nextSpd = Number(((enemy.moveSpeed || 3.8) * spdMult).toFixed(2));
     enemy.moveSpeed = nextSpd;
     enemy.speed = nextSpd;
-    enemy.alerted = true;
+    enemy.isAlerted = true;
     enemy.state = 'CHASE';
     enemy.isChallengeMob = true;
     enemy.syncHealthBar?.(renderer?.camera);
@@ -527,7 +529,7 @@ async function bootstrap() {
   gameState.on('floorCleared', (clearedFloor) => {
     renderer.spawnLevelUpPillar(player.position);
     player.sound.play('levelup');
-    hud.showBanner?.(`KAT B${clearedFloor}F TEMİZLENDİ!`, 'Sonraki kat geçidi açıldı · Hikaye ve görevler güncellendi');
+    hud.showBanner?.(`FLOOR B${clearedFloor}F CLEARED!`, 'Next floor gateway opened · Chronicle & quests updated');
   });
 
   // Physical 3D Ground Loot spawn on item drop
@@ -667,7 +669,7 @@ async function bootstrap() {
               level: gameState.hero?.level,
               kills: gameState.progress?.kills || 0,
               deaths: gameState.progress?.deaths || 0,
-              bossName: enemy.name || 'Roc',
+              bossName: enemy.name || 'Aetherion, Sky Sovereign',
               bonusGold: storyRes?.bonusGold || 0,
               bonusExp: storyRes?.bonusExp || 0,
             });
@@ -702,7 +704,8 @@ async function bootstrap() {
     elapsed += dt;
 
     // Pause 3D movement/combat input while an RPG modal menu is open
-    player.inputEnabled = !menus.isAnyMenuOpen();
+    const menuOpen = menus.isAnyMenuOpen();
+    player.inputEnabled = !menuOpen;
 
     // Update RPG Systems (regen, buffs, skill cooldowns)
     gameState.update(dt);
@@ -717,7 +720,7 @@ async function bootstrap() {
     dungeon.update(dt, elapsed, player.position, dungeonUpdateOpts);
 
     // Update Challenge Arena Timer & Wave Spawner
-    if (activeChallenge?.active && !menus.isAnyMenuOpen()) {
+    if (activeChallenge?.active && !menuOpen) {
       updateChallenge(dt);
     }
 

@@ -1,6 +1,6 @@
 // =============================================================================
 // ARKENVEIL: SIGILS & JOURNEYS (ASJ) - Companion Pet System
-// Inspired by Silkroad Online Grab Pets and Attack Pets.
+// Arkenveil Grab Pets and Combat Attack Pets.
 // Pure data & logic: safe for node/headless testing, no direct DOM/Three.js dependencies.
 // =============================================================================
 
@@ -8,7 +8,7 @@ export const PET_TYPES = {
   rabbit: {
     type: 'rabbit',
     name: 'White Rabbit',
-    title: 'Silkroad Grab Pet',
+    title: 'Treasure Grab Pet',
     icon: '🐇',
     role: 'loot',
     price: 8000,
@@ -20,12 +20,12 @@ export const PET_TYPES = {
     passives: {
       goldFind: 18,
       magicFind: 12,
-      description: 'Official Silkroad White Rabbit Grab Pet that collects ground loot & gold within 9m. +18% Gold Find, +12% Magic Find.'
+      description: 'Loyal White Rabbit Grab Pet that collects ground loot & gold within 9m. +18% Gold Find, +12% Magic Find.'
     }
   },
   wolf: {
     type: 'wolf',
-    name: 'Silkroad Grey Wolf',
+    name: 'Grey Wolf',
     title: 'Guard Attack Pet',
     icon: '🐺',
     role: 'combat',
@@ -38,7 +38,7 @@ export const PET_TYPES = {
     passives: {
       atkPct: 12,
       critRate: 4,
-      description: 'Loyal Silkroad Grey Wolf Attack Pet that strikes foes alongside you. +12% Physical & Magical Attack, +4% Crit Rate.'
+      description: 'Loyal Grey Wolf Attack Pet that strikes foes alongside you. +12% Physical & Magical Attack, +4% Crit Rate.'
     }
   },
   pig: {
@@ -56,7 +56,7 @@ export const PET_TYPES = {
     passives: {
       goldFind: 35,
       magicFind: 18,
-      description: 'Official Silkroad Golden Piggy that auto-collects loot & boosts wealth. +35% Gold Find, +18% Magic Find.'
+      description: 'Lucky Golden Piggy Grab Pet that auto-collects loot & boosts wealth. +35% Gold Find, +18% Magic Find.'
     }
   },
   cat: {
@@ -75,7 +75,7 @@ export const PET_TYPES = {
       goldFind: 28,
       magicFind: 24,
       moveSpeedPct: 6,
-      description: 'Agile Silkroad Cat Grab Pet with keen treasure instincts. +28% Gold Find, +24% Magic Find, +6% Move Speed.'
+      description: 'Agile Siamese Cat Grab Pet with keen treasure instincts. +28% Gold Find, +24% Magic Find, +6% Move Speed.'
     }
   },
   tiger: {
@@ -94,7 +94,7 @@ export const PET_TYPES = {
       attackSpeedPct: 12,
       critRate: 5,
       moveSpeedPct: 10,
-      description: 'Swift Silkroad White Tiger that mauls enemies & auto-loots. +12% Attack Speed, +5% Crit Rate, +10% Move Speed.'
+      description: 'Swift White Tiger Cub that mauls enemies & auto-loots. +12% Attack Speed, +5% Crit Rate, +10% Move Speed.'
     }
   },
   fox: {
@@ -113,7 +113,7 @@ export const PET_TYPES = {
       atkPct: 14,
       critRate: 7,
       moveSpeedPct: 12,
-      description: 'Cunning Silkroad Spirit Fox that ambushes enemies at high speed. +14% ATK, +7% Crit Rate, +12% Move Speed.'
+      description: 'Cunning Spirit Nine-Fox that ambushes enemies at high speed. +14% ATK, +7% Crit Rate, +12% Move Speed.'
     }
   },
   bear: {
@@ -132,7 +132,7 @@ export const PET_TYPES = {
       atkPct: 20,
       attackSpeedPct: 8,
       critRate: 5,
-      description: 'Fierce Silkroad Armored War Bear bred to crush dungeon Guardians. +20% ATK, +8% Attack Speed, +5% Crit Rate.'
+      description: 'Fierce Armored War Bear bred to crush dungeon Guardians. +20% ATK, +8% Attack Speed, +5% Crit Rate.'
     }
   },
   bluetiger: {
@@ -152,13 +152,13 @@ export const PET_TYPES = {
       attackSpeedPct: 15,
       critRate: 6,
       magicFind: 20,
-      description: 'Mythic Silkroad Blue Tiger that ravages foes & collects rare treasure. +16% ATK, +15% Attack Speed, +6% Crit, +20% Magic Find.'
+      description: 'Mythic Celestial Blue Tiger that ravages foes & collects rare treasure. +16% ATK, +15% Attack Speed, +6% Crit, +20% Magic Find.'
     }
   },
   dragon: {
     type: 'dragon',
     name: 'Jade Fellow Dragon',
-    title: 'Sovereign Fellow Pet',
+    title: 'Sovereign Companion Pet',
     icon: '🐉',
     role: 'hybrid',
     price: 140000,
@@ -174,7 +174,7 @@ export const PET_TYPES = {
       critRate: 8,
       goldFind: 25,
       magicFind: 25,
-      description: 'Legendary Silkroad Fellow Dragon commanding combat & treasure. +22% ATK, +18% Atk Spd, +8% Crit, +25% Gold & Magic Find.'
+      description: 'Legendary Jade Fellow Dragon commanding combat & treasure. +22% ATK, +18% Atk Spd, +8% Crit, +25% Gold & Magic Find.'
     }
   }
 };
@@ -316,7 +316,7 @@ export class PetSystem {
     this._emit('pet:exp', pet);
   }
 
-  /** Gold sink: feed a Royal Silkroad Feast in Town to train & level the active companion pet. */
+  /** Gold sink: feed a Royal Feast in Town to train & level the active companion pet. */
   trainActivePetWithGold(cost = 2500, expGain = 500) {
     const pet = this.getActivePet();
     if (!pet) return { ok: false, msg: 'Summon an owned companion first to feed & train it.' };

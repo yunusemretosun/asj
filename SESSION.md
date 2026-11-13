@@ -1,25 +1,25 @@
 # Session State — ASJ (ARKENVEIL: SIGILS & JOURNEYS)
 
 ## Current Snapshot
-- **Commit:** pending commit on `main` (village ground + dungeon floor redesign, not pushed).
-- **Build & Checks:** `node tests/run_tests.mjs` -> **ALL 965 CHECKS PASSED**; `npm run build` (`vite build`) clean (only >1500 kB chunk-size warning).
+- **Branch:** `main` (unpushed commits on `main`; prior `fbb9120` + new perf/AI/lore/lotus commit).
+- **Build & Checks:** `node tests/run_tests.mjs` -> **ALL 971 CHECKS PASSED**; `npm run build` (`vite build`) -> **clean** (`29 modules`, `4.38s`; only >1500 kB chunk-size warning). `grep -rn '[ğĞüÜşŞıİöÖçÇ]' index.html src/` -> 0 matches.
 
 ## Done This Session
-- **[villageBuilder.js](src/world/villageBuilder.js):**
-  - Fixed stretched ~245:1 outer grass (`PlaneGeometry` rotated before `applyPlanarXZUVs` world-XZ UVs).
-  - Replaced 16 brown camp discs and 4 straight dirt roads with a 256×256 CPU `DataTexture` RGBA splat map (`R`=winding wheel-rut trails, `G`=noise-feathered camps, `B`=riverbank pebbles, `A`=city mask) + `onBeforeCompile` shader (clean Node headless fallback).
-  - Unified city interior (`|x|,|z|<=55.5`) to strictly two non-overlapping ground types: base floor (`c_marble_jang_01.png`, `VillageGround_base`) and roads (`cobble_road_diff.jpg`, `VillageGround_road`), removing plazas/trim/white diamond medallions and keeping `Village_curb` (`rok_stone_02.png` + `Batcher` cubic world UVs) strictly outside road edges.
-  - Merged ground meshes down to 3 terrain/ground draw calls + stream meshes, and disabled `castShadow` on small/decorative `Batcher` buckets.
-- **[dungeonDecor.js](src/world/dungeonDecor.js) & [dungeonGenerator.js](src/world/dungeonGenerator.js):**
-  - Carved biome room shapes (`_carveBiomeRoomShapes`: chamfer/pockets for caves, 2-tile wall niches for tombs/temples, `TILE.PIT` magma channels for `flame`) while keeping >=10×10m room centers clear.
-  - Updated floor/wall geometry: `dummy.scale` `1.002` (zero seam gaps), color variation `0.95–1.04`, continuous world-XZ floor UVs, no architectural wall height jitter, wall-base skirting plinths, `wallInst.castShadow = false`, and `addWallPillars` inner-corner support (`n === 2` perpendicular).
-  - Replaced 5-theme decorator dispatch with `resolveSroDungeon` biome decorators (removed Qin-Shi vines, Karakoram skulls, F13–16 terracotta) and wired previously unused `public/assets/sro/dun/props/*.glb` props; removed all `cj_jang_gate_dragon` entries.
-  - Oriented boss arena carpet/flanks to `_findBossRoomEntrance` (added East scan, fixed South tile offset), customized boss arenas per biome, wired `SRO_DUNGEON_PROPS[*].bossGate` in `_spawnGate`, randomized `_buildTrapGallery` `safe` lane (removed misleading cross lines), and moved shrines & challenge portals to framed perimeter wall niches.
-- **[tests/run_tests.mjs](tests/run_tests.mjs):** Added suite #29 validating village splat terrain, unified road/base ground, biome props/pits, `1.002` floor scale, East boss entrance scan, niche placement, and wired boss gates.
+- **Alert `'!'` Non-Spam & Tether Fix ([enemyAI.js](src/world/enemyAI.js), [main.js](src/main.js)):**
+  - Fixed `enemy.alerted` -> `enemy.isAlerted` in `applyTrialScaling`; stopped re-firing `'!'` when already chasing/hit (`wasUnengaged`/`wasAlertedBefore` checks + 8s `_lastAlertAt` cooldown).
+  - Fixed outskirt tether ping-pong via `_returningHome` + `_leashTimer = 3.0` + `aggroRange * 1.35` hysteresis (`leashR = 34` for Giants, `26` for normal camp mobs).
+- **Full Runtime & UI Performance Refactor:**
+  - **[renderer.js](src/engine/renderer.js):** Fixed 8-slot scene-resident `PointLight` pool, DPR cap `1.5`, 30 Hz `PCFShadowMap` + texel snapping + `invalidateShadows()`, `DynamicDrawUsage` weather, 128-instance `InstancedMesh` particles, swap-and-pop VFX pooling, 48-node `translate3d` FCT pool.
+  - **[models3d.js](src/engine/models3d.js), [playerController.js](src/engine/playerController.js), [petController.js](src/engine/petController.js):** Non-cloning `onBeforeCompile` `uHitFlash` shader, `isSharedAsset` guards, merged/cached static props, scale-aware frustum culling, `lightweightCrowd` villagers, scratch vectors, `forEachEnemyInRange` / squared-distance queries, zero per-mob PointLights.
+  - **[enemyAI.js](src/world/enemyAI.js), [dungeonGenerator.js](src/world/dungeonGenerator.js), [dungeonDecor.js](src/world/dungeonDecor.js), [villageBuilder.js](src/world/villageBuilder.js):** Deferred far-mob mesh hydration (`<=3`/frame within 48m), 38m/52m LOD+frustum culling, spatial cell grids, pooled dungeon lights, `_surfaceTexCache`, `36m` prop culling, throttled village animations.
+  - **[hud.js](src/ui/hud.js), [menus.js](src/ui/menus.js), [styles.css](src/ui/styles.css), [gameState.js](src/systems/gameState.js), [skills.js](src/systems/skills.js):** GPU `scaleX`/`translate3d` updates, zero `offsetWidth` reflows, memoized HUD/`getHudSummary`/`fillSkillBar`, static minimap canvas cache, cached tooltip bounds, cleaned dialogue timers.
+- **English-Only & ARKENVEIL Lore Pass:** Removed all Turkish text and player-facing Silkroad proper names (`Jangan`, `Tiger Girl`, `Uruchi`, `Isyutaru`, `Lord Yarkan`, `Demon Shaitan`, `Medusa`, `Roc`, `Mangyang`, `Bicheon/Heuksal/Pacheon`, `Silkroad`) across UI, quests, chronicles, banners, bosses, NPCs, skills, and village outskirts while keeping `/assets/sro/...` asset URLs and internal IDs functional.
+- **Outskirt Camp Giant Spawn ([enemyAI.js](src/world/enemyAI.js)):** Added `OUTSKIRT_GIANT_KILL_THRESHOLD = 10` + `campKills` + `getCampKillProgress` + `_spawnCampGiant` (`spawnOnce: true`, guards double-spawn while Giant alive).
+- **Pond Lotus Cutout Fix ([villageBuilder.js](src/world/villageBuilder.js), [dungeonDecor.js](src/world/dungeonDecor.js)):** Raised pond/hot-spring lotus quads above water/lily surfaces (`0.115` / `0.215`) and switched flat opaque `loadSROSprite` to alpha-cutout (`alphaTest: 0.35, depthWrite: true`).
+- **[tests/run_tests.mjs](tests/run_tests.mjs):** Updated boss/mob lore assertions and added regression checks for lotus elevation, `'!'` non-spam + tether, outskirt Giant kill-threshold, `resolveCollision`, `getHudSummary`, and `fillSkillBar`.
 
-## Remaining Open Tasks (from prior backlog)
-1. **Mob attacks too ranged (`src/world/enemyAI.js`):** gate `isSkillInRange` ranged caps on `enemy.isRanged || enemy.isBoss`; audit melee vs. ranged skills & multipliers (`L1347`).
-2. **Remaining runtime performance items:** `renderer.js` PointLight pool/DPR/VFX/FCT, `models3d.js` GLB merging/emissive hit-flash, `enemyAI.js` spatial hash & HP bar sharing, `hud`/UI DOM batching.
+## Remaining Open Tasks
+1. **Mob attacks too ranged ([enemyAI.js](src/world/enemyAI.js)):** audit melee vs. ranged `isSkillInRange` caps (`L1347`).
 
 ## Verification Contract
-Run `node tests/run_tests.mjs && npm run build` after changes. See `docs/CONTINUATION.md` for module ownership.
+Run `node tests/run_tests.mjs && npm run build`. Ask user before `git push`.

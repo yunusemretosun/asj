@@ -366,6 +366,61 @@ export class PlayerController {
     this._scratchMoveInput = new THREE.Vector3(0, 0, 0);
     this._scratchDesiredMove = new THREE.Vector3(0, 0, 0);
     this._scratchZeroVec = new THREE.Vector3(0, 0, 0);
+    this._scratchAimPoint = new THREE.Vector3(0, 0, 0);
+    this._scratchVecA = new THREE.Vector3(0, 0, 0);
+    this._scratchVecB = new THREE.Vector3(0, 0, 0);
+    this._scratchHitArr = [];
+    this._onCollectHit = (e) => {
+      if (e && !e.dead) this._scratchHitArr.push(e);
+    };
+    this._projectilePool = [];
+    this._projectileMeshPool = new Map();
+    this._lastBerserk = undefined;
+    this._projScanProj = null;
+    this._projScanRemove = false;
+    this._onProjEnemyHit = (enemy) => {
+      if (this._projScanRemove || !enemy || enemy.dead) return;
+      const p = this._projScanProj;
+      if (!p || p.hit.has(enemy)) return;
+      p.hit.add(enemy);
+      this._applyPlayerAttackToEnemy(enemy, {
+        mult: p.mult,
+        element: p.element,
+        knockback: p.knockback,
+        rollDamageFn: p.rollDamageFn
+      });
+      this.comboCount += 1;
+      this.comboDecayTimer = 4.5;
+      if (!p.pierce) {
+        this._projectileImpact(p, enemy);
+        this._projScanRemove = true;
+      } else {
+        this.renderer.spawnHitSparks({ x: p.pos.x, y: 0.2, z: p.pos.z }, p.color, 5);
+      }
+    };
+    this._aimScanOx = 0;
+    this._aimScanOz = 0;
+    this._aimScanFx = 0;
+    this._aimScanFz = 1;
+    this._aimScanHalfCos = 0;
+    this._aimScanBest = null;
+    this._aimScanBestDSq = Infinity;
+    this._onAimScanEnemy = (e) => {
+      if (!e || e.dead) return;
+      const dx = e.x - this._aimScanOx;
+      const dz = e.z - this._aimScanOz;
+      const dSq = dx * dx + dz * dz;
+      if (dSq < 1e-6) {
+        this._aimScanBest = e;
+        this._aimScanBestDSq = 0;
+        return;
+      }
+      if (dSq >= this._aimScanBestDSq) return;
+      const d = Math.sqrt(dSq);
+      if ((dx / d) * this._aimScanFx + (dz / d) * this._aimScanFz < this._aimScanHalfCos) return;
+      this._aimScanBestDSq = dSq;
+      this._aimScanBest = e;
+    };
     this.rotation = 0; // Yaw in radians (0 = +Z)
     this.radius = 0.42;
 
@@ -442,6 +497,7 @@ export class PlayerController {
     const res = this.gameState?.activateBerserk?.();
     if (res?.ok) {
       this.sound?.play('berserk');
+      this._lastBerserk = true;
       this.renderer?.setBerserkAura?.(this.mesh, true);
       this.renderer?.spawnLevelUpPillar?.(this.position);
       this.onToast?.('⚡ BERSERK MODE ACTIVATED! (2x DMG, +38% Speed)', 'levelup');
@@ -782,7 +838,10 @@ export class PlayerController {
       const dz = hitPt.z - this.position.z;
       if (dx * dx + dz * dz > 0.04) {
         this.rotation = Math.atan2(dx, dz);
-        if (ranged) this.aimPoint = new THREE.Vector3(hitPt.x, 0, hitPt.z);
+        if (ranged) {
+          this._scratchAimPoint.set(hitPt.x, 0, hitPt.z);
+          this.aimPoint = this._scratchAimPoint;
+        }
       }
     } else if (ranged) {
       // Keyboard attack: soft auto-aim at the nearest enemy in front
@@ -934,32 +993,51 @@ export class PlayerController {
   /** Nearest living enemy within `range` and inside a forward cone of `cone` total radians. */
   _findAutoAimTarget(range = 10, cone = Math.PI * 0.6, origin = null, yaw = null) {
     const em = this.enemyManager;
-    if (!em || typeof em.getEnemiesInRange !== 'function') return null;
+    if (!em) return null;
+    const hasForEach = typeof em.forEachEnemyInRange === 'function';
+    if (!hasForEach && typeof em.getEnemiesInRange !== 'function') return null;
     const ox = origin ? origin.x : this.position.x;
     const oz = origin ? origin.z : this.position.z;
     const ry = yaw ?? this.rotation;
     const fx = Math.sin(ry);
     const fz = Math.cos(ry);
     const halfCos = Math.cos(cone * 0.5);
+
+    if (hasForEach) {
+      this._aimScanOx = ox;
+      this._aimScanOz = oz;
+      this._aimScanFx = fx;
+      this._aimScanFz = fz;
+      this._aimScanHalfCos = halfCos;
+      this._aimScanBest = null;
+      this._aimScanBestDSq = Infinity;
+      em.forEachEnemyInRange(ox, oz, range, this._onAimScanEnemy);
+      const best = this._aimScanBest;
+      this._aimScanBest = null;
+      return best;
+    }
+
     let best = null;
-    let bestD = Infinity;
-    for (const e of em.getEnemiesInRange(ox, oz, range) || []) {
+    let bestDSq = Infinity;
+    const list = em.getEnemiesInRange(ox, oz, range) || [];
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i];
       if (!e || e.dead) continue;
       const dx = e.x - ox;
       const dz = e.z - oz;
-      const d = Math.hypot(dx, dz);
-      if (d < 0.001) return e;
+      const dSq = dx * dx + dz * dz;
+      if (dSq < 1e-6) return e;
+      if (dSq >= bestDSq) continue;
+      const d = Math.sqrt(dSq);
       if ((dx / d) * fx + (dz / d) * fz < halfCos) continue;
-      if (d < bestD) {
-        bestD = d;
-        best = e;
-      }
+      bestDSq = dSq;
+      best = e;
     }
     return best;
   }
 
   _projectileOrigin(yaw) {
-    return new THREE.Vector3(
+    return this._scratchVecA.set(
       this.position.x + Math.sin(yaw) * 0.55,
       (this.position.y || 0) + 1.0,
       this.position.z + Math.cos(yaw) * 0.55
@@ -1040,7 +1118,32 @@ export class PlayerController {
   spawnProjectile(opts = {}) {
     const kind = opts.kind || 'bolt';
     const color = opts.color ?? 0xa855f7;
-    const dir = new THREE.Vector3();
+    const scale = opts.scale || 1;
+    const proj = this._projectilePool.length > 0
+      ? this._projectilePool.pop()
+      : {
+          mesh: null,
+          meshKey: '',
+          pos: new THREE.Vector3(),
+          dir: new THREE.Vector3(),
+          speed: 16,
+          traveled: 0,
+          range: 10,
+          radius: 0.4,
+          pierce: false,
+          hit: new Set(),
+          mult: 1,
+          element: 'physical',
+          rollDamageFn: null,
+          color: 0xa855f7,
+          kind: 'bolt',
+          knockback: 0.6,
+          homing: false,
+          aoeRadius: 0,
+          age: 0
+        };
+
+    const dir = proj.dir;
     if (opts.dir) {
       dir.set(Number(opts.dir.x) || 0, 0, Number(opts.dir.z) || 0);
     } else {
@@ -1050,37 +1153,46 @@ export class PlayerController {
     if (dir.lengthSq() < 1e-6) dir.set(Math.sin(this.rotation), 0, Math.cos(this.rotation));
     dir.normalize();
 
-    const pos = new THREE.Vector3(
+    const pos = proj.pos.set(
       Number(opts.pos?.x ?? this.position.x),
       Number(opts.pos?.y ?? 1.0),
       Number(opts.pos?.z ?? this.position.z)
     );
 
-    const mesh = createProjectileMesh(kind, color, opts.scale || 1);
+    const meshKey = `${kind}_${color}_${scale}`;
+    const bucket = this._projectileMeshPool.get(meshKey);
+    let mesh = bucket && bucket.length > 0 ? bucket.pop() : null;
+    if (!mesh) {
+      mesh = createProjectileMesh(kind, color, scale);
+    } else {
+      mesh.visible = true;
+      if (mesh.userData?.glow) mesh.userData.glow.scale.setScalar(1);
+      if (mesh.userData?.core) mesh.userData.core.rotation.x = 0;
+    }
     mesh.position.copy(pos);
     mesh.rotation.y = Math.atan2(dir.x, dir.z);
-    this.renderer.scene.add(mesh);
+    if (mesh.parent !== this.renderer.scene) {
+      this.renderer.scene.add(mesh);
+    }
 
-    const proj = {
-      mesh,
-      pos,
-      dir,
-      speed: Number(opts.speed) || 16,
-      traveled: 0,
-      range: Number(opts.range) || 10,
-      radius: Number(opts.radius) || 0.4,
-      pierce: Boolean(opts.pierce),
-      hit: new Set(),
-      mult: Number(opts.mult) || 1,
-      element: opts.element || 'physical',
-      rollDamageFn: typeof opts.rollDamageFn === 'function' ? opts.rollDamageFn : null,
-      color,
-      kind,
-      knockback: opts.knockback ?? 0.6,
-      homing: Boolean(opts.homing),
-      aoeRadius: Number(opts.aoeRadius) || 0,
-      age: 0
-    };
+    proj.mesh = mesh;
+    proj.meshKey = meshKey;
+    proj.speed = Number(opts.speed) || 16;
+    proj.traveled = 0;
+    proj.range = Number(opts.range) || 10;
+    proj.radius = Number(opts.radius) || 0.4;
+    proj.pierce = Boolean(opts.pierce);
+    proj.hit.clear();
+    proj.mult = Number(opts.mult) || 1;
+    proj.element = opts.element || 'physical';
+    proj.rollDamageFn = typeof opts.rollDamageFn === 'function' ? opts.rollDamageFn : null;
+    proj.color = color;
+    proj.kind = kind;
+    proj.knockback = opts.knockback ?? 0.6;
+    proj.homing = Boolean(opts.homing);
+    proj.aoeRadius = Number(opts.aoeRadius) || 0;
+    proj.age = 0;
+
     this.projectiles.push(proj);
     return proj;
   }
@@ -1088,10 +1200,30 @@ export class PlayerController {
   _removeProjectile(index) {
     const p = this.projectiles[index];
     if (!p) return;
-    this.projectiles.splice(index, 1);
-    if (p.mesh) {
-      p.mesh.parent?.remove(p.mesh);
-      p.mesh.userData?.dispose?.();
+    const last = this.projectiles.length - 1;
+    if (index !== last) this.projectiles[index] = this.projectiles[last];
+    this.projectiles.pop();
+
+    const mesh = p.mesh;
+    if (mesh) {
+      let bucket = this._projectileMeshPool.get(p.meshKey);
+      if (!bucket) {
+        bucket = [];
+        this._projectileMeshPool.set(p.meshKey, bucket);
+      }
+      if (bucket.length < 16) {
+        mesh.visible = false;
+        bucket.push(mesh);
+      } else {
+        mesh.parent?.remove(mesh);
+        mesh.userData?.dispose?.();
+      }
+    }
+    p.mesh = null;
+    p.rollDamageFn = null;
+    p.hit.clear();
+    if (this._projectilePool.length < 64) {
+      this._projectilePool.push(p);
     }
   }
 
@@ -1106,7 +1238,7 @@ export class PlayerController {
   }
 
   _projectileImpact(p, enemyTarget = null) {
-    const at = { x: p.pos.x, y: p.pos.y, z: p.pos.z };
+    const at = this._scratchVecB.set(p.pos.x, p.pos.y, p.pos.z);
     if (typeof this.renderer.spawnProjectileImpact === 'function') {
       this.renderer.spawnProjectileImpact(at, p.color, p.aoeRadius ? 1.6 : 1);
     } else {
@@ -1114,14 +1246,24 @@ export class PlayerController {
     }
     if (p.aoeRadius > 0) {
       this.renderer.spawnShockwave?.({ x: at.x, y: 0, z: at.z }, p.aoeRadius, p.color, 0.4);
-      const targets = this.enemyManager?.getEnemiesInRange?.(at.x, at.z, p.aoeRadius) || [];
+      const em = this.enemyManager;
+      let targets;
+      if (em && typeof em.forEachEnemyInRange === 'function') {
+        this._scratchHitArr.length = 0;
+        em.forEachEnemyInRange(at.x, at.z, p.aoeRadius, this._onCollectHit);
+        targets = this._scratchHitArr;
+      } else {
+        targets = em?.getEnemiesInRange?.(at.x, at.z, p.aoeRadius) || [];
+      }
       let n = 0;
-      for (const e of targets) {
+      for (let i = 0; i < targets.length; i++) {
+        const e = targets[i];
         if (!e || e.dead || e === enemyTarget || p.hit.has(e)) continue;
         p.hit.add(e);
         this._applyPlayerAttackToEnemy(e, { mult: p.mult, element: p.element, knockback: p.knockback, rollDamageFn: p.rollDamageFn });
         n++;
       }
+      this._scratchHitArr.length = 0;
       if (n > 0) {
         this.comboCount += n;
         this.comboDecayTimer = 4.5;
@@ -1136,6 +1278,7 @@ export class PlayerController {
     if (!this.projectiles.length) return;
     const em = this.enemyManager;
     const world = this.world;
+    const hasForEach = typeof em?.forEachEnemyInRange === 'function';
 
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const p = this.projectiles[i];
@@ -1174,32 +1317,44 @@ export class PlayerController {
         }
 
         // Enemies
-        const candidates = em?.getEnemiesInRange?.(p.pos.x, p.pos.z, p.radius) || [];
-        for (const enemy of candidates) {
-          if (!enemy || enemy.dead || p.hit.has(enemy)) continue;
-          p.hit.add(enemy);
-          this._applyPlayerAttackToEnemy(enemy, {
-            mult: p.mult,
-            element: p.element,
-            knockback: p.knockback,
-            rollDamageFn: p.rollDamageFn
-          });
-          this.comboCount += 1;
-          this.comboDecayTimer = 4.5;
-          if (!p.pierce) {
-            this._projectileImpact(p, enemy);
+        if (hasForEach) {
+          this._projScanProj = p;
+          this._projScanRemove = false;
+          em.forEachEnemyInRange(p.pos.x, p.pos.z, p.radius, this._onProjEnemyHit);
+          if (this._projScanRemove) {
             remove = true;
             break;
-          } else {
-            this.renderer.spawnHitSparks({ x: p.pos.x, y: 0.2, z: p.pos.z }, p.color, 5);
           }
+        } else {
+          const candidates = em?.getEnemiesInRange?.(p.pos.x, p.pos.z, p.radius) || [];
+          for (let c = 0; c < candidates.length; c++) {
+            const enemy = candidates[c];
+            if (!enemy || enemy.dead || p.hit.has(enemy)) continue;
+            p.hit.add(enemy);
+            this._applyPlayerAttackToEnemy(enemy, {
+              mult: p.mult,
+              element: p.element,
+              knockback: p.knockback,
+              rollDamageFn: p.rollDamageFn
+            });
+            this.comboCount += 1;
+            this.comboDecayTimer = 4.5;
+            if (!p.pierce) {
+              this._projectileImpact(p, enemy);
+              remove = true;
+              break;
+            } else {
+              this.renderer.spawnHitSparks({ x: p.pos.x, y: 0.2, z: p.pos.z }, p.color, 5);
+            }
+          }
+          if (remove) break;
         }
-        if (remove) break;
 
         // Breakables
         if (world && typeof world.getBreakablesInArc === 'function') {
           const brks = world.getBreakablesInArc(p.pos.x, p.pos.z, 0, p.radius, Math.PI * 2) || [];
-          for (const b of brks) {
+          for (let bi = 0; bi < brks.length; bi++) {
+            const b = brks[bi];
             if (!b || b.destroyed || p.hit.has(b)) continue;
             p.hit.add(b);
             world.damageBreakable?.(b, 25);
@@ -1232,6 +1387,7 @@ export class PlayerController {
       const core = p.mesh.userData.core;
       if (core) core.rotation.x += dt * 12;
     }
+    this._projScanProj = null;
   }
 
   _updateDelayedHits(dt) {
@@ -1855,8 +2011,8 @@ export class PlayerController {
     if (cursorPt) {
       const dx = cursorPt.x - this.position.x;
       const dz = cursorPt.z - this.position.z;
-      const d = Math.hypot(dx, dz);
-      const k = d > range ? range / d : 1;
+      const dSq = dx * dx + dz * dz;
+      const k = dSq > range * range ? range / Math.sqrt(dSq) : 1;
       tx = this.position.x + dx * k;
       tz = this.position.z + dz * k;
     } else {
@@ -2126,9 +2282,12 @@ export class PlayerController {
     this.heroMesh.position.copy(this.position);
     this.heroMesh.rotation.y = this.rotation;
 
-    // Keep Berserk 3D Aura synchronized
+    // Keep Berserk 3D Aura synchronized (only toggle when state changes)
     const isBerserk = !!this.gameState?.hero?.berserkActive;
-    this.renderer?.setBerserkAura?.(this.mesh, isBerserk);
+    if (isBerserk !== this._lastBerserk) {
+      this._lastBerserk = isBerserk;
+      this.renderer?.setBerserkAura?.(this.mesh, isBerserk);
+    }
     if (this.heroMesh?.userData) {
       this.heroMesh.userData.isBerserk = isBerserk;
     }
