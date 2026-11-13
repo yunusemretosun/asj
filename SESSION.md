@@ -1,25 +1,21 @@
 # Session State — ASJ (ARKENVEIL: SIGILS & JOURNEYS)
 
 ## Current Snapshot
-- **Branch:** `main` (unpushed commits on `main`; prior `fbb9120` + new perf/AI/lore/lotus commit).
-- **Build & Checks:** `node tests/run_tests.mjs` -> **ALL 971 CHECKS PASSED**; `npm run build` (`vite build`) -> **clean** (`29 modules`, `4.38s`; only >1500 kB chunk-size warning). `grep -rn '[ğĞüÜşŞıİöÖçÇ]' index.html src/` -> 0 matches.
+- **Branch:** `main` (pushed to `origin/main`).
+- **Build & Checks:** `node tests/run_tests.mjs` -> **ALL 982 CHECKS PASSED**; `npm run build` (`vite build`) -> **clean** (`30 modules`, `4.30s`; Three.js split into `vendor-three` chunk).
 
 ## Done This Session
-- **Alert `'!'` Non-Spam & Tether Fix ([enemyAI.js](src/world/enemyAI.js), [main.js](src/main.js)):**
-  - Fixed `enemy.alerted` -> `enemy.isAlerted` in `applyTrialScaling`; stopped re-firing `'!'` when already chasing/hit (`wasUnengaged`/`wasAlertedBefore` checks + 8s `_lastAlertAt` cooldown).
-  - Fixed outskirt tether ping-pong via `_returningHome` + `_leashTimer = 3.0` + `aggroRange * 1.35` hysteresis (`leashR = 34` for Giants, `26` for normal camp mobs).
-- **Full Runtime & UI Performance Refactor:**
-  - **[renderer.js](src/engine/renderer.js):** Fixed 8-slot scene-resident `PointLight` pool, DPR cap `1.5`, 30 Hz `PCFShadowMap` + texel snapping + `invalidateShadows()`, `DynamicDrawUsage` weather, 128-instance `InstancedMesh` particles, swap-and-pop VFX pooling, 48-node `translate3d` FCT pool.
-  - **[models3d.js](src/engine/models3d.js), [playerController.js](src/engine/playerController.js), [petController.js](src/engine/petController.js):** Non-cloning `onBeforeCompile` `uHitFlash` shader, `isSharedAsset` guards, merged/cached static props, scale-aware frustum culling, `lightweightCrowd` villagers, scratch vectors, `forEachEnemyInRange` / squared-distance queries, zero per-mob PointLights.
-  - **[enemyAI.js](src/world/enemyAI.js), [dungeonGenerator.js](src/world/dungeonGenerator.js), [dungeonDecor.js](src/world/dungeonDecor.js), [villageBuilder.js](src/world/villageBuilder.js):** Deferred far-mob mesh hydration (`<=3`/frame within 48m), 38m/52m LOD+frustum culling, spatial cell grids, pooled dungeon lights, `_surfaceTexCache`, `36m` prop culling, throttled village animations.
-  - **[hud.js](src/ui/hud.js), [menus.js](src/ui/menus.js), [styles.css](src/ui/styles.css), [gameState.js](src/systems/gameState.js), [skills.js](src/systems/skills.js):** GPU `scaleX`/`translate3d` updates, zero `offsetWidth` reflows, memoized HUD/`getHudSummary`/`fillSkillBar`, static minimap canvas cache, cached tooltip bounds, cleaned dialogue timers.
-- **English-Only & ARKENVEIL Lore Pass:** Removed all Turkish text and player-facing Silkroad proper names (`Jangan`, `Tiger Girl`, `Uruchi`, `Isyutaru`, `Lord Yarkan`, `Demon Shaitan`, `Medusa`, `Roc`, `Mangyang`, `Bicheon/Heuksal/Pacheon`, `Silkroad`) across UI, quests, chronicles, banners, bosses, NPCs, skills, and village outskirts while keeping `/assets/sro/...` asset URLs and internal IDs functional.
-- **Outskirt Camp Giant Spawn ([enemyAI.js](src/world/enemyAI.js)):** Added `OUTSKIRT_GIANT_KILL_THRESHOLD = 10` + `campKills` + `getCampKillProgress` + `_spawnCampGiant` (`spawnOnce: true`, guards double-spawn while Giant alive).
-- **Pond Lotus Cutout Fix ([villageBuilder.js](src/world/villageBuilder.js), [dungeonDecor.js](src/world/dungeonDecor.js)):** Raised pond/hot-spring lotus quads above water/lily surfaces (`0.115` / `0.215`) and switched flat opaque `loadSROSprite` to alpha-cutout (`alphaTest: 0.35, depthWrite: true`).
-- **[tests/run_tests.mjs](tests/run_tests.mjs):** Updated boss/mob lore assertions and added regression checks for lotus elevation, `'!'` non-spam + tether, outskirt Giant kill-threshold, `resolveCollision`, `getHudSummary`, and `fillSkillBar`.
-
-## Remaining Open Tasks
-1. **Mob attacks too ranged ([enemyAI.js](src/world/enemyAI.js)):** audit melee vs. ranged `isSkillInRange` caps (`L1347`).
+- **Startup, Character Flash & Batch Combat Perf (`df9effe`):**
+  - **[index.html](index.html), [vite.config.js](vite.config.js), [src/main.js](src/main.js):** Immediate `#asj-boot-splash`, `#asj-loading-overlay` world-entry gate awaiting hero readiness + `renderer.precompileScene()`, `deferHeroMesh: true` on `PlayerController`, `vendor-three` chunk split.
+  - **[src/ui/characterCreation.js](src/ui/characterCreation.js), [src/engine/heroPreview.js](src/engine/heroPreview.js), [src/engine/models3d.js](src/engine/models3d.js):** Atomic GLB visibility (`bodyPivot.visible = !isBrowser`, `charClone.visible = false` until equipment GLBs settle, `whenReady()` barrier), `initialLook` passed to preview, skip equipment re-clone on swatch clicks, lazy hero `clipAction` binding, cached `buildArrowMesh` / `createLootMesh` shared assets.
+  - **[src/world/villageBuilder.js](src/world/villageBuilder.js):** Switched 12 crowd villagers to lightweight `createNPCMesh`, spatial-bucketed `riverDistSq` + cached splat bytes, staggered browser prop attaches.
+  - **[src/engine/renderer.js](src/engine/renderer.js), [src/ui/hud.js](src/ui/hud.js), [src/engine/playerController.js](src/engine/playerController.js), [src/world/enemyAI.js](src/world/enemyAI.js):** O(1) particle ring cursor, per-frame FCT spawn cap, pooled VFX geometries/materials, in-place combo DOM updates, `SoundFX` cooldown + 10-voice cap, pooled enemy projectiles, cached status rings, capped regular-mob telegraphs, deduped `wakePack`/hit-flash, staggered death disposals.
+  - **Combat Fixes:** Fixed Axeman offhand axe orientation (`createEuropeanAxeMesh` `isOffhand` `rotation.z = Math.PI` + procedural `shieldMount`); melee skills (`knight`/`axeman`) uninterruptible during `prep`/`gap` (`_isSkillUninterruptible`, `_nudgePlayer` poise guard).
+- **SRO Background Music Integration:**
+  - Extracted & transcoded 17 `.ogg` tracks into `public/assets/sro/music/` (~22 MB) with English filenames (`title`, `village`, `outskirts`, `cave_sandstone`, `mountain_pass`, `ancient_tomb`, `flame_halls`, `spirit_temple`, `sky_temple`, `demon_depths`, `roc_peak`, `haunted_village`, `sunken_wreck`, `boss`, `final_boss`, `victory`, `death`).
+  - **[src/engine/musicManager.js](src/engine/musicManager.js):** Dual-deck HTMLAudio crossfading (`1.5s`), autoplay unlock on first input, visibility pause, `localStorage` `'asj.audio'` persistence, headless Node safe.
+  - **[src/main.js](src/main.js), [src/ui/menus.js](src/ui/menus.js), [src/ui/styles.css](src/ui/styles.css):** Wired zone/biome/outskirt/boss/victory/death music transitions; added Audio Settings modal (`F10`) with Music/SFX sliders and Mute toggle (`Shift+M`).
+  - **[tests/run_tests.mjs](tests/run_tests.mjs):** Added tests for `MusicManager`, `resolveFloorMusic`, `public/assets/sro/music/*.ogg` presence, Axeman offhand axe, and melee skill poise.
 
 ## Verification Contract
-Run `node tests/run_tests.mjs && npm run build`. Ask user before `git push`.
+Run `node tests/run_tests.mjs && npm run build`. Ask user before `git push` unless requested.

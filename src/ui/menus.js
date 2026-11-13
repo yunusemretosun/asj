@@ -41,11 +41,12 @@ const ALIASES = {
   pet: 'pet', pets: 'pet', companion: 'pet',
   petshop: 'petshop', petmerchant: 'petshop',
   townhall: 'townhall', academy: 'townhall', blessings: 'townhall', town: 'townhall', hall: 'townhall',
+  options: 'settings', audio: 'settings', sound: 'settings', settings: 'settings',
   storyending: 'storyending',
 };
-const TITLES = { character: 'Hero', inventory: 'Inventory & Equipment', skills: 'Skill Tree', compose: 'Alchemy Workshop', quests: 'Quest Log', map: 'Dungeon Floors', shop: 'Shop', storage: 'General Shared Storage Vault', dialogue: '', pet: 'Companion Pets', petshop: 'Beast Tamer Zara — Pet Stable', townhall: 'Oakhaven Guild & Services', storyending: 'Celestial Triumph — Story Complete' };
+const TITLES = { character: 'Hero', inventory: 'Inventory & Equipment', skills: 'Skill Tree', compose: 'Alchemy Workshop', quests: 'Quest Log', map: 'Dungeon Floors', shop: 'Shop', storage: 'General Shared Storage Vault', dialogue: '', pet: 'Companion Pets', petshop: 'Beast Tamer Zara — Pet Stable', townhall: 'Oakhaven Guild & Services', settings: 'Audio Settings', storyending: 'Celestial Triumph — Story Complete' };
 const KIND_NAME = { weapon: 'Weapon', shield: 'Shield', armor: 'Armor', accessory: 'Accessory' };
-const HOTKEY_TXT = { character: 'C', inventory: 'B / I', skills: 'K', compose: 'O', quests: 'Q', map: 'M', pet: 'P' };
+const HOTKEY_TXT = { character: 'C', inventory: 'B / I', skills: 'K', compose: 'O', quests: 'Q', map: 'M', pet: 'P', settings: 'F10' };
 
 export const itemIcon = (it) => (it && (it.icon || SLOT_ICON[it.slot] || TYPE_ICON[String(it.type || '').toLowerCase()] || (MATERIAL_RE.test(it.type || '') ? '💎' : '📦'))) || '';
 const rarityOf = (it) => String((it && it.rarity) || 'normal').toLowerCase();
@@ -131,6 +132,7 @@ export class MenuManager {
     // delegated events
     const m = this.modal;
     m.addEventListener('click', (e) => this._onClick(e));
+    m.addEventListener('input', (e) => this._onInput(e));
     m.addEventListener('dblclick', (e) => this._onDbl(e));
     m.addEventListener('contextmenu', (e) => this._onCtx(e));
     m.addEventListener('mouseover', (e) => this._onOver(e));
@@ -245,6 +247,18 @@ export class MenuManager {
       this._toast(r && r.ok === false ? (r.msg || 'Save failed') : 'Game saved', r && r.ok === false ? 'warn' : 'info');
       return;
     }
+    if (e.key === 'F10') {
+      e.preventDefault();
+      this.toggleMenu('settings');
+      return;
+    }
+    if (e.shiftKey && e.key.toLowerCase() === 'm') {
+      e.preventDefault();
+      const muted = this.ctx?.music?.toggleMute?.();
+      this._toast(muted ? 'Audio muted' : 'Audio unmuted', 'info');
+      if (this.current === 'settings') this._render();
+      return;
+    }
     if (e.key === 'Escape') { if (this.current) { e.preventDefault(); e.stopPropagation(); this.closeAll(); } return; }
     if (this.current === 'dialogue' && (e.key === 'Enter' || e.key === ' ' || e.key.toLowerCase() === 'e')) {
       e.preventDefault(); e.stopPropagation(); this._dlgAdvance(); return;
@@ -299,7 +313,7 @@ export class MenuManager {
     if (!this.current) return;
     this._items.clear();
     this._tipUid = null;
-    if (!this.host) {
+    if (!this.host && this.current !== 'settings') {
       this._title = TITLES[this.current];
       this._frame(this.current, h('div', 'arc-empty', 'Game not ready.'));
       this._lastRenderedMenu = this.current;
@@ -325,6 +339,7 @@ export class MenuManager {
         case 'pet': this._rPet(); break;
         case 'petshop': this._rPetShop(); break;
         case 'townhall': this._rTownHall(); break;
+        case 'settings': this._rSettings(); break;
         case 'storyending': this._rStoryEnding(); break;
         default: this._frame(this.current, h('div', 'arc-empty', 'Unknown menu: ' + esc(this.current)));
       }
@@ -450,6 +465,22 @@ export class MenuManager {
         }
       }
       this._itemClick(s.dataset.uid, e);
+    }
+  }
+  _onInput(e) {
+    const el = e.target;
+    const kind = el && el.dataset && el.dataset.setting;
+    if (!kind) return;
+    const val = Math.max(0, Math.min(100, Number(el.value) || 0));
+    const row = el.closest('.arc-setting-row');
+    const lbl = row && row.querySelector('.arc-setting-val');
+    if (lbl) lbl.textContent = `${val}%`;
+    const music = this.ctx?.music;
+    if (kind === 'music') {
+      music?.setMusicVolume?.(val / 100);
+    } else if (kind === 'sfx') {
+      if (music?.setSfxVolume) music.setSfxVolume(val / 100);
+      else if (this.ctx?.sound && 'masterVolume' in this.ctx.sound) this.ctx.sound.masterVolume = val / 100;
     }
   }
   _onDbl(e) {
@@ -772,8 +803,45 @@ export class MenuManager {
         }
         break;
       }
+      case 'togglemute': {
+        const m = this.ctx?.music;
+        if (m && typeof m.toggleMute === 'function') {
+          const muted = m.toggleMute();
+          this._toast(muted ? 'Audio muted' : 'Audio unmuted', 'info');
+        }
+        this._render();
+        break;
+      }
       default: break;
     }
+  }
+
+  // ------------------------------------------------------------ SETTINGS
+  _rSettings() {
+    const music = this.ctx?.music;
+    const sound = this.ctx?.sound;
+    const musicPct = Math.round((music?.musicVolume ?? 0.5) * 100);
+    const sfxPct = Math.round((music?.sfxVolume ?? sound?.masterVolume ?? 0.28) * 100);
+    const muted = !!music?.muted;
+    const wrap = h('div', 'arc-settings');
+    wrap.innerHTML = `
+      <div class="arc-setting-row">
+        <label class="arc-setting-label" for="arc-music-vol">Music Volume</label>
+        <input id="arc-music-vol" class="arc-slider" type="range" min="0" max="100" value="${musicPct}" data-setting="music">
+        <span class="arc-setting-val">${musicPct}%</span>
+      </div>
+      <div class="arc-setting-row">
+        <label class="arc-setting-label" for="arc-sfx-vol">SFX Volume</label>
+        <input id="arc-sfx-vol" class="arc-slider" type="range" min="0" max="100" value="${sfxPct}" data-setting="sfx">
+        <span class="arc-setting-val">${sfxPct}%</span>
+      </div>
+      <div class="arc-setting-row">
+        <span class="arc-setting-label">Mute All Audio</span>
+        <button type="button" class="arc-btn ${muted ? 'danger' : 'good'}" data-act="togglemute">${muted ? 'Muted' : 'Active'}</button>
+      </div>
+      <div class="arc-setting-hint">F10: Audio Settings &bull; Shift+M: Mute/Unmute</div>
+    `;
+    this._frame('settings', wrap);
   }
 
   // ------------------------------------------------------------ CHARACTER

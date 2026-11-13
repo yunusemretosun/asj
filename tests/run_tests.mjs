@@ -27,6 +27,7 @@ import { models3d, CLASS_CLIP_MAP } from '../src/engine/models3d.js';
 import { PlayerController } from '../src/engine/playerController.js';
 import { buildVillage } from '../src/world/villageBuilder.js';
 import { Renderer } from '../src/engine/renderer.js';
+import { MUSIC_TRACKS, resolveFloorMusic, MusicManager } from '../src/engine/musicManager.js';
 
 let passed = 0;
 function check(label, cond) {
@@ -2586,6 +2587,155 @@ import { createHost } from '../src/ui/hud.js';
     hudSameRef === hudOut && hudOut.className === 'Knight' &&
     Array.isArray(barRet) && barRet === barOut && barOut.length === 9 && barOut[0]?.ready !== undefined
   );
+}
+
+// -----------------------------------------------------------------------------
+// 38. SRO Music System (MUSIC_TRACKS, assets on disk, resolveFloorMusic, headless MusicManager)
+// -----------------------------------------------------------------------------
+{
+  const expectedKeys = [
+    'title', 'village', 'outskirts', 'donhwang', 'karakoram', 'qinshi',
+    'flame', 'holywater', 'jupiter', 'demon', 'roc_nest', 'togui', 'wreck',
+    'boss', 'finalBoss', 'victory', 'death'
+  ];
+  const hasAllKeys = expectedKeys.every((k) => typeof MUSIC_TRACKS[k] === 'string' && MUSIC_TRACKS[k].length > 0);
+  check('MUSIC_TRACKS defines all expected zone, boss, and stinger keys', hasAllKeys);
+
+  let allFilesValid = true;
+  for (const file of Object.values(MUSIC_TRACKS)) {
+    const fileUrl = new URL(`../public/assets/sro/music/${file}`, import.meta.url);
+    try {
+      const st = fs.statSync(fileUrl);
+      if (!st.isFile() || st.size <= 0) allFilesValid = false;
+    } catch {
+      allFilesValid = false;
+    }
+  }
+  check('Every track file in MUSIC_TRACKS exists on disk under public/assets/sro/music/ with non-zero size', allFilesValid);
+
+  check('resolveFloorMusic resolves finalBoss, preferBoss, variant suffix, and fallback cleanly',
+    resolveFloorMusic({ isFinalBossFloor: true, isBossFloor: true, sroDungeon: 'qinshi' }, { preferBoss: true }) === 'finalBoss' &&
+    resolveFloorMusic({ isBossFloor: true, sroDungeon: 'qinshi' }, { preferBoss: true }) === 'boss' &&
+    resolveFloorMusic({ isBossFloor: true, sroDungeon: 'qinshi' }, { preferBoss: false }) === 'qinshi' &&
+    resolveFloorMusic({ sroDungeon: 'qinshi_b6' }) === 'qinshi' &&
+    resolveFloorMusic({ sroDungeon: 'unknown_zone_xyz' }) === 'donhwang' &&
+    resolveFloorMusic(null) === 'donhwang'
+  );
+
+  const mm = new MusicManager();
+  const playFirst = mm.play('village');
+  const playSame = mm.play('village');
+  const playUnknown = mm.play('nonexistent_track');
+  const stingerOk = mm.stinger('victory', 'donhwang');
+  mm.setMusicVolume(0.75);
+  mm.setSfxVolume(0.4);
+  const muteOn = mm.toggleMute();
+  const muteOff = mm.toggleMute();
+  mm.stop();
+  mm.dispose();
+  check('MusicManager operates safely in headless Node without throwing',
+    mm.enabled === false &&
+    playFirst === true &&
+    playSame === false &&
+    playUnknown === false &&
+    stingerOk === true &&
+    mm.musicVolume === 0.75 &&
+    mm.sfxVolume === 0.4 &&
+    muteOn === true &&
+    muteOff === false &&
+    mm.currentKey === null
+  );
+}
+
+// -----------------------------------------------------------------------------
+// 39. Axeman Offhand Axe Orientation (createEuropeanAxeMesh)
+// -----------------------------------------------------------------------------
+{
+  const mainAxe = createEuropeanAxeMesh(null, '01', false);
+  const offAxe = createEuropeanAxeMesh(null, '01', true);
+  check('Mainhand European axe has rotation.z === 0', mainAxe.rotation.z === 0);
+  check('Offhand European axe has rotation.z === Math.PI', Math.abs(offAxe.rotation.z - Math.PI) < 1e-6);
+}
+
+// -----------------------------------------------------------------------------
+// 40. Melee Skill Poise (_isSkillUninterruptible, receiveHit, lethal & performDash)
+// -----------------------------------------------------------------------------
+{
+  const poiseRenderer = {
+    spawnFloatingText() {},
+    spawnHitSparks() {},
+    spawnSkillEffect() {},
+    shake() {},
+    screenToGround() { return null; }
+  };
+  const poiseWorld = {
+    canMoveTo() { return true; },
+    resolveCollision(x, z) { return { x, z }; }
+  };
+
+  const makePoisePlayer = (classId) => {
+    const gs = createGame({ classId });
+    gs.newCharacter({ name: `Poise_${classId}`, classId, slot: 0 });
+    gs.hero.hp = 5000;
+    gs.hero.maxHp = 5000;
+    gs.hero.stamina = 100;
+    gs.hero.maxStamina = 100;
+    const origGetStats = gs.getStats.bind(gs);
+    gs.getStats = () => ({ ...origGetStats(), dodge: 0, blockChance: 0 });
+    const pc = new PlayerController({
+      renderer: poiseRenderer,
+      gameState: gs,
+      world: poiseWorld,
+      enemyManager: null
+    });
+    pc.invulnerableTimer = 0;
+    pc.isBlocking = false;
+    return pc;
+  };
+
+  const makeSkillPhase = () => ({
+    desc: { id: 'test_skill' },
+    stage: 'prep',
+    timer: 0.5,
+    total: 0.5,
+    recover: 0.1,
+    plan: null,
+    chain: null
+  });
+
+  for (const meleeClass of ['knight', 'axeman']) {
+    const pc = makePoisePlayer(meleeClass);
+    pc.skillPhase = makeSkillPhase();
+    pc.state = 'skill';
+    const uninterruptible = pc._isSkillUninterruptible();
+    const hit = pc.receiveHit(100, null, { element: 'physical' });
+    check(`Melee class ${meleeClass} has uninterruptible skill poise against non-lethal hits`,
+      uninterruptible === true && !hit.dodged && !hit.dead && hit.damage > 0 && pc.skillPhase !== null && pc.state === 'skill'
+    );
+  }
+
+  for (const rangedClass of ['wizard', 'archer']) {
+    const pc = makePoisePlayer(rangedClass);
+    pc.skillPhase = makeSkillPhase();
+    pc.state = 'skill';
+    const uninterruptible = pc._isSkillUninterruptible();
+    const hit = pc.receiveHit(100, null, { element: 'physical' });
+    check(`Ranged/caster class ${rangedClass} skillPhase is interrupted by non-lethal hits`,
+      uninterruptible === false && !hit.dodged && !hit.dead && hit.damage > 0 && pc.skillPhase === null && pc.state === 'idle'
+    );
+  }
+
+  const lethalPc = makePoisePlayer('knight');
+  lethalPc.skillPhase = makeSkillPhase();
+  lethalPc.state = 'skill';
+  const lethalRes = lethalPc.receiveHit(999999, null, { element: 'physical' });
+  check('Lethal hit cleanly cancels melee skillPhase', lethalRes.dead === true && lethalPc.skillPhase === null);
+
+  const dashPc = makePoisePlayer('axeman');
+  dashPc.skillPhase = makeSkillPhase();
+  dashPc.state = 'skill';
+  const dashed = dashPc.performDash();
+  check('performDash cleanly cancels active skillPhase', dashed > 0 && dashPc.skillPhase === null && dashPc.state === 'dash');
 }
 
 console.log(`ALL ${passed} CHECKS PASSED.`);

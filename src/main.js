@@ -11,6 +11,7 @@ import { createHUD } from './ui/hud.js';
 import { createMenus } from './ui/menus.js';
 import { openCharacterCreation } from './ui/characterCreation.js';
 import { createHeroPreview } from './engine/heroPreview.js';
+import { createMusicManager, resolveFloorMusic } from './engine/musicManager.js';
 
 async function bootstrap() {
   const canvasContainer = document.getElementById('canvas-container') || document.body;
@@ -47,6 +48,7 @@ async function bootstrap() {
     enterChallenge: null,
     exitChallenge: null,
     sound: null,
+    music: null,
     enterFloor: null,
     returnToVillage: null
   };
@@ -73,6 +75,8 @@ async function bootstrap() {
   });
   gameContext.player = player;
   gameContext.sound = player.sound;
+  const music = createMusicManager({ sound: player.sound });
+  gameContext.music = music;
 
   // 5b. Initialize 3D Companion Pet Controller
   const petController = new PetController({
@@ -118,6 +122,7 @@ async function bootstrap() {
     }
     gameContext.hud?.showZone?.(hubData.name || 'Oakhaven Village', 0);
     gameContext.menus?.closeAll?.();
+    music.play('village');
   }
 
   function enterFloor(floorNum = 1) {
@@ -162,6 +167,7 @@ async function bootstrap() {
 
     gameContext.hud?.showZone?.(floorData.name || `Dungeon B${targetFloor}F`, targetFloor);
     gameContext.menus?.closeAll?.();
+    music.play(resolveFloorMusic(floorData, { preferBoss: Boolean(floorData?.isBossFloor) }));
     return true;
   }
 
@@ -446,6 +452,7 @@ async function bootstrap() {
     gameContext.hud?.showZone?.(`Trial: ${cfg.name}`, floorNum);
     gameContext.hud?.toast?.(`⚔️ ${cfg.name} started! Survive ${cfg.duration}s!`, 'levelup');
     gameContext.menus?.closeAll?.();
+    music.play('boss');
     spawnChallengeWave(activeChallenge);
   }
 
@@ -479,6 +486,7 @@ async function bootstrap() {
       gameContext.hud?.toast?.(`💀 Challenge Failed! Returned directly to B${ch.floorNum}F.`, 'warn');
     } else {
       gameContext.hud?.toast?.(`Returned to ${floorData?.name || `Dungeon B${ch.floorNum}F`}.`, 'info');
+      music.play(resolveFloorMusic(floorData, { preferBoss: Boolean(floorData?.isBossFloor) }));
     }
     gameContext.hud?.showZone?.(floorData?.name || `Dungeon B${ch.floorNum}F`, ch.floorNum);
     gameContext.menus?.closeAll?.();
@@ -561,6 +569,7 @@ async function bootstrap() {
   });
 
   gameState.on('death', () => {
+    music.stinger('death');
     if (activeChallenge && activeChallenge.active) {
       hud.toast?.(`💀 Fallen in Trial! Teleporting back to B${activeChallenge.floorNum}F...`, 'warn');
       clearTimeout(challengeDeathTimer);
@@ -661,6 +670,7 @@ async function bootstrap() {
         const ePos = enemy.position || { x: enemy.x || 0, y: 0, z: enemy.z || 0 };
         renderer.spawnLevelUpPillar(ePos);
         player.sound.play('levelup');
+        music.stinger('victory', resolveFloorMusic(dungeon?.floorDef || { sroDungeon: dungeon?.sroDungeon }));
         if (dungeon.currentFloor === 16) {
           const storyRes = gameState.completeStory?.(enemy);
           hud?.toast?.('👑 FINAL BOSS DEFEATED! The Sky Sovereign has fallen!', 'levelup');
@@ -713,6 +723,12 @@ async function bootstrap() {
 
     // Update Hero Controller
     player.update(dt, elapsed);
+
+    if (!dungeon?.currentFloor && !activeChallenge?.active) {
+      const dist = Math.max(Math.abs(player.position.x), Math.abs(player.position.z));
+      if (dist > 58) music.play('outskirts');
+      else if (dist <= 54) music.play('village');
+    }
 
     // Update 3D Companion Pet Controller
     petController.update(dt, elapsed);
@@ -773,6 +789,7 @@ async function bootstrap() {
     const readSaves = () => [0, 1, 2].map((slot) => (gameState.getSaveInfo ? gameState.getSaveInfo(slot) : null));
     let choice = null;
     try {
+      music.play('title');
       const choicePromise = openCharacterCreation(overlayRoot, {
         saves: readSaves(),
         createPreview: (canvas, initialLook) => createHeroPreview(canvas, initialLook),
