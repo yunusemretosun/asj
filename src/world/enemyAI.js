@@ -32,6 +32,12 @@ function colorToCss(c) {
   return typeof c === 'number' ? `#${c.toString(16).padStart(6, '0')}` : String(c || '#ffffff');
 }
 
+function lerpAngle(current, target, t) {
+  if (!Number.isFinite(current)) return target;
+  const diff = Math.atan2(Math.sin(target - current), Math.cos(target - current));
+  return current + diff * t;
+}
+
 export const RANGED_ENEMY_SKILLS = new Set([
   'poison_arrow',
   'arrow_volley',
@@ -4083,7 +4089,7 @@ export class EnemyManager {
         e.mesh?.userData?.animate?.('dead', time, dt);
         if (e.deathTimer <= 0 && e.mesh) {
           e.mesh.visible = false;
-          if (disposedThisFrame < 3) {
+          if (disposedThisFrame < 1) {
             this.rootGroup.remove(e.mesh);
             disposeObject3D(e.mesh);
             e.mesh = null;
@@ -4132,8 +4138,8 @@ export class EnemyManager {
       const dz = pz - e.z;
       const distSq = dx * dx + dz * dz;
 
-      // Hydrate deferred outskirt mesh smoothly as player approaches within 48m (max 3/frame)
-      if (e._deferredMeshCfg && hydratedThisFrame < 3 && distSq <= 48 * 48) {
+      // Hydrate deferred outskirt mesh smoothly as player approaches within 48m (max 1/frame)
+      if (e._deferredMeshCfg && hydratedThisFrame < 1 && distSq <= 48 * 48) {
         this._hydrateDeferredEnemyMesh(e);
         hydratedThisFrame++;
       }
@@ -4142,6 +4148,7 @@ export class EnemyManager {
       if (!e.isBoss && distSq > 38 * 38 && e.state !== AI_STATE.TELEGRAPH && e.state !== AI_STATE.SKILL && !e._pendingSkillCheck) {
         if (e.mesh) {
           if (e.mesh.visible) e.mesh.visible = false;
+          if (e._origCastShadow === undefined) e._origCastShadow = Boolean(e.mesh.castShadow);
           if (e.mesh.castShadow) e.mesh.castShadow = false;
         }
         e._lodAcc = (e._lodAcc || ((i % 5) * 0.07)) + dt;
@@ -4187,23 +4194,18 @@ export class EnemyManager {
       }
 
       const shouldRender = !e._deferredMeshCfg && inFrustum;
-      if (e.mesh && e.mesh.visible !== shouldRender) {
-        e.mesh.visible = shouldRender;
-      }
-
-      // Inline animation throttling (0 when off-frustum/hidden, 15 Hz beyond 22m)
-      let animDt = dt;
-      if (!shouldRender) {
-        animDt = 0;
-      } else if (!e.isBoss && distSq > 22 * 22) {
-        e._animAcc = (e._animAcc || 0) + dt;
-        if (e._animAcc >= 0.066) {
-          animDt = e._animAcc;
-          e._animAcc = 0;
-        } else {
-          animDt = 0;
+      if (e.mesh) {
+        if (e.mesh.visible !== shouldRender) {
+          e.mesh.visible = shouldRender;
+        }
+        if (e._origCastShadow && !e.mesh.castShadow) {
+          e.mesh.castShadow = true;
         }
       }
+
+      // Full 60 Hz animation for visible rendered mobs; 0 when off-frustum/hidden
+      const animDt = shouldRender ? dt : 0;
+      if (shouldRender && e._animAcc) e._animAcc = 0;
 
       // Status effects (DoT ticks, timers, ring/tint). May kill the enemy.
       this._updateStatuses(e, dt, time);
@@ -4351,14 +4353,36 @@ export class EnemyManager {
               e.awarenessTimer = 0;
             }
             if (e.stateTimer <= 0) {
-              const angle = Math.random() * Math.PI * 2;
-              const r = 1.5 + Math.random() * 2.5;
-              e.patrolTarget = {
-                x: e.spawnX + Math.cos(angle) * r,
-                z: e.spawnZ + Math.sin(angle) * r
-              };
-              e.state = AI_STATE.PATROL;
-              e.stateTimer = 2.0 + Math.random() * 2.0;
+              const hasWalkable = typeof world?.isWalkable === 'function';
+              const baseAngle = Math.random() * Math.PI * 2;
+              const attempts = hasWalkable ? 4 : 1;
+              let pickedX = 0;
+              let pickedZ = 0;
+              let found = false;
+              for (let a = 0; a < attempts; a++) {
+                const angle = baseAngle + (a * Math.PI * 0.5);
+                const r = 1.5 + Math.random() * 2.5;
+                const tx = e.spawnX + Math.cos(angle) * r;
+                const tz = e.spawnZ + Math.sin(angle) * r;
+                if (!hasWalkable || world.isWalkable(tx, tz, e.radius)) {
+                  pickedX = tx;
+                  pickedZ = tz;
+                  found = true;
+                  break;
+                }
+              }
+              if (found) {
+                if (!e.patrolTarget) e.patrolTarget = { x: pickedX, z: pickedZ };
+                else {
+                  e.patrolTarget.x = pickedX;
+                  e.patrolTarget.z = pickedZ;
+                }
+                e._patrolStuckTimer = 0;
+                e.state = AI_STATE.PATROL;
+                e.stateTimer = 2.0 + Math.random() * 2.0;
+              } else {
+                e.stateTimer = 0.8 + Math.random() * 0.8;
+              }
             }
           }
           break;
@@ -4380,7 +4404,9 @@ export class EnemyManager {
               e.state = AI_STATE.IDLE;
               e.stateTimer = 1.2 + Math.random() * 1.5;
             } else {
+              const prevRot = e.rotation;
               this._moveEnemy(e, hdx / hDist, hdz / hDist, e.moveSpeed * 1.15, dt, world);
+              e.rotation = lerpAngle(prevRot, Math.atan2(hdx, hdz), Math.min(1, 10 * dt));
               if (animDt > 0) e.mesh?.userData?.animate?.('walk', time, animDt);
             }
             break;
@@ -4417,7 +4443,23 @@ export class EnemyManager {
               e.awarenessTimer = 0;
             }
           } else {
+            const prevX = e.x;
+            const prevZ = e.z;
+            const prevRot = e.rotation;
             this._moveEnemy(e, pdx / pDist, pdz / pDist, e.moveSpeed * 0.55, dt, world);
+            e.rotation = lerpAngle(prevRot, Math.atan2(pdx, pdz), Math.min(1, 10 * dt));
+            const actualMoved = Math.hypot(e.x - prevX, e.z - prevZ);
+            if (actualMoved < 0.002) {
+              e._patrolStuckTimer = (e._patrolStuckTimer || 0) + dt;
+              if (e._patrolStuckTimer >= 0.25) {
+                e._patrolStuckTimer = 0;
+                e.state = AI_STATE.IDLE;
+                e.stateTimer = 1.2 + Math.random() * 1.5;
+                break;
+              }
+            } else {
+              e._patrolStuckTimer = 0;
+            }
             if (animDt > 0) e.mesh?.userData?.animate?.('walk', time, animDt);
           }
           break;

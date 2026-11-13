@@ -158,6 +158,8 @@ async function bootstrap() {
       enemyManager.spawnFloorEnemies(floorData, targetFloor, renderer.scene, models3d, extractedData);
     }
 
+    renderer.precompileScene?.()?.catch?.(() => {});
+
     if (gameState.enterFloor) {
       gameState.enterFloor(targetFloor);
     }
@@ -454,6 +456,7 @@ async function bootstrap() {
     gameContext.menus?.closeAll?.();
     music.play('boss');
     spawnChallengeWave(activeChallenge);
+    renderer.precompileScene?.()?.catch?.(() => {});
   }
 
   function exitChallenge({ died = false } = {}) {
@@ -732,6 +735,9 @@ async function bootstrap() {
 
     // Update 3D Companion Pet Controller
     petController.update(dt, elapsed);
+
+    // Update 3D Camera before world/enemy frustum & healthbar projections
+    renderer.updateCamera?.(player.position, dt);
 
     // Update World Props & Traps
     dungeon.update(dt, elapsed, player.position, dungeonUpdateOpts);

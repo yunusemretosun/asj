@@ -2807,6 +2807,7 @@ export function createHeroMesh(equipment = {}, look = {}, opts = {}) {
     root.userData.uniqueActions = null;
     root.userData.actionWeights = null;
     root.userData.guardPose = null;
+    root.userData.guardUpperArmBone = null;
     refreshFlashMaterials();
   };
 
@@ -3261,7 +3262,9 @@ export function createHeroMesh(equipment = {}, look = {}, opts = {}) {
         root.userData.currentActionName = '';
         root.userData.uniqueActions = uniqueActions;
         root.userData.actionWeights = new Map();
-        root.userData.guardPose = buildGuardPose(entry.animations, charClone);
+        const guardPose = buildGuardPose(entry.animations, charClone);
+        root.userData.guardPose = guardPose;
+        root.userData.guardUpperArmBone = guardPose?.find((g) => /UpperArm/i.test(g.bone.name))?.bone || null;
         root.userData.guardWeight = 0;
 
         // Spiky Hwan Hair for Berserk
@@ -3596,22 +3599,22 @@ export function createHeroMesh(equipment = {}, look = {}, opts = {}) {
           }
 
           let targetW = activeOtherWeight <= 0.001
-            ? 1.0
-            : Math.min(1.0, (weights.get(targetAction) || 0) + stepW);
-          if (targetW < 0.01) targetW = stepW;
-          const totalW = targetW + otherWTotal;
-          const invTotal = totalW > 0.0001 ? 1 / totalW : 1;
-          const normTargetW = targetW * invTotal;
-          weights.set(targetAction, normTargetW);
-          targetAction.setEffectiveWeight(normTargetW);
-          for (let i = 0, n = fadingActs.length; i < n; i++) {
-            const act = fadingActs[i];
-            const normW = (weights.get(act) || 0) * invTotal;
-            weights.set(act, normW);
-            act.setEffectiveWeight(normW);
+                ? 1.0
+                : Math.min(1.0, (weights.get(targetAction) || 0) + stepW);
+              if (targetW < 0.01) targetW = stepW;
+              const totalW = targetW + otherWTotal;
+              const invTotal = totalW > 0.0001 ? 1 / totalW : 1;
+              const normTargetW = targetW * invTotal;
+              weights.set(targetAction, normTargetW);
+              targetAction.setEffectiveWeight(normTargetW);
+              for (let i = 0, n = fadingActs.length; i < n; i++) {
+                const act = fadingActs[i];
+                const normW = (weights.get(act) || 0) * invTotal;
+                weights.set(act, normW);
+                act.setEffectiveWeight(normW);
+              }
+            }
           }
-        }
-      }
       root.userData.lastComboStep = comboStep;
       root.userData.lastActionSeq = actionSeq;
       root.userData.mixer.update(dt);
@@ -3622,7 +3625,7 @@ export function createHeroMesh(equipment = {}, look = {}, opts = {}) {
         const gw = root.userData.guardWeight;
         if (gw > 0.001) {
           for (const g of guardPose) g.bone.quaternion.slerp(g.quat, gw);
-          applyGuardArmSwing(root, guardPose.find((g) => /UpperArm/i.test(g.bone.name))?.bone, gw);
+          applyGuardArmSwing(root, root.userData.guardUpperArmBone, gw);
         }
       }
       fxUpdate(dt);
@@ -5622,7 +5625,7 @@ export function createMonsterMesh(typeOrConfig = 'slime', options = {}) {
 
       // Lock rider model onto Blue Tiger 'saddle' bone socket each frame
       if (root.userData.saddleBone && root.userData.riderModel && root.userData.mountModel) {
-        root.userData.mountModel.updateMatrixWorld(true);
+        root.userData.saddleBone.updateWorldMatrix(true, false);
         root.userData.saddleBone.getWorldPosition(_saddleTmp);
         root.worldToLocal(_saddleTmp);
         const rModel = root.userData.riderModel;
@@ -5638,6 +5641,7 @@ export function createMonsterMesh(typeOrConfig = 'slime', options = {}) {
         let targetName = 'STAND1';
         let targetLoop = THREE.LoopRepeat;
         let clamp = false;
+        let targetTimeScale = 1.0;
         if (state === 'dead' || state === 'death') {
           targetName = actions['DIE1'] ? 'DIE1' : 'STAND1';
           targetLoop = THREE.LoopOnce;
@@ -5656,11 +5660,24 @@ export function createMonsterMesh(typeOrConfig = 'slime', options = {}) {
             : (state === 'skill' && actions['ATTACK2'] ? 'ATTACK2'
             : (actions['ATTACK1'] ? 'ATTACK1' : (actions['ATTACK2'] ? 'ATTACK2' : 'STAND1'))));
           targetLoop = THREE.LoopOnce;
-        } else if (state === 'chase' || state === 'walk' || state === 'run') {
+        } else if (state === 'walk') {
+          if (actions['WALK']) {
+            targetName = 'WALK';
+          } else if (actions['RUN']) {
+            targetName = 'RUN';
+            targetTimeScale = 0.65;
+          } else {
+            targetName = actions['WAIT01'] ? 'WAIT01' : (actions['STAND2'] ? 'STAND2' : 'STAND1');
+          }
+        } else if (state === 'chase' || state === 'run') {
           targetName = actions['RUN'] ? 'RUN' : (actions['WALK'] ? 'WALK' : (actions['WAIT01'] ? 'WAIT01' : (actions['STAND2'] ? 'STAND2' : 'STAND1')));
+          targetTimeScale = 1.0;
         }
 
         const nextAction = actions[targetName] || actions['STAND1'];
+        if (nextAction) {
+          nextAction.timeScale = targetTimeScale;
+        }
         if (nextAction && nextAction !== root.userData.currentAction) {
           if (root.userData.currentAction) {
             root.userData.currentAction.fadeOut(0.18);

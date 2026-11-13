@@ -38,6 +38,7 @@ import {
 
 const LIGHT_POOL_SIZE = 8;
 export const MIN_DUNGEON_LEVEL = 10;
+const EMPTY_PICKED = Object.freeze([]);
 
 const UNIT_WALK_OFFSETS = [
   [0, 0],
@@ -4252,15 +4253,18 @@ vFloorWorldXZ = (modelMatrix * floorWp).xz;`
       ? (typeof radiusOrContext === 'object' ? radiusOrContext : null)
       : maybeContext) || this.gameContext || {};
 
-    const picked = [];
+    let picked = null;
     for (const loot of this.groundLoot) {
       if (loot.collected) continue;
       if (Math.hypot(loot.x - x, loot.z - z) <= radius) {
         const res = this.pickupLoot(loot, ctx);
-        if (res.ok) picked.push(loot);
+        if (res.ok) {
+          if (!picked) picked = [];
+          picked.push(loot);
+        }
       }
     }
-    return picked;
+    return picked || EMPTY_PICKED;
   }
 
   /**
@@ -4479,19 +4483,31 @@ vFloorWorldXZ = (modelMatrix * floorWp).xz;`
       }
     }
 
-    return {
-      zone: this.floorName,
-      floor: this.currentFloor,
-      w: this.gridWidth * this.tileSize,
-      h: this.gridHeight * this.tileSize,
-      rooms: this.rooms.map((r) => ({
+    if (this._cachedMmRoomsSrc !== this.rooms) {
+      this._cachedMmRoomsSrc = this.rooms;
+      this._cachedMmRooms = this.rooms.map((r) => ({
         x: r.x,
         y: r.z,
         w: r.w,
         h: r.h,
         type: r.type,
         explored: Boolean(r.explored)
-      })),
+      }));
+    } else if (this._cachedMmRooms) {
+      for (let i = 0; i < this.rooms.length; i++) {
+        const exp = Boolean(this.rooms[i].explored);
+        if (this._cachedMmRooms[i].explored !== exp) {
+          this._cachedMmRooms[i].explored = exp;
+        }
+      }
+    }
+
+    return {
+      zone: this.floorName,
+      floor: this.currentFloor,
+      w: this.gridWidth * this.tileSize,
+      h: this.gridHeight * this.tileSize,
+      rooms: this._cachedMmRooms,
       player: {
         x: px,
         y: pz,

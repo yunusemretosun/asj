@@ -116,6 +116,8 @@ export class HUD {
     this._lastBerserkKey = null; this._lastBerserkActive = null; this._lastBerserkReady = null; this._lastLitOrbs = -1;
     this._lastBossOn = null; this._lastBossName = null; this._lastBossPhase = null; this._lastBossBadgeKey = null;
     this._promptOn = false; this._fctHost = null;
+    this._promptAcc = 0.1; this._promptPx = NaN; this._promptPz = NaN; this._promptZone = null;
+    this._chalDom = null;
     this._last = { level: null, hp: null, buffKey: '', imbue: '', zone: '', zoneLine: '', heroName: null, heroTitle: null, goldInt: null, lowHp: false, combo: 0, comboOn: false, comboText: '', expCur: null, expMax: null, expLv: null, expText: '' };
     this._build();
     this._bindHost(ctx);
@@ -365,7 +367,7 @@ export class HUD {
     try { this._updateBar(host, p, dt, tick && tick.skillBar, tick && tick.potionSlots); } catch (e) { /* keep HUD alive on bad data */ }
     try { this._updateMinimap(host, dt); } catch (e) { /* ignore */ }
     try { this._updateBoss(host); } catch (e) { /* ignore */ }
-    try { this._updatePrompt(host); } catch (e) { /* ignore */ }
+    try { this._updatePrompt(host, dt, ctx, p); } catch (e) { /* ignore */ }
 
     this._secTimer -= dt;
     if (this._secTimer <= 0) {
@@ -529,7 +531,12 @@ export class HUD {
       if (this._lastChalSig !== 'off') {
         this._lastChalSig = 'off';
         this.elChallenge.className = 'challenge-hud-banner';
-        this.elChallenge.innerHTML = '';
+        if (this._chalDom && this._chalDom.mode !== 'off') {
+          this._chalDom.mode = 'off';
+          this._chalDom.doneTitle.style.display = 'none';
+          this._chalDom.top.style.display = 'none';
+          this._chalDom.sub.style.display = 'none';
+        }
       }
       return;
     }
@@ -540,18 +547,40 @@ export class HUD {
     const key = `${ch.id}:${done ? 'done' : rem}:${wave}:${kills}`;
     if (this._lastChalSig === key) return;
     this._lastChalSig = key;
-    this.elChallenge.className = `challenge-hud-banner on ${done ? 'done' : ''}`;
+
+    let dom = this._chalDom;
+    if (!dom) {
+      const doneTitle = h('div', 'ch-title');
+      const top = h('div', 'ch-top');
+      const title = h('span', 'ch-title');
+      const timer = h('span', 'ch-timer');
+      top.append(title, timer);
+      const sub = h('div', 'ch-sub');
+      this.elChallenge.append(doneTitle, top, sub);
+      dom = this._chalDom = { doneTitle, top, title, timer, sub, mode: null, titleTxt: '', timerTxt: '', subTxt: '' };
+    }
+
+    const mode = done ? 'done' : 'active';
+    if (dom.mode !== mode) {
+      dom.mode = mode;
+      this.elChallenge.className = `challenge-hud-banner on ${done ? 'done' : ''}`;
+      dom.doneTitle.style.display = done ? '' : 'none';
+      dom.top.style.display = done ? 'none' : '';
+      dom.sub.style.display = '';
+    }
+
     if (done) {
-      this.elChallenge.innerHTML = `
-        <div class="ch-title">✨ ${esc(ch.name || 'Challenge Complete!')}</div>
-        <div class="ch-sub">Victory! Loot your reward chests &amp; enter the Emerald Return Portal [E]</div>`;
+      const t = '✨ ' + (ch.name || 'Challenge Complete!');
+      const s = 'Victory! Loot your reward chests & enter the Emerald Return Portal [E]';
+      if (dom.titleTxt !== t) { dom.doneTitle.textContent = t; dom.titleTxt = t; }
+      if (dom.subTxt !== s) { dom.sub.textContent = s; dom.subTxt = s; }
     } else {
-      this.elChallenge.innerHTML = `
-        <div class="ch-top">
-          <span class="ch-title">⚔️ ${esc(ch.name || 'Timed Trial')}</span>
-          <span class="ch-timer">⏱ ${rem}s</span>
-        </div>
-        <div class="ch-sub">Wave ${wave} · Slain: ${kills} · ${esc(ch.desc || 'Survive until time runs out!')}</div>`;
+      const t = '⚔️ ' + (ch.name || 'Timed Trial');
+      const tm = '⏱ ' + rem + 's';
+      const s = 'Wave ' + wave + ' · Slain: ' + kills + ' · ' + (ch.desc || 'Survive until time runs out!');
+      if (dom.titleTxt !== t) { dom.title.textContent = t; dom.titleTxt = t; }
+      if (dom.timerTxt !== tm) { dom.timer.textContent = tm; dom.timerTxt = tm; }
+      if (dom.subTxt !== s) { dom.sub.textContent = s; dom.subTxt = s; }
     }
   }
 
@@ -986,7 +1015,7 @@ export class HUD {
       }
     }
 
-    const camKey = useWin ? `${Math.round(vx * 8)}:${Math.round(vy * 8)}` : 'f';
+    const camKey = useWin ? `${Math.round(vx * 2)}:${Math.round(vy * 2)}` : 'f';
     const staticKey = `${floorKey}|${W}x${H}|${mw}x${mh}|${roomCount}|${exploredSig}|${curRoomIdx}|${camKey}`;
 
     if (!this._mmStaticCanvas && typeof document !== 'undefined') {
@@ -1132,8 +1161,26 @@ export class HUD {
     this._promptSig = null;
   }
 
-  _updatePrompt(host) {
+  _updatePrompt(host, dt = 0.1, ctx = null, p = null) {
     if (this._promptManual || !host.getPrompt) return;
+    const c = ctx || this.ctx || host.ctx;
+    const pos = c?.player?.position || p?.position || p;
+    const px = pos ? Number(pos.x ?? 0) : NaN;
+    const pz = pos ? Number(pos.z ?? pos.y ?? 0) : NaN;
+    const zone = c?.dungeon?.floor ?? c?.dungeon?.zone ?? this._last.zone ?? null;
+    const moved = Number.isFinite(px) && Number.isFinite(pz) && (
+      !Number.isFinite(this._promptPx) ||
+      (px - this._promptPx) * (px - this._promptPx) + (pz - this._promptPz) * (pz - this._promptPz) > 0.0625
+    );
+    const zoneChanged = zone !== this._promptZone;
+    this._promptAcc += dt;
+    if (!moved && !zoneChanged && this._promptAcc < 0.1) return;
+    this._promptAcc = 0;
+    if (Number.isFinite(px) && Number.isFinite(pz)) {
+      this._promptPx = px;
+      this._promptPz = pz;
+    }
+    this._promptZone = zone;
     const pr = host.getPrompt();
     if (!pr) { this.hideInteractionPrompt(); return; }
     const text = typeof pr === 'string' ? pr : (pr.prompt || pr.text || '');

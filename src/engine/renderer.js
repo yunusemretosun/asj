@@ -179,8 +179,9 @@ export class Renderer {
     this.webglRenderer.shadowMap.type = THREE.PCFShadowMap;
     this.webglRenderer.shadowMap.autoUpdate = false;
     this.webglRenderer.shadowMap.needsUpdate = true;
-    this._shadowFrame = 0;
     this._shadowDirty = true;
+    this._frameId = 0;
+    this._camUpdatedFrame = -1;
     this.webglRenderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.webglRenderer.toneMappingExposure = 1.48;
 
@@ -1957,10 +1958,13 @@ export class Renderer {
   }
 
   updateCamera(targetPos, dt = 0.016) {
+    if (this._camUpdatedFrame === this._frameId) return;
+    this._camUpdatedFrame = this._frameId;
+
     const prevCamX = this.cameraTarget.x;
     const prevCamZ = this.cameraTarget.z;
     if (targetPos) {
-      const lerpFactor = Math.min(1, dt * 9.5);
+      const lerpFactor = 1 - Math.exp(-9.5 * dt);
       this._scratchTarget.set(targetPos.x || 0, targetPos.y || 0, targetPos.z || 0);
       this.cameraTarget.lerp(this._scratchTarget, lerpFactor);
     }
@@ -2167,11 +2171,11 @@ export class Renderer {
 
   render() {
     this._fctFrameCount = 0;
-    this._shadowFrame = (this._shadowFrame + 1) & 1;
-    if (this._shadowDirty || this._shadowFrame === 0) {
+    this._frameId = (this._frameId + 1) & 0x7fffffff;
+    if (this.webglRenderer.shadowMap?.enabled) {
       this.webglRenderer.shadowMap.needsUpdate = true;
-      this._shadowDirty = false;
     }
+    this._shadowDirty = false;
     this.webglRenderer.render(this.scene, this.camera);
   }
 }
