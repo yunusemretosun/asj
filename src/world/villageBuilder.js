@@ -62,10 +62,25 @@ class Batcher {
     geo.applyMatrix4(this._m);
     const pos = geo.getAttribute('position');
     const nor = geo.getAttribute('normal');
-    const b = (this.buckets[key] ||= { pos: [], nor: [], idx: [], count: 0 });
+    const geoUv = geo.getAttribute('uv');
+    const b = (this.buckets[key] ||= { pos: [], nor: [], uv: [], idx: [], count: 0 });
+    const useCubicWorldUV = key === 'curb';
+    const uvRate = 0.45;
     for (let i = 0; i < pos.count; i++) {
-      b.pos.push(pos.getX(i), pos.getY(i), pos.getZ(i));
-      b.nor.push(nor.getX(i), nor.getY(i), nor.getZ(i));
+      const px = pos.getX(i), py = pos.getY(i), pz = pos.getZ(i);
+      const nx = nor.getX(i), ny = nor.getY(i), nz = nor.getZ(i);
+      b.pos.push(px, py, pz);
+      b.nor.push(nx, ny, nz);
+      if (useCubicWorldUV) {
+        const ax = Math.abs(nx), ay = Math.abs(ny), az = Math.abs(nz);
+        if (ay >= ax && ay >= az) b.uv.push(px * uvRate, pz * uvRate);
+        else if (ax >= az) b.uv.push(pz * uvRate, py * uvRate);
+        else b.uv.push(px * uvRate, py * uvRate);
+      } else if (geoUv) {
+        b.uv.push(geoUv.getX(i), geoUv.getY(i));
+      } else {
+        b.uv.push(0, 0);
+      }
     }
     if (geo.index) {
       for (let i = 0; i < geo.index.count; i++) b.idx.push(geo.index.getX(i) + b.count);
@@ -142,15 +157,17 @@ class Batcher {
   }
 
   build(mats, group) {
+    const noShadowKeys = new Set(['glow', 'dark', 'curb', 'gold', 'sack', 'fruitO', 'fruitG', 'cloth1', 'cloth2', 'leafG', 'reed']);
     for (const [key, b] of Object.entries(this.buckets)) {
       const g = new THREE.BufferGeometry();
       g.setAttribute('position', new THREE.Float32BufferAttribute(b.pos, 3));
       g.setAttribute('normal', new THREE.Float32BufferAttribute(b.nor, 3));
+      g.setAttribute('uv', new THREE.Float32BufferAttribute(b.uv, 2));
       g.setIndex(new THREE.Uint32BufferAttribute(b.idx, 1));
       g.computeBoundingSphere();
       const mesh = new THREE.Mesh(g, mats[key]);
       mesh.name = `Village_${key}`;
-      mesh.castShadow = key !== 'glow' && key !== 'dark';
+      mesh.castShadow = !noShadowKeys.has(key);
       mesh.receiveShadow = true;
       group.add(mesh);
     }
@@ -217,6 +234,194 @@ function applyPlanarXZUVs(geo, rate = 0.22) {
   }
   uv.needsUpdate = true;
   return geo;
+}
+
+function clamp01(v) {
+  return v < 0 ? 0 : (v > 1 ? 1 : v);
+}
+
+function smoothstep(edge0, edge1, x) {
+  const t = clamp01((x - edge0) / (edge1 - edge0));
+  return t * t * (3 - 2 * t);
+}
+
+function hash2D(ix, iz) {
+  let n = Math.imul(ix, 374761393) + Math.imul(iz, 668265263);
+  n = Math.imul(n ^ (n >>> 13), 1274126177);
+  return ((n ^ (n >>> 16)) >>> 0) / 4294967295;
+}
+
+function valueNoise2D(x, z) {
+  const ix = Math.floor(x);
+  const iz = Math.floor(z);
+  const fx = x - ix;
+  const fz = z - iz;
+  const u = fx * fx * (3 - 2 * fx);
+  const v = fz * fz * (3 - 2 * fz);
+  const a = hash2D(ix, iz);
+  const b = hash2D(ix + 1, iz);
+  const c = hash2D(ix, iz + 1);
+  const d = hash2D(ix + 1, iz + 1);
+  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+}
+
+function fbm2D(x, z) {
+  return (
+    valueNoise2D(x, z) * 0.6 +
+    valueNoise2D(x * 2.07 + 13.7, z * 2.07 - 5.3) * 0.28 +
+    valueNoise2D(x * 4.31 - 9.1, z * 4.31 + 17.2) * 0.12
+  );
+}
+
+/** Evaluates meandering cardinal outskirt trail weight with wheel-rut modulation. */
+function evalWindingTrailWeight(x, z, n) {
+  const roadNoise = (n - 0.5) * 1.4;
+  let dist = Infinity;
+  let endFade = 0;
+
+  // North highway (outside north gate)
+  if (z < -56 && z > -122 && Math.abs(x) < 16) {
+    const t = clamp01((-56 - z) / 60);
+    const center = Math.sin(t * Math.PI * 2.1) * 2.4 * smoothstep(0, 0.22, t);
+    dist = Math.abs(x - center);
+    endFade = smoothstep(-56.0, -58.5, z) * smoothstep(-122.0, -115.0, z);
+  }
+  // South highway (outside south bridge at z=60)
+  if (z > 62.5 && z < 123 && Math.abs(x) < 16) {
+    const t = clamp01((z - 62.5) / 58);
+    const center = Math.sin(t * Math.PI * 1.9 + 0.3) * 2.5 * smoothstep(0, 0.22, t);
+    const d = Math.abs(x - center);
+    if (d < dist) {
+      dist = d;
+      endFade = smoothstep(62.5, 64.5, z) * smoothstep(123.0, 117.0, z);
+    }
+  }
+  // West highway (outside west gate)
+  if (x < -56 && x > -122 && Math.abs(z) < 16) {
+    const t = clamp01((-56 - x) / 60);
+    const center = Math.sin(t * Math.PI * 1.8 - 0.4) * 2.3 * smoothstep(0, 0.22, t);
+    const d = Math.abs(z - center);
+    if (d < dist) {
+      dist = d;
+      endFade = smoothstep(-56.0, -58.5, x) * smoothstep(-122.0, -115.0, x);
+    }
+  }
+  // East highway (outside east bridge at x=60.5)
+  if (x > 63.0 && x < 123 && Math.abs(z) < 16) {
+    const t = clamp01((x - 63.0) / 58);
+    const center = Math.sin(t * Math.PI * 2.0 + 0.5) * 2.2 * smoothstep(0, 0.22, t);
+    const d = Math.abs(z - center);
+    if (d < dist) {
+      dist = d;
+      endFade = smoothstep(63.0, 65.0, x) * smoothstep(123.0, 117.0, x);
+    }
+  }
+
+  if (!Number.isFinite(dist) || endFade <= 0) return 0;
+  const edge = 3.2 + roadNoise;
+  const body = 1.0 - smoothstep(1.9, edge, dist);
+  // Dual wagon wheel ruts around |offset| ~= 1.05m with lighter grassy median
+  const rutProfile = 0.72 + 0.28 * Math.exp(-Math.pow((dist - 1.05) / 0.42, 2));
+  return clamp01(body * rutProfile * endFade);
+}
+
+/** Builds a 256x256 RGBA terrain splat DataTexture (R=road, G=camp, B=pebble, A=city mask). */
+function buildVillageSplatTexture(span, halfWall, camps, riverDistSq) {
+  const size = 256;
+  const data = new Uint8Array(size * size * 4);
+  const halfSpan = span * 0.5;
+  for (let py = 0; py < size; py++) {
+    const wz = ((py + 0.5) / size - 0.5) * span;
+    for (let px = 0; px < size; px++) {
+      const wx = ((px + 0.5) / size - 0.5) * span;
+      const n = fbm2D(wx * 0.09, wz * 0.09);
+      const nFine = fbm2D(wx * 0.21 + 31.1, wz * 0.21 - 19.4);
+
+      const cityDist = Math.max(Math.abs(wx), Math.abs(wz));
+      const cityMask = 1.0 - smoothstep(halfWall - 0.6, halfWall + 0.8, cityDist);
+
+      const rDist = Math.sqrt(riverDistSq(wx, wz));
+      const pebbleW = (1.0 - smoothstep(2.4, 5.4 + (n - 0.5) * 2.2, rDist)) * (1.0 - cityMask);
+
+      let campW = 0;
+      if (cityMask < 0.5 && rDist > 3.6) {
+        for (let c = 0; c < camps.length; c++) {
+          const ctr = camps[c].center;
+          const dc = Math.hypot(wx - ctr.x, wz - ctr.z);
+          if (dc > 12.0) continue;
+          const innerR = 4.8 + (nFine - 0.5) * 1.8;
+          const outerR = 9.8 + (n - 0.5) * 2.6;
+          const w = (1.0 - smoothstep(innerR, outerR, dc)) * smoothstep(3.6, 5.4, rDist);
+          if (w > campW) campW = w;
+        }
+      }
+
+      const roadW = cityMask < 0.5 ? evalWindingTrailWeight(wx, wz, n) * (1.0 - pebbleW * 0.75) : 0;
+
+      const idx = (py * size + px) * 4;
+      data[idx + 0] = Math.round(clamp01(roadW) * 255);
+      data[idx + 1] = Math.round(clamp01(campW) * 255);
+      data[idx + 2] = Math.round(clamp01(pebbleW) * 255);
+      data[idx + 3] = Math.round(clamp01(cityMask) * 255);
+    }
+  }
+  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearFilter;
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.colorSpace = THREE.NoColorSpace;
+  tex.generateMipmaps = false;
+  tex.needsUpdate = true;
+  tex.userData = { span, halfSpan, isVillageSplat: true };
+  return tex;
+}
+
+/** Merges multiple ground BoxGeometry/CylinderGeometry parts per material into single BufferGeometries. */
+function createGroundBatcher() {
+  const buckets = new Map();
+  const pushGeo = (key, mat, geo, x = 0, y = 0, z = 0) => {
+    geo.translate(x, y, z);
+    const pos = geo.getAttribute('position');
+    const nor = geo.getAttribute('normal');
+    const uv = geo.getAttribute('uv');
+    let b = buckets.get(key);
+    if (!b) {
+      b = { mat, name: key, pos: [], nor: [], uv: [], idx: [], count: 0 };
+      buckets.set(key, b);
+    }
+    for (let i = 0; i < pos.count; i++) {
+      b.pos.push(pos.getX(i), pos.getY(i), pos.getZ(i));
+      b.nor.push(nor.getX(i), nor.getY(i), nor.getZ(i));
+      b.uv.push(uv ? uv.getX(i) : 0, uv ? uv.getY(i) : 0);
+    }
+    if (geo.index) {
+      for (let i = 0; i < geo.index.count; i++) b.idx.push(geo.index.getX(i) + b.count);
+    } else {
+      for (let i = 0; i < pos.count; i++) b.idx.push(i + b.count);
+    }
+    b.count += pos.count;
+    geo.dispose();
+  };
+  const build = (group) => {
+    const meshes = [];
+    for (const b of buckets.values()) {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(b.pos, 3));
+      g.setAttribute('normal', new THREE.Float32BufferAttribute(b.nor, 3));
+      g.setAttribute('uv', new THREE.Float32BufferAttribute(b.uv, 2));
+      g.setIndex(new THREE.Uint32BufferAttribute(b.idx, 1));
+      g.computeBoundingSphere();
+      const mesh = new THREE.Mesh(g, b.mat);
+      mesh.name = b.name;
+      mesh.castShadow = false;
+      mesh.receiveShadow = true;
+      group.add(mesh);
+      meshes.push(mesh);
+    }
+    return meshes;
+  };
+  return { pushGeo, build };
 }
 
 /** Builds a smooth undulating ribbon BufferGeometry along a CatmullRomCurve3. */
@@ -455,6 +660,18 @@ export function buildVillage(ctx = {}) {
   /* ---------------- classic Silk-Road materials ---------------- */
   const std = (c, r = 0.85, m = 0.05, extra = {}) =>
     new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: m, ...extra });
+  const pbrGroundMat = (color, diffUrl, norUrl, roughness = 0.88, metalness = 0.04, norStrength = 0.8, extra = {}) => {
+    const map = diffUrl ? loadVillageTex(diffUrl, true) : null;
+    const normalMap = norUrl ? loadVillageTex(norUrl, false) : null;
+    return new THREE.MeshStandardMaterial({
+      color,
+      roughness,
+      metalness,
+      ...(map ? { map } : {}),
+      ...(normalMap ? { normalMap, normalScale: new THREE.Vector2(norStrength, norStrength) } : {}),
+      ...extra
+    });
+  };
   const M = {
     sand: std(0xd8c9a8, 0.88),
     wood: std(0x6b3e26, 0.82),
@@ -462,7 +679,7 @@ export function buildVillage(ctx = {}) {
     teal: std(0x2d6b68, 0.58, 0.14),
     terra: std(0xb34f34, 0.68),
     stone: std(0x7c7b74, 0.9),
-    curb: std(0x9b9488, 0.84, 0.06),
+    curb: pbrGroundMat(0x5b6068, '/assets/sro/env/rok_stone_02.png', '/assets/textures/village/plaza_stone_nor.jpg', 0.78, 0.10, 0.55),
     gold: std(0xd9a841, 0.35, 0.65),
     dark: std(0x26262a, 0.75, 0.35),
     sack: std(0xc2ab82, 0.92),
@@ -477,25 +694,15 @@ export function buildVillage(ctx = {}) {
     glow: new THREE.MeshBasicMaterial({ color: 0xffc266 })
   };
 
-  const pbrGroundMat = (color, diffUrl, norUrl, roughness = 0.88, metalness = 0.04, norStrength = 0.8) => {
-    const map = diffUrl ? loadVillageTex(diffUrl, true) : null;
-    const normalMap = norUrl ? loadVillageTex(norUrl, false) : null;
-    return new THREE.MeshStandardMaterial({
-      color,
-      roughness,
-      metalness,
-      ...(map ? { map } : {}),
-      ...(normalMap ? { normalMap, normalScale: new THREE.Vector2(norStrength, norStrength) } : {})
-    });
-  };
-
   const grassMat = pbrGroundMat(0xc3d6b0, '/assets/textures/village/grass_diff.jpg', '/assets/textures/village/grass_nor.jpg', 0.93, 0.02, 0.55);
-  const townStoneMat = pbrGroundMat(0xd6cebf, '/assets/textures/village/town_stone_diff.jpg', '/assets/textures/village/town_stone_nor.jpg', 0.88, 0.05, 0.75);
-  const plazaMat = pbrGroundMat(0xe0d7c7, '/assets/textures/village/plaza_stone_diff.jpg', '/assets/textures/village/plaza_stone_nor.jpg', 0.82, 0.06, 0.85);
-  const roadMat = pbrGroundMat(0xd8d0c2, '/assets/textures/village/cobble_road_diff.jpg', '/assets/textures/village/cobble_road_nor.jpg', 0.85, 0.04, 0.9);
-  const dirtMat = pbrGroundMat(0xc9b496, '/assets/textures/village/outskirt_road_diff.jpg', '/assets/textures/village/outskirt_road_nor.jpg', 0.94, 0.02, 0.65);
+  const splatRoadTex = loadVillageTex('/assets/textures/village/outskirt_road_diff.jpg', true);
+  const splatCampTex = loadVillageTex('/assets/sro/env/c_dust_fld_01.png', true);
+  const splatPebbleTex = loadVillageTex('/assets/textures/village/river_pebbles_diff.jpg', true);
+  const townStoneMat = pbrGroundMat(0xd6cebf, '/assets/sro/env/c_marble_jang_01.png', '/assets/textures/village/plaza_stone_nor.jpg', 0.86, 0.04, 0.65);
+  const roadMat = pbrGroundMat(0xcbc2b2, '/assets/textures/village/cobble_road_diff.jpg', '/assets/textures/village/cobble_road_nor.jpg', 0.85, 0.04, 0.85, {
+    polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1
+  });
   const pebbleMat = pbrGroundMat(0xcac0ae, '/assets/textures/village/river_pebbles_diff.jpg', '/assets/textures/village/river_pebbles_nor.jpg', 0.92, 0.04, 0.95);
-  const marbleTrimMat = pbrGroundMat(0xe5dfd4, '/assets/sro/env/c_marble_jang_01.png', '/assets/textures/village/plaza_stone_nor.jpg', 0.76, 0.08, 0.5);
 
   const waterMat = std(0x38bdf8, 0.15, 0.4, { emissive: new THREE.Color(0x0284c7), emissiveIntensity: 0.55 });
   const pondMat = std(0x2f8f9a, 0.2, 0.3, { transparent: true, opacity: 0.88, emissive: new THREE.Color(0x0e4b55), emissiveIntensity: 0.35 });
@@ -626,81 +833,88 @@ export function buildVillage(ctx = {}) {
   };
 
   /* ---------------- ground, plazas, carved stone boulevards & outskirt river ---------------- */
-  const addBoxGround = (w, h, d, mat, x, y, z, rate = 0.24) => {
-    const geo = scaleGroundUVs(new THREE.BoxGeometry(w, h, d), w, d, rate);
-    const m = new THREE.Mesh(geo, mat);
-    m.position.set(x, y, z);
-    m.receiveShadow = true;
-    group.add(m);
-  };
-  const addDiscGround = (rTop, rBot, h, seg, mat, x, y, z, rate = 0.24) => {
-    const geo = applyPlanarXZUVs(new THREE.CylinderGeometry(rTop, rBot, h, seg), rate);
-    const m = new THREE.Mesh(geo, mat);
-    m.position.set(x, y, z);
-    m.receiveShadow = true;
-    group.add(m);
-  };
   const worldW = gridWidth * tileSize;
   const worldH = gridHeight * tileSize;
-  const grassGeo = scaleGroundUVs(new THREE.PlaneGeometry(worldW + 70, worldH + 70), worldW + 70, worldH + 70, 0.14);
+  const terrainSpan = worldW + 70;
+  const splatTex = buildVillageSplatTexture(terrainSpan, HALF, outskirtCamps, riverDistSq);
+  grassMat.userData = { ...(grassMat.userData || {}), splatTex, isVillageGrassSplat: true };
+  if (grassMat.map && splatRoadTex && splatCampTex && splatPebbleTex) {
+    grassMat.color.setHex(0xffffff);
+    grassMat.customProgramCacheKey = () => 'village_splat_v1';
+    grassMat.onBeforeCompile = (shader) => {
+      shader.uniforms.uSplatMap = { value: splatTex };
+      shader.uniforms.uRoadTex = { value: splatRoadTex };
+      shader.uniforms.uCampTex = { value: splatCampTex };
+      shader.uniforms.uPebbleTex = { value: splatPebbleTex };
+      shader.uniforms.uSplatSpan = { value: terrainSpan };
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec2 vVillageXZ;')
+        .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvVillageXZ = (modelMatrix * vec4(transformed, 1.0)).xz;');
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          '#include <common>',
+          `#include <common>
+varying vec2 vVillageXZ;
+uniform sampler2D uSplatMap;
+uniform sampler2D uRoadTex;
+uniform sampler2D uCampTex;
+uniform sampler2D uPebbleTex;
+uniform float uSplatSpan;`
+        )
+        .replace(
+          '#include <map_fragment>',
+          `vec2 splatUv = clamp(vVillageXZ / uSplatSpan + 0.5, 0.0, 1.0);
+vec4 splat = texture2D(uSplatMap, splatUv);
+vec3 grassCol = texture2D(map, vVillageXZ * 0.14).rgb * vec3(0.84, 0.92, 0.78);
+float macroGrass = 0.92 + 0.08 * sin(vVillageXZ.x * 0.055) * cos(vVillageXZ.y * 0.055);
+grassCol *= macroGrass;
+vec3 roadCol = texture2D(uRoadTex, vVillageXZ * 0.22).rgb * vec3(0.86, 0.78, 0.68);
+vec3 campCol = texture2D(uCampTex, vVillageXZ * 0.20).rgb * vec3(0.88, 0.80, 0.70);
+vec3 pebbleCol = texture2D(uPebbleTex, vVillageXZ * 0.24).rgb * vec3(0.85, 0.81, 0.75);
+vec3 terrainRgb = mix(grassCol, campCol, splat.g * 0.88);
+terrainRgb = mix(terrainRgb, roadCol, splat.r * 0.94);
+terrainRgb = mix(terrainRgb, pebbleCol, splat.b * 0.92);
+terrainRgb = mix(terrainRgb, terrainRgb * 0.72, splat.a * 0.85);
+diffuseColor.rgb *= terrainRgb;`
+        );
+    };
+  }
+
+  const grassGeo = new THREE.PlaneGeometry(terrainSpan, worldH + 70);
+  grassGeo.rotateX(-Math.PI / 2);
+  applyPlanarXZUVs(grassGeo, 0.14);
   const grass = new THREE.Mesh(grassGeo, grassMat);
-  grass.rotation.x = -Math.PI / 2;
+  grass.name = 'VillageTerrain';
   grass.receiveShadow = true;
   group.add(grass);
 
-  // Full walled city floor paved in warm weathered stone masonry (zero plain mud void inside city!)
-  addBoxGround(HALF * 2 + 1, 0.04, HALF * 2 + 1, townStoneMat, 0, 0.02, 0, 0.20);
+  const groundBatch = createGroundBatcher();
+  const addBoxGround = (bucketKey, mat, w, h, d, x, y, z, rate = 0.24) => {
+    const geo = applyPlanarXZUVs(new THREE.BoxGeometry(w, h, d), rate);
+    groundBatch.pushGeo(bucketKey, mat, geo, x, y, z);
+  };
 
-  // Carved Stone Plazas & Imperial Courtyard Medallion
-  addDiscGround(16.2, 16.6, 0.08, 48, plazaMat, 0, 0.04, 0, 0.26);                   // Central Imperial Plaza
-  addDiscGround(6.8, 7.0, 0.025, 24, marbleTrimMat, 0, 0.072, 0, 0.32);              // Inner Marble Fountain Apron
-  addDiscGround(14.5, 15.0, 0.08, 36, plazaMat, 0, 0.042, -38, 0.26);                // North Palace Plaza
-  addBoxGround(20, 0.08, 20, plazaMat, -36, 0.042, -10, 0.26);                       // West Temple Courtyard
-  addBoxGround(20, 0.08, 20, plazaMat, 36, 0.042, -10, 0.26);                        // East Coliseum Courtyard
-  addBoxGround(44, 0.08, 16, plazaMat, 0, 0.041, 25, 0.26);                          // South Caravan Market Square
+  // Full walled city floor (only 2 city ground types: non-road stone base at yTop=0.018 + non-overlapping roads at yTop=0.032)
+  addBoxGround('VillageGround_base', townStoneMat, HALF * 2 + 1, 0.018, HALF * 2 + 1, 0, 0.009, 0, 0.20);
 
-  // Cobblestone Boulevards inside city + Outskirt gravel-earth highways
-  addBoxGround(7.4, 0.07, 109.6, roadMat, 0, 0.036, 0, 0.26);                         // Internal N-S Avenue
-  addBoxGround(109.6, 0.07, 7.0, roadMat, 0, 0.036, 0, 0.26);                         // Internal E-W Avenue
-  addBoxGround(5.6, 0.05, 68, dirtMat, 0, 0.025, -88, 0.22);                         // North Outer Mountain Highway
-  addBoxGround(5.6, 0.05, 61, dirtMat, 0, 0.025, 93.5, 0.22);                        // South Outer Meadow Highway (after South Bridge)
-  addBoxGround(68, 0.05, 5.2, dirtMat, -88, 0.025, 0, 0.22);                         // West Outer Marsh Highway
-  addBoxGround(60, 0.05, 5.2, dirtMat, 94, 0.025, 0, 0.22);                          // East Outer River Highway (after East Bridge)
+  // Cobblestone boulevards & district roads (strictly non-overlapping, zero extra pads/plazas/strips intruding on roads)
+  addBoxGround('VillageGround_road', roadMat, 7.4, 0.018, HALF * 2, 0, 0.023, 0, 0.26);               // Full Internal N-S Avenue (x in [-3.7..3.7])
+  addBoxGround('VillageGround_road', roadMat, HALF - 3.7, 0.018, 7.0, -(HALF + 3.7) * 0.5, 0.023, 0, 0.26); // Internal West Avenue ([-55..-3.7])
+  addBoxGround('VillageGround_road', roadMat, HALF - 3.7, 0.018, 7.0, (HALF + 3.7) * 0.5, 0.023, 0, 0.26);  // Internal East Avenue ([3.7..55])
 
-  // Stone district connector avenues, NPC aprons & paved yards
-  addBoxGround(36, 0.07, 4.6, roadMat, -22, 0.036, 15, 0.26);
-  addBoxGround(36, 0.07, 4.6, roadMat, 22, 0.036, 15, 0.26);
-  addBoxGround(26, 0.07, 12, plazaMat, -22, 0.035, 32, 0.26);                        // SW Martial Barracks Stone Yard
-  addBoxGround(12, 0.07, 18, roadMat, 22, 0.036, -24, 0.26);                         // NE Pagoda Approach
-  addBoxGround(16, 0.07, 4.4, roadMat, -22, 0.036, -24, 0.26);                       // NW Scholar Archive Walkway
-  addBoxGround(7.4, 0.07, 7.4, marbleTrimMat, 9.0, 0.038, -33.0, 0.28);              // Abyssal Dungeon Gate Pad
-  addBoxGround(9.0, 0.07, 8.0, marbleTrimMat, -34.5, 0.037, 26.5, 0.26);             // Zara Pet Yard Stone Apron
+  // District connector roads flush-joined to N-S avenue with zero overlap
+  addBoxGround('VillageGround_road', roadMat, 36.3, 0.018, 4.6, -21.85, 0.023, 15, 0.26);
+  addBoxGround('VillageGround_road', roadMat, 36.3, 0.018, 4.6, 21.85, 0.023, 15, 0.26);
+  addBoxGround('VillageGround_road', roadMat, 12, 0.018, 18, 22, 0.023, -24, 0.26);                // NE Pagoda Approach
+  addBoxGround('VillageGround_road', roadMat, 16, 0.018, 4.4, -22, 0.023, -24, 0.26);              // NW Scholar Archive Walkway
 
-  // Carved avenue stone curbs (flank N-S & E-W boulevards without crossing plazas or gates)
-  for (const segZ of [-47.5, -21.0, 14.5, 42.5]) {
-    const len = Math.abs(segZ) > 30 ? 7.5 : 4.2;
+  // Carved avenue stone curbs strictly outside road edges and clear of connector road mouths
+  for (const segZ of [-47.5, -13.0, 29.0, 45.5]) {
+    const len = Math.abs(segZ) > 35 ? 7.5 : 8.5;
     for (const sx of [-3.9, 3.9]) S.box('curb', 0.38, 0.14, len, sx, 0.08, segZ);
   }
   for (const segX of [-45.5, -21.5, 21.5, 45.5]) {
-    const len = Math.abs(segX) > 30 ? 8.5 : 8.5;
-    for (const sz of [-3.7, 3.7]) S.box('curb', len, 0.14, 0.38, segX, 0.08, sz);
-  }
-  // Decorative marble street medallions flush down central avenues + circular Imperial Plaza curb ring
-  for (const mz of [-45, -31, -18, 18, 32, 46]) S.box('curb', 2.0, 0.03, 2.0, 0, 0.072, mz, Math.PI / 4);
-  for (const mx of [-45, -31, -19, 19, 31, 45]) S.box('curb', 2.0, 0.03, 2.0, mx, 0.072, 0, Math.PI / 4);
-  for (let i = 0; i < 16; i++) {
-    const a = (i / 16) * Math.PI * 2;
-    if (Math.abs(Math.cos(a)) > 0.9 || Math.abs(Math.sin(a)) > 0.9) continue;
-    S.at(Math.cos(a) * 16.0, Math.sin(a) * 16.0, -a, () => S.box('curb', 0.42, 0.16, 4.4, 0, 0.08, 0));
-  }
-  // Gate threshold paving strips
-  for (const [gx, gz, gw, gd] of [[0, -55, 8.6, 4.4], [0, 55, 8.6, 4.4], [-55, 0, 4.4, 8.6], [55, 0, 4.4, 8.6]]) {
-    addBoxGround(gw, 0.07, gd, marbleTrimMat, gx, 0.035, gz, 0.28);
-  }
-
-  // Hunting camp worn earthen clearings (visual RPG camp zones in meadows outside walls)
-  for (const camp of outskirtCamps) {
-    addDiscGround(8.4, 8.8, 0.02, 18, dirtMat, camp.center.x, 0.012, camp.center.z, 0.22);
+    for (const sz of [-3.7, 3.7]) S.box('curb', 8.5, 0.14, 0.38, segX, 0.08, sz);
   }
 
   /* ---------------- Winding Outskirt Stream (Zümrüt Çay), Waterfall Cliffs & Bridges ---------------- */
@@ -728,7 +942,7 @@ export function buildVillage(ctx = {}) {
   obs(45.5, -122.5, 2.4);
 
   // Grand South Gate Imperial Stone Bridge (flush walk deck at (0, 60.0), carved parapets outside road)
-  addBoxGround(6.8, 0.056, 6.8, plazaMat, 0, 0.052, 60.0, 0.28);
+  addBoxGround('VillageGround_road', roadMat, 6.8, 0.056, 6.8, 0, 0.052, 60.0, 0.26);
   S.at(0, 60.0, Math.PI / 2, () => {
     for (const sz of [-3.68, 3.68]) {
       S.box('stone', 7.0, 0.24, 0.36, 0, 0.14, sz);
@@ -744,7 +958,8 @@ export function buildVillage(ctx = {}) {
   });
 
   // East Outer Caravan Timber & Stone Bridge at (60.5, 0)
-  addBoxGround(6.8, 0.056, 6.4, roadMat, 60.5, 0.052, 0, 0.26);
+  addBoxGround('VillageGround_road', roadMat, 6.8, 0.056, 6.4, 60.5, 0.052, 0, 0.26);
+  groundBatch.build(group);
   S.at(60.5, 0, 0, () => {
     for (const sx of [-1, 1]) S.box('stone', 0.85, 0.12, 6.8, sx * 3.55, 0.06, 0);
     for (let i = -3; i <= 3; i++) {
@@ -1873,6 +2088,7 @@ export function buildVillage(ctx = {}) {
       if (o.isInstancedMesh) o.dispose?.();
     });
     mats.forEach((mm) => mm.dispose());
+    if (splatTex) splatTex.dispose();
     if (group.parent) group.parent.remove(group);
   }
 

@@ -31,7 +31,9 @@ import {
   buildAltarMesh,
   BELL_PITCHES,
   createSilkroadCofferMesh,
-  loadSROProp
+  loadSROProp,
+  SRO_DUNGEON_PROPS,
+  resolveSroDungeon
 } from './dungeonDecor.js';
 
 const LIGHT_POOL_SIZE = 8;
@@ -1301,6 +1303,9 @@ export class DungeonGenerator {
       }
     }
 
+    // Carve biome-specific room shapes (chamfers/pockets for caves, 2-tile niches for tombs/temples, lava channels for flame)
+    this._carveBiomeRoomShapes(generatedRooms, floorDef, rand);
+
     const COMBAT_ARCHETYPES = [
       'vanguard_courtyard',
       'pillared_cloister',
@@ -1511,6 +1516,118 @@ export class DungeonGenerator {
     return rooms;
   }
 
+  _carveBiomeRoomShapes(generatedRooms, floorDef, rand) {
+    const sroKey = floorDef?.sroDungeon || 'donhwang';
+    const isCaveBiome = ['donhwang', 'karakoram', 'togui', 'wreck'].includes(sroKey);
+    const isTempleBiome = ['qinshi', 'qinshi_b6', 'holywater', 'jupiter', 'demon', 'roc_nest'].includes(sroKey);
+    const isFlameBiome = sroKey === 'flame';
+
+    const hasAdjacentCorridor = (gx, gz, dist = 1) => {
+      for (let dz = -dist; dz <= dist; dz++) {
+        for (let dx = -dist; dx <= dist; dx++) {
+          if (this.getTileAtGrid(gx + dx, gz + dz) === TILE.CORRIDOR) return true;
+        }
+      }
+      return false;
+    };
+
+    const canCarveOutwardNiche = (nx, nz, nw, nh) => {
+      for (let gz = nz; gz < nz + nh; gz++) {
+        for (let gx = nx; gx < nx + nw; gx++) {
+          if (gx < 2 || gz < 2 || gx >= this.gridWidth - 2 || gz >= this.gridHeight - 2) return false;
+          if (this.getTileAtGrid(gx, gz) !== TILE.WALL) return false;
+          // Ensure outer wall shell (2 tiles deep around expansion) stays solid
+          for (let oz = -1; oz <= 1; oz++) {
+            for (let ox = -1; ox <= 1; ox++) {
+              const t = this.getTileAtGrid(gx + ox, gz + oz);
+              if (t !== TILE.WALL && (gx + ox < nx || gx + ox >= nx + nw || gz + oz < nz || gz + oz >= nz + nh)) {
+                // Allow touching only the parent room face
+                if (t === TILE.CORRIDOR) return false;
+              }
+            }
+          }
+        }
+      }
+      return true;
+    };
+
+    for (const room of generatedRooms) {
+      if (room.type === 'boss' || room.type === 'start' || room.type === 'trap') continue;
+      if (room.gw < 10 || room.gh < 10) continue;
+
+      if (isCaveBiome) {
+        // Chamfer free outer corners (1-2 tiles) while keeping central 5x5 (>=10x10m) and corridors intact
+        const corners = [
+          [room.gx, room.gz, 1, 1],
+          [room.gx + room.gw - 1, room.gz, -1, 1],
+          [room.gx, room.gz + room.gh - 1, 1, -1],
+          [room.gx + room.gw - 1, room.gz + room.gh - 1, -1, -1]
+        ];
+        if (room.type !== 'treasure') {
+          corners.forEach(([cgx, cgz, sx, sz], ci) => {
+            if ((ci + room.id) % 2 !== 0 && rand() < 0.35) return;
+            const span = room.gw >= 13 && room.gh >= 13 ? 2 : 1;
+            for (let dz = 0; dz < span; dz++) {
+              for (let dx = 0; dx < span - dz; dx++) {
+                const tx = cgx + sx * dx;
+                const tz = cgz + sz * dz;
+                if (Math.abs(tx - room.cx) <= 2 && Math.abs(tz - room.cz) <= 2) continue;
+                if (!hasAdjacentCorridor(tx, tz, 2)) this.setTileAtGrid(tx, tz, TILE.WALL);
+              }
+            }
+          });
+        }
+        // Organic cave pockets carved outward into solid wall
+        const pocketDirs = [
+          [Math.floor(room.cx - 1), room.gz - 2, 3, 2],
+          [Math.floor(room.cx - 1), room.gz + room.gh, 3, 2],
+          [room.gx - 2, Math.floor(room.cz - 1), 2, 3],
+          [room.gx + room.gw, Math.floor(room.cz - 1), 2, 3]
+        ];
+        for (const [px, pz, pw, ph] of pocketDirs) {
+          if (rand() < 0.55 && canCarveOutwardNiche(px, pz, pw, ph)) {
+            for (let gz = pz; gz < pz + ph; gz++) {
+              for (let gx = px; gx < px + pw; gx++) this.setTileAtGrid(gx, gz, TILE.FLOOR);
+            }
+          }
+        }
+      } else if (isTempleBiome) {
+        // Symmetrical 2-tile deep side niches for chests, shrines & archers
+        const niches = [
+          [Math.floor(room.cx - 1), room.gz - 2, 3, 2],
+          [Math.floor(room.cx - 1), room.gz + room.gh, 3, 2],
+          [room.gx - 2, Math.floor(room.cz - 1), 2, 3],
+          [room.gx + room.gw, Math.floor(room.cz - 1), 2, 3]
+        ];
+        niches.forEach(([nx, nz, nw, nh], idx) => {
+          if (idx % 2 === 0 || rand() < 0.65) {
+            if (canCarveOutwardNiche(nx, nz, nw, nh)) {
+              for (let gz = nz; gz < nz + nh; gz++) {
+                for (let gx = nx; gx < nx + nw; gx++) this.setTileAtGrid(gx, gz, TILE.FLOOR);
+              }
+            }
+          }
+        });
+      } else if (isFlameBiome && room.type === 'combat' && room.gw >= 12 && room.gh >= 12) {
+        // Perimeter lava channels (TILE.PIT) leaving >= 10x10m (5x5 tile) center & doorways walkable
+        const minX = room.gx + 2;
+        const maxX = room.gx + room.gw - 3;
+        const minZ = room.gz + 2;
+        const maxZ = room.gz + room.gh - 3;
+        for (let gx = minX; gx <= maxX; gx++) {
+          if (Math.abs(gx - room.cx) <= 2) continue;
+          if (!hasAdjacentCorridor(gx, room.gz + 1, 2)) this.setTileAtGrid(gx, room.gz + 1, TILE.PIT);
+          if (!hasAdjacentCorridor(gx, room.gz + room.gh - 2, 2)) this.setTileAtGrid(gx, room.gz + room.gh - 2, TILE.PIT);
+        }
+        for (let gz = minZ; gz <= maxZ; gz++) {
+          if (Math.abs(gz - room.cz) <= 2) continue;
+          if (!hasAdjacentCorridor(room.gx + 1, gz, 2)) this.setTileAtGrid(room.gx + 1, gz, TILE.PIT);
+          if (!hasAdjacentCorridor(room.gx + room.gw - 2, gz, 2)) this.setTileAtGrid(room.gx + room.gw - 2, gz, TILE.PIT);
+        }
+      }
+    }
+  }
+
   _carveCorridor(roomA, roomB) {
     let x = roomA.cx;
     let z = roomA.cz;
@@ -1549,13 +1666,14 @@ export class DungeonGenerator {
   _buildDungeonGeometry(rand) {
     const floorTiles = [];
     const wallTiles = [];
+    const pitTiles = [];
 
     const hasAdjacentWalkable = (gx, gz) => {
       for (let dz = -1; dz <= 1; dz++) {
         for (let dx = -1; dx <= 1; dx++) {
           if (dx === 0 && dz === 0) continue;
           const t = this.getTileAtGrid(gx + dx, gz + dz);
-          if (t === TILE.FLOOR || t === TILE.CORRIDOR || t === TILE.DOOR_OPEN || t === TILE.DOOR_CLOSED) {
+          if (t === TILE.FLOOR || t === TILE.CORRIDOR || t === TILE.DOOR_OPEN || t === TILE.DOOR_CLOSED || t === TILE.PIT) {
             return true;
           }
         }
@@ -1568,12 +1686,15 @@ export class DungeonGenerator {
         const t = this.grid[gz][gx];
         if (t === TILE.FLOOR || t === TILE.CORRIDOR || t === TILE.DOOR_OPEN || t === TILE.DOOR_CLOSED) {
           floorTiles.push({ gx, gz, t });
+        } else if (t === TILE.PIT) {
+          pitTiles.push({ gx, gz });
         } else if (t === TILE.WALL && hasAdjacentWalkable(gx, gz)) {
           wallTiles.push({ gx, gz });
         }
       }
     }
     this._wallTiles = wallTiles;
+    this._pitTiles = pitTiles;
     this._batch = new InstanceBatch();
 
     // Low, moody fill: the renderer's atmosphere carries most of the light; torches/braziers are
@@ -1584,7 +1705,7 @@ export class DungeonGenerator {
     dungeonHemi.position.set(0, 18, 0);
     this.rootGroup.add(dungeonAmbient, dungeonHemi);
 
-    // Instanced floor tiles (white base material so instanceColor is not darkened by multiplication)
+    // Instanced floor tiles with continuous world-XZ texture mapping (prevents 2m box tiling)
     const floorGeo = new THREE.BoxGeometry(this.tileSize, 0.16, this.tileSize);
     const floorMat = new THREE.MeshStandardMaterial({
       color: 0xffffff,
@@ -1593,6 +1714,29 @@ export class DungeonGenerator {
       roughness: 0.72,
       metalness: 0.05
     });
+    floorMat.customProgramCacheKey = () => 'dungeon_floor_worldxz_v1';
+    floorMat.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec2 vFloorWorldXZ;')
+        .replace(
+          '#include <worldpos_vertex>',
+          `#include <worldpos_vertex>
+vec4 floorWp = vec4(transformed, 1.0);
+#ifdef USE_INSTANCING
+  floorWp = instanceMatrix * floorWp;
+#endif
+vFloorWorldXZ = (modelMatrix * floorWp).xz;`
+        );
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying vec2 vFloorWorldXZ;')
+        .replace(
+          '#include <map_fragment>',
+          `#ifdef USE_MAP
+  vec4 sampledDiffuseColor = texture2D( map, vFloorWorldXZ * 0.22 );
+  diffuseColor *= sampledDiffuseColor;
+#endif`
+        );
+    };
 
     const applySurfaceTexture = (mat, texUrl) => {
       if (typeof window === 'undefined' || !texUrl) return;
@@ -1624,25 +1768,46 @@ export class DungeonGenerator {
 
     floorTiles.forEach((tile, i) => {
       const pos = this.gridToWorld(tile.gx, tile.gz);
-      // Fixed at -0.08 with height 0.16 so top face is flush at exactly y = 0.00 everywhere
+      // Fixed at -0.08 with height 0.16 and slight overlap (1.002) to eliminate black seam gaps
       dummy.position.set(pos.x, -0.08, pos.z);
-      dummy.scale.set(0.985, 1, 0.985);
+      dummy.scale.set(1.002, 1, 1.002);
       dummy.updateMatrix();
       floorInst.setMatrixAt(i, dummy.matrix);
 
       const checker = (tile.gx + tile.gz) % 2 === 0;
       color.copy(checker ? baseFloorCol : altFloorCol);
-      color.multiplyScalar(0.86 + rand() * 0.26);
-      if (rand() < 0.07) color.multiplyScalar(0.78); // cracked / soot-stained slab
-      if (tile.t === TILE.CORRIDOR) color.multiplyScalar(0.92);
+      color.multiplyScalar(0.95 + rand() * 0.09);
+      if (tile.t === TILE.CORRIDOR) color.multiplyScalar(0.96);
       floorInst.setColorAt(i, color);
     });
     floorInst.instanceMatrix.needsUpdate = true;
     if (floorInst.instanceColor) floorInst.instanceColor.needsUpdate = true;
     this.rootGroup.add(floorInst);
 
+    // Sunken glowing magma channel slabs for Flame Mountain TILE.PIT channels
+    if (pitTiles.length > 0) {
+      const pitGeo = new THREE.BoxGeometry(this.tileSize * 1.002, 0.12, this.tileSize * 1.002);
+      const pitMat = new THREE.MeshStandardMaterial({
+        color: 0xff5a1f,
+        emissive: new THREE.Color(0xea580c),
+        emissiveIntensity: 0.95,
+        roughness: 0.35
+      });
+      const pitInst = new THREE.InstancedMesh(pitGeo, pitMat, pitTiles.length);
+      pitTiles.forEach((tile, i) => {
+        const pos = this.gridToWorld(tile.gx, tile.gz);
+        dummy.position.set(pos.x, -0.14, pos.z);
+        dummy.scale.set(1, 1, 1);
+        dummy.updateMatrix();
+        pitInst.setMatrixAt(i, dummy.matrix);
+      });
+      pitInst.instanceMatrix.needsUpdate = true;
+      this.rootGroup.add(pitInst);
+    }
+
     // Instanced perimeter wall blocks with authentic Silkroad dungeon wall masonry/carving textures
     const wallHeight = this.zone === 'challenge' ? 3.5 : (this.bossRoom ? 3.55 : 3.05);
+    const isArchTheme = ['qinshi', 'qinshi_b6', 'holywater', 'jupiter', 'demon', 'roc_nest', 'karakoram'].includes(this.sroDungeon);
     const wallGeo = new THREE.BoxGeometry(this.tileSize, wallHeight, this.tileSize);
     const wallMat = new THREE.MeshStandardMaterial({
       color: 0xffffff,
@@ -1653,10 +1818,10 @@ export class DungeonGenerator {
     });
     applySurfaceTexture(wallMat, this.theme?.wallTexture);
     const wallInst = new THREE.InstancedMesh(wallGeo, wallMat, Math.max(1, wallTiles.length));
-    wallInst.castShadow = true;
+    wallInst.castShadow = false;
     wallInst.receiveShadow = true;
 
-    // Carved trim cornice cap atop perimeter walls (single instanced batch for architectural framing)
+    // Carved trim cornice cap + base skirting plinths along perimeter walls
     const corniceGeo = new THREE.BoxGeometry(this.tileSize * 1.08, 0.2, this.tileSize * 1.08);
     const corniceMat = new THREE.MeshStandardMaterial({
       color: this.theme.trimColor || 0x94a3b8,
@@ -1666,27 +1831,42 @@ export class DungeonGenerator {
     const corniceInst = new THREE.InstancedMesh(corniceGeo, corniceMat, Math.max(1, wallTiles.length));
     corniceInst.receiveShadow = true;
 
+    const skirtingGeo = new THREE.BoxGeometry(this.tileSize * 1.05, 0.22, this.tileSize * 1.05);
+    const skirtingMat = new THREE.MeshStandardMaterial({
+      color: tint(this.theme.wallColor || 0x64748b, 0.72),
+      roughness: 0.78,
+      metalness: 0.12
+    });
+    const skirtingInst = new THREE.InstancedMesh(skirtingGeo, skirtingMat, Math.max(1, wallTiles.length));
+    skirtingInst.receiveShadow = true;
+
     const baseWallCol = new THREE.Color(this.theme.wallColor);
     wallTiles.forEach((tile, i) => {
       const pos = this.gridToWorld(tile.gx, tile.gz);
-      const hScale = 0.94 + (rand() * 0.14);
+      const hScale = isArchTheme ? 1.0 : (0.96 + rand() * 0.08);
       dummy.position.set(pos.x, (wallHeight * hScale) * 0.5, pos.z);
       dummy.scale.set(1, hScale, 1);
       dummy.updateMatrix();
       wallInst.setMatrixAt(i, dummy.matrix);
 
-      color.copy(baseWallCol).multiplyScalar(0.9 + rand() * 0.2);
+      color.copy(baseWallCol).multiplyScalar(isArchTheme ? (0.97 + rand() * 0.06) : (0.93 + rand() * 0.12));
       wallInst.setColorAt(i, color);
 
       dummy.position.set(pos.x, wallHeight * hScale + 0.08, pos.z);
       dummy.scale.set(1, 1, 1);
       dummy.updateMatrix();
       corniceInst.setMatrixAt(i, dummy.matrix);
+
+      dummy.position.set(pos.x, 0.11, pos.z);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      skirtingInst.setMatrixAt(i, dummy.matrix);
     });
     wallInst.instanceMatrix.needsUpdate = true;
     if (wallInst.instanceColor) wallInst.instanceColor.needsUpdate = true;
     corniceInst.instanceMatrix.needsUpdate = true;
-    this.rootGroup.add(wallInst, corniceInst);
+    skirtingInst.instanceMatrix.needsUpdate = true;
+    this.rootGroup.add(wallInst, corniceInst, skirtingInst);
   }
 
   /** True when a prop of `radius` can be dropped at (x, z) without clipping other solids/traps/doorways. */
@@ -1767,7 +1947,7 @@ export class DungeonGenerator {
 
     // --- Per-room content --------------------------------------------------------------------
     this.rooms.forEach((room, idx) => {
-      // Corner torches: emissive instances pinned tight to corners, lit by pooled lights
+      // Corner torches: emissive instances pinned tight to walkable corners, lit by pooled lights
       const torchOffsets = [
         [room.x + 0.85, room.z + 0.85],
         [room.x + room.w - 0.85, room.z + 0.85],
@@ -1775,7 +1955,7 @@ export class DungeonGenerator {
         [room.x + room.w - 0.85, room.z + room.h - 0.85]
       ];
       torchOffsets.forEach(([tx, tz]) => {
-        if (!nearOpening(this, tx, tz, 3.2)) {
+        if (this.isWalkable(tx, tz, 0.25) && !nearOpening(this, tx, tz, 3.2)) {
           this._spawnTorch(tx, tz, this.theme.torchColor);
         }
       });
@@ -1811,7 +1991,9 @@ export class DungeonGenerator {
         this._buildTrapGallery(room, floorNum, rand);
         dressSpecialRoom(this, batch, room, 'trap_gallery', rand);
       } else if (room.type === 'shrine') {
-        this._spawnShrine(room.centerX, room.centerZ, floorNum);
+        const shrineSlot = this._pickWallNicheSpot(room, 2.7) || { x: room.centerX, z: room.z + 2.8, side: 'N' };
+        this._spawnShrine(shrineSlot.x, shrineSlot.z, floorNum, null, shrineSlot.side);
+        this._reserved.push({ x: shrineSlot.x, z: shrineSlot.z, r: 2.0 });
         dressSpecialRoom(this, batch, room, 'shrine', rand);
       } else if (room.type === 'processional') {
         dressSpecialRoom(this, batch, room, 'processional', rand);
@@ -1997,7 +2179,7 @@ export class DungeonGenerator {
       }
     });
 
-    // Ensure every dungeon floor has at least one dynamic Power Shrine to discover
+    // Ensure every dungeon floor has at least one dynamic Power Shrine inside a framed wall niche
     if (floorNum >= 1 && !this.shrines.some((s) => s.type === 'shrine')) {
       const combatRooms = this.rooms.filter((r) => r.type === 'combat' && r.w >= 10 && r.h >= 10);
       const fallbackRooms = combatRooms.length > 0 ? combatRooms : this.rooms.filter((r) => r.type !== 'start' && r.type !== 'boss' && r.w >= 8 && r.h >= 8);
@@ -2005,23 +2187,15 @@ export class DungeonGenerator {
       const chosenRoom = fallbackRooms.length > 0 ? fallbackRooms[Math.floor(rand() * fallbackRooms.length)] : null;
       if (chosenRoom) {
         const pickedKind = shrinePool[Math.floor(rand() * shrinePool.length)];
-        const candidates = [
-          [chosenRoom.centerX + (rand() - 0.5) * 2.0, chosenRoom.centerZ + (rand() - 0.5) * 2.0],
-          [chosenRoom.centerX, chosenRoom.centerZ],
-          [chosenRoom.centerX + 2.2, chosenRoom.centerZ],
-          [chosenRoom.centerX - 2.2, chosenRoom.centerZ],
-        ];
-        for (const [sx, sz] of candidates) {
-          if (this._spotFree(sx, sz, 0.9, 1.5)) {
-            this._spawnShrine(sx, sz, floorNum, pickedKind);
-            this._reserved.push({ x: sx, z: sz, r: 1.5 });
-            break;
-          }
+        const niche = this._pickWallNicheSpot(chosenRoom, 2.7, 1.4);
+        if (niche) {
+          this._spawnShrine(niche.x, niche.z, floorNum, pickedKind, niche.side);
+          this._reserved.push({ x: niche.x, z: niche.z, r: 1.8 });
         }
       }
     }
 
-    // Spawn 1 to 3 genuinely randomized Timed Challenge Portals per regular dungeon floor
+    // Spawn 1 to 3 genuinely randomized Timed Challenge Portals inside framed perimeter wall niches
     if (floorNum >= 1 && floorNum < 100 && floorNum !== 16) {
       const chKeys = Object.keys(CHALLENGE_TYPES);
       const rollCount = Math.random();
@@ -2040,14 +2214,14 @@ export class DungeonGenerator {
       let spawnedCh = 0;
       const roomIsClearOfEntities = (cx, cz) => {
         if (!this.isWalkable(cx, cz, 0.55) || nearOpening(this, cx, cz, 2.6)) return false;
-        if (!this._spotFree(cx, cz, 2.25, 2.0)) return false;
+        if (!this._spotFree(cx, cz, 2.0, 2.0)) return false;
         if (Math.hypot(cx - this.spawnPoint.x, cz - this.spawnPoint.z) < 4.5) return false;
         if (this.shrines.some((s) => Math.hypot(cx - s.x, cz - s.z) < 3.6)) return false;
         if (this.chests.some((c) => Math.hypot(cx - c.x, cz - c.z) < 3.1)) return false;
         if (this.portals.some((p) => Math.hypot(cx - p.x, cz - p.z) < 4.8)) return false;
         if (this.traps.some((t) => Math.hypot(cx - t.x, cz - t.z) < 2.8)) return false;
         if (this.gates.some((g) => Math.hypot(cx - g.x, cz - g.z) < 3.2)) return false;
-        if ((this._placedDecor || []).some((d) => Math.hypot(cx - d.x, cz - d.z) < (d.r || 0.6) + 2.15)) return false;
+        if ((this._placedDecor || []).some((d) => Math.hypot(cx - d.x, cz - d.z) < (d.r || 0.6) + 2.0)) return false;
         return true;
       };
 
@@ -2063,27 +2237,25 @@ export class DungeonGenerator {
         }
         usedTypes.add(pickedType);
 
-        const ox = Math.max(2.4, rm.w * 0.5 - 3.2);
-        const oz = Math.max(2.4, rm.h * 0.5 - 3.2);
+        const wallInset = 2.75;
         const candidates = [
-          [rm.centerX - ox * 0.72, rm.centerZ - oz * 0.72],
-          [rm.centerX + ox * 0.72, rm.centerZ - oz * 0.72],
-          [rm.centerX - ox * 0.72, rm.centerZ + oz * 0.72],
-          [rm.centerX + ox * 0.72, rm.centerZ + oz * 0.72],
-          [rm.centerX + (Math.random() - 0.5) * ox * 0.8, rm.centerZ + (Math.random() - 0.5) * oz * 0.8],
-          [rm.centerX, rm.centerZ],
-          [rm.centerX + 2.8, rm.centerZ],
-          [rm.centerX - 2.8, rm.centerZ]
+          { x: rm.centerX, z: rm.z + wallInset, side: 'N' },
+          { x: rm.centerX, z: rm.z + rm.h - wallInset, side: 'S' },
+          { x: rm.x + wallInset, z: rm.centerZ, side: 'W' },
+          { x: rm.x + rm.w - wallInset, z: rm.centerZ, side: 'E' },
+          { x: rm.centerX - 4.0, z: rm.z + wallInset, side: 'N' },
+          { x: rm.centerX + 4.0, z: rm.z + rm.h - wallInset, side: 'S' },
+          { x: rm.x + wallInset, z: rm.centerZ - 4.0, side: 'W' },
+          { x: rm.x + rm.w - wallInset, z: rm.centerZ + 4.0, side: 'E' }
         ];
-        // Shuffle non-center candidates so even the exact nook inside a room feels unpredictable
         for (let i = candidates.length - 1; i > 0; i--) {
           const j = Math.floor(Math.random() * (i + 1));
           [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
         }
-        for (const [cx, cz] of candidates) {
-          if (roomIsClearOfEntities(cx, cz)) {
-            this._spawnChallengePortal(cx, cz, floorNum, pickedType, spawnedCh);
-            this._reserved.push({ x: cx, z: cz, r: 2.35 });
+        for (const cand of candidates) {
+          if (Math.hypot(cand.x - rm.centerX, cand.z - rm.centerZ) >= 2.8 && roomIsClearOfEntities(cand.x, cand.z)) {
+            this._spawnChallengePortal(cand.x, cand.z, floorNum, pickedType, spawnedCh, cand.side);
+            this._reserved.push({ x: cand.x, z: cand.z, r: 2.35 });
             spawnedCh++;
             break;
           }
@@ -2153,24 +2325,51 @@ export class DungeonGenerator {
     this.portals.push(secretPortal);
   }
 
-  _spawnChallengePortal(x, z, floorNum, challengeType = 'survival_60', index = 0) {
+  _pickWallNicheSpot(room, inset = 2.7, pad = 1.6) {
+    if (!room) return null;
+    const spots = [
+      { x: room.centerX, z: room.z + inset, side: 'N' },
+      { x: room.centerX, z: room.z + room.h - inset, side: 'S' },
+      { x: room.x + inset, z: room.centerZ, side: 'W' },
+      { x: room.x + room.w - inset, z: room.centerZ, side: 'E' },
+      { x: room.centerX - 3.6, z: room.z + inset, side: 'N' },
+      { x: room.centerX + 3.6, z: room.z + room.h - inset, side: 'S' },
+      { x: room.x + inset, z: room.centerZ - 3.6, side: 'W' },
+      { x: room.x + room.w - inset, z: room.centerZ + 3.6, side: 'E' }
+    ];
+    for (const s of spots) {
+      if (Math.hypot(s.x - room.centerX, s.z - room.centerZ) < 2.2) continue;
+      if (!this.isWalkable(s.x, s.z, 0.5)) continue;
+      if (nearOpening(this, s.x, s.z, 2.7)) continue;
+      if (!this._spotFree(s.x, s.z, 0.9, pad)) continue;
+      return s;
+    }
+    return null;
+  }
+
+  _spawnChallengePortal(x, z, floorNum, challengeType = 'survival_60', index = 0, nicheSide = 'N') {
     const cfg = CHALLENGE_TYPES[challengeType] || CHALLENGE_TYPES.survival_60;
     const portalMesh = (this.models3d?.createPortalMesh || createPortalMesh)(
       { color: cfg.color, portalStyle: this.theme?.portalStyle },
       'challenge'
     );
     portalMesh.position.set(x, 0, z);
+    if (nicheSide === 'W' || nicheSide === 'E') portalMesh.rotation.y = Math.PI / 2;
     this.rootGroup.add(portalMesh);
     this._lightSources.push({ x, y: 2.2, z, color: cfg.color, intensity: 3.1, distance: 13 });
 
-    // Ornate runic ground seal & flanking obelisk beacons under every Trial Portal
+    // Framed wall-niche stone arch piers & runic ground seal under every Challenge Portal
     if (this._batch) {
+      const horiz = nicheSide === 'N' || nicheSide === 'S';
       this._batch.add('cyl', x, 0.014, z, 3.1, 0.028, 3.1, 0, 0x1e293b);
       this._batch.add('glowTorus', x, 0.032, z, 2.75, 2.75, 0.16, 0, cfg.color, Math.PI / 2);
-      for (const sx of [-1.45, 1.45]) {
-        this._batch.add('box', x + sx, 0.42, z, 0.34, 0.84, 0.34, 0, 0x334155);
-        this._batch.add('glowBox', x + sx, 1.0, z, 0.24, 0.32, 0.24, 0, cfg.color);
+      for (const s of [-1.55, 1.55]) {
+        const px = horiz ? x + s : x;
+        const pz = horiz ? z : z + s;
+        this._batch.add('box', px, 1.35, pz, 0.36, 2.7, 0.36, 0, 0x334155);
+        this._batch.add('glowBox', px, 1.45, pz, 0.24, 0.36, 0.24, 0, cfg.color);
       }
+      this._batch.add('box', x, 2.78, z, horiz ? 3.55 : 0.44, 0.28, horiz ? 0.44 : 3.55, 0, 0x475569);
     }
 
     const portal = {
@@ -2302,10 +2501,16 @@ export class DungeonGenerator {
   }
 
   _buildTrapGallery(room, floorNum, rand) {
-    // Rows of traps with one winding safe column per row; chest waits at the end of the path.
+    // Rows of traps with one seed-randomized winding safe column per row; chest waits at the end of the path.
     const trapTypes = this.theme.trapTypes || ['spikes'];
     const colX = [-4.4, -2.2, 0, 2.2, 4.4];
-    const safe = [2, 1, 2, 3];
+    let cur = Math.floor(rand() * colX.length);
+    const safe = [cur];
+    for (let r = 1; r < 4; r++) {
+      const step = Math.floor(rand() * 3) - 1;
+      cur = Math.max(0, Math.min(colX.length - 1, cur + step));
+      safe.push(cur);
+    }
     const rowZ = [-3.3, -1.1, 1.1, 3.3];
     safe.forEach((sc, r) => {
       const cols = [0, 1, 2, 3, 4]
@@ -2317,7 +2522,8 @@ export class DungeonGenerator {
         this._spawnTrap(room.centerX + colX[c], room.centerZ + rowZ[r], tType, this.theme.element, rand() * Math.PI);
       });
     });
-    room.safeLaneX = room.centerX;
+    room.safeLane = safe;
+    room.safeLaneX = room.centerX + colX[safe[0]];
     this._spawnChest(room.centerX + colX[safe[safe.length - 1]], room.centerZ + 5.2, 'rare', `f${floorNum}_chest_trap`);
   }
 
@@ -2504,53 +2710,46 @@ export class DungeonGenerator {
 
   _findBossRoomEntrance(bossRoom) {
     if (!bossRoom) return null;
-    let corridorTiles = [];
-    // 1. Scan west wall
-    for (let gz = bossRoom.gz; gz < bossRoom.gz + bossRoom.gh; gz++) {
-      if (this.getTileAtGrid(bossRoom.gx - 1, gz) === TILE.CORRIDOR) {
-        corridorTiles.push(gz);
+    const isOpenTile = (gx, gz) => {
+      const t = this.getTileAtGrid(gx, gz);
+      return t === TILE.CORRIDOR || t === TILE.FLOOR;
+    };
+    const scanWall = (fixed, from, count, isXFixed, coordFixed, rotY, side) => {
+      const hits = [];
+      for (let i = from; i < from + count; i++) {
+        if (isOpenTile(isXFixed ? fixed : i, isXFixed ? i : fixed)) hits.push(i);
       }
-    }
-    if (corridorTiles.length > 0) {
-      const midGz = corridorTiles.reduce((a, b) => a + b, 0) / corridorTiles.length;
-      const worldPos = this.gridToWorld(bossRoom.gx - 0.5, midGz);
-      return { x: worldPos.x, z: worldPos.z, rotationY: Math.PI / 2 };
-    }
+      if (!hits.length) return null;
+      const mid = hits.reduce((a, b) => a + b, 0) / hits.length;
+      const worldPos = this.gridToWorld(isXFixed ? coordFixed : mid, isXFixed ? mid : coordFixed);
+      return { x: worldPos.x, z: worldPos.z, rotationY: rotY, side };
+    };
 
-    // 2. Scan south wall
-    corridorTiles = [];
-    for (let gx = bossRoom.gx; gx < bossRoom.gx + bossRoom.gw; gx++) {
-      if (this.getTileAtGrid(gx, bossRoom.gz + bossRoom.gh) === TILE.CORRIDOR) {
-        corridorTiles.push(gx);
-      }
-    }
-    if (corridorTiles.length > 0) {
-      const midGx = corridorTiles.reduce((a, b) => a + b, 0) / corridorTiles.length;
-      const worldPos = this.gridToWorld(midGx, bossRoom.gz + bossRoom.gh + 0.5);
-      return { x: worldPos.x, z: worldPos.z, rotationY: 0 };
-    }
+    // 1. Scan south wall (primary approach from main palace corridor)
+    const south = scanWall(bossRoom.gz + bossRoom.gh, bossRoom.gx, bossRoom.gw, false, bossRoom.gz + bossRoom.gh - 0.5, 0, 'S');
+    if (south) return south;
 
-    // 3. Scan north wall
-    corridorTiles = [];
-    for (let gx = bossRoom.gx; gx < bossRoom.gx + bossRoom.gw; gx++) {
-      if (this.getTileAtGrid(gx, bossRoom.gz - 1) === TILE.CORRIDOR) {
-        corridorTiles.push(gx);
-      }
-    }
-    if (corridorTiles.length > 0) {
-      const midGx = corridorTiles.reduce((a, b) => a + b, 0) / corridorTiles.length;
-      const worldPos = this.gridToWorld(midGx, bossRoom.gz - 0.5);
-      return { x: worldPos.x, z: worldPos.z, rotationY: 0 };
-    }
+    // 2. Scan west wall
+    const west = scanWall(bossRoom.gx - 1, bossRoom.gz, bossRoom.gh, true, bossRoom.gx - 0.5, Math.PI / 2, 'W');
+    if (west) return west;
 
-    // 4. Default west boundary
-    const defPos = this.gridToWorld(bossRoom.gx - 0.5, Math.floor(bossRoom.gz + bossRoom.gh * 0.5));
-    return { x: defPos.x, z: defPos.z, rotationY: Math.PI / 2 };
+    // 3. Scan east wall
+    const east = scanWall(bossRoom.gx + bossRoom.gw, bossRoom.gz, bossRoom.gh, true, bossRoom.gx + bossRoom.gw - 0.5, Math.PI / 2, 'E');
+    if (east) return east;
+
+    // 4. Scan north wall
+    const north = scanWall(bossRoom.gz - 1, bossRoom.gx, bossRoom.gw, false, bossRoom.gz - 0.5, 0, 'N');
+    if (north) return north;
+
+    // 5. Default south boundary
+    const defPos = this.gridToWorld(Math.floor(bossRoom.gx + bossRoom.gw * 0.5), bossRoom.gz + bossRoom.gh - 0.5);
+    return { x: defPos.x, z: defPos.z, rotationY: 0, side: 'S' };
   }
 
   _decorateBossArena(bossRoom, floorNum) {
-    // Pillar ring, braziers and dais (instanced) + arena metadata for the coordinator
-    this.bossArena = decorateBossArenaProps(this, this._batch, bossRoom, seededRandom(floorNum * 31 + 7));
+    const entrance = this._findBossRoomEntrance(bossRoom);
+    // Pillar ring, braziers, custom dais & entrance-oriented runner carpet
+    this.bossArena = decorateBossArenaProps(this, this._batch, bossRoom, seededRandom(floorNum * 31 + 7), entrance);
 
     // Locked Boss Gate at the entrance corridor archway to the Boss Chamber (Final Floor 16 opens straight into the Sanctum)
     const BOSS_GATE_NAMES = {
@@ -2565,12 +2764,14 @@ export class DungeonGenerator {
       togui: 'Togui Elder Gate',
       wreck: 'Sunken Captain Gate'
     };
-    const entrance = this._findBossRoomEntrance(bossRoom);
     if (entrance && floorNum !== 16) {
       const gateId = `f${floorNum}_boss_gate`;
-      const gate = this._spawnGate(entrance.x, entrance.z, gateId, false);
+      const propSet = SRO_DUNGEON_PROPS[resolveSroDungeon(this)];
+      const gateSpec = propSet?.bossGate || null;
+      const gate = this._spawnGate(entrance.x, entrance.z, gateId, false, gateSpec);
       gate.isBossGate = true;
       gate.radius = 2.4;
+      gate.gateAssetUrl = gateSpec?.url || '/assets/sro/props/cj_portal.glb';
       gate.name = BOSS_GATE_NAMES[this.sroDungeon] || 'Chamber of the Sovereign Gate';
       if (gate.mesh) {
         gate.mesh.rotation.y = entrance.rotationY;
@@ -2813,7 +3014,7 @@ export class DungeonGenerator {
     return sw;
   }
 
-  _spawnGate(x, z, gateId, isOpen = false) {
+  _spawnGate(x, z, gateId, isOpen = false, gateSpec = null) {
     const group = new THREE.Group();
     group.position.set(x, 0, z);
 
@@ -2831,13 +3032,15 @@ export class DungeonGenerator {
 
     group.userData.barsGroup = barsGroup;
 
-    // Silkroad portal arch frame
+    // Silkroad biome boss gate or classic vault portal arch frame
+    const assetUrl = gateSpec?.url || '/assets/sro/props/cj_portal.glb';
     if (typeof window !== 'undefined') {
-      loadSROProp('/assets/sro/props/cj_portal.glb', {
+      loadSROProp(assetUrl, {
         parent: group,
         position: [0, 0, 0],
-        targetHeight: 5.0,
-        autoGround: true,
+        targetHeight: gateSpec?.targetHeight || 5.0,
+        ...(gateSpec?.centerXZ ? { centerXZ: true } : {}),
+        autoGround: gateSpec?.autoGround !== false,
         castShadow: false,
         receiveShadow: false
       });
@@ -2859,7 +3062,7 @@ export class DungeonGenerator {
     return gate;
   }
 
-  _spawnShrine(x, z, floorNum, shrineType = null) {
+  _spawnShrine(x, z, floorNum, shrineType = null, nicheSide = null) {
     const SHRINE_TYPES = [
       {
         kind: 'shrine_berserk',
@@ -2911,6 +3114,17 @@ export class DungeonGenerator {
     const orb = new THREE.Mesh(new THREE.OctahedronGeometry(0.32, 0), gemMat);
     orb.position.y = 1.35;
     group.add(base, orb);
+    if (nicheSide && this._batch) {
+      const horiz = nicheSide === 'N' || nicheSide === 'S';
+      this._batch.add('cyl', x, 0.015, z, 2.5, 0.03, 2.5, 0, 0x1e293b);
+      for (const s of [-1.25, 1.25]) {
+        const px = horiz ? x + s : x;
+        const pz = horiz ? z : z + s;
+        this._batch.add('box', px, 1.25, pz, 0.3, 2.5, 0.3, 0, 0x334155);
+        this._batch.add('glowBox', px, 1.45, pz, 0.18, 0.24, 0.18, 0, picked.color);
+      }
+      this._batch.add('box', x, 2.6, z, horiz ? 2.9 : 0.36, 0.24, horiz ? 0.36 : 2.9, 0, 0x475569);
+    }
     group.userData.orb = orb;
 
     this.rootGroup.add(group);

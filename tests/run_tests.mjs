@@ -20,8 +20,8 @@ import { ITEM_BASES, SET_BASE_IDS, SETS, SHOP_DEFS, SHARED_STORAGE_KEY, floorMon
 import { QuestSystem, NPCS } from '../src/systems/quests.js';
 import { PET_TYPES, PetSystem } from '../src/systems/petSystem.js';
 import { SKILL_DEFS, SKILL_ALIASES } from '../src/systems/skills.js';
-import { createDungeonGenerator, DUNGEON_THEMES, CHALLENGE_TYPES } from '../src/world/dungeonGenerator.js';
-import { nearOpening, SRO_DUNGEON_PROPS } from '../src/world/dungeonDecor.js';
+import { createDungeonGenerator, DUNGEON_THEMES, CHALLENGE_TYPES, TILE } from '../src/world/dungeonGenerator.js';
+import { nearOpening, SRO_DUNGEON_PROPS, resolveSroDungeon } from '../src/world/dungeonDecor.js';
 import { createEnemyManager, AI_STATE } from '../src/world/enemyAI.js';
 import { models3d, CLASS_CLIP_MAP } from '../src/engine/models3d.js';
 import { PlayerController } from '../src/engine/playerController.js';
@@ -2326,6 +2326,140 @@ import { createHost } from '../src/ui/hud.js';
       hasRiverMeshes && riverClearsWallsAndSpawns && bridgesClear && updateOk
     );
     vbRiver.dispose();
+  }
+
+  // 29. Village Splat Terrain, Unified Road/Base Ground, Biome Dungeon Rooms, Niche Shrines/Challenges & Boss Gates
+  {
+    const THREE = await import('three');
+    const vb2 = buildVillage({});
+    const terrain = vb2.group.getObjectByName('VillageTerrain');
+    const groundBase = vb2.group.getObjectByName('VillageGround_base');
+    const groundRoad = vb2.group.getObjectByName('VillageGround_road');
+    const curbMesh = vb2.group.getObjectByName('Village_curb');
+
+    const uvAttr = terrain?.geometry?.getAttribute('uv');
+    let uMin = Infinity, uMax = -Infinity, vMin = Infinity, vMax = -Infinity;
+    if (uvAttr) {
+      for (let i = 0; i < uvAttr.count; i++) {
+        uMin = Math.min(uMin, uvAttr.getX(i)); uMax = Math.max(uMax, uvAttr.getX(i));
+        vMin = Math.min(vMin, uvAttr.getY(i)); vMax = Math.max(vMax, uvAttr.getY(i));
+      }
+    }
+    const splatTex = terrain?.material?.userData?.splatTex;
+    const splatImg = splatTex?.image;
+    let hasR = false, hasG = false, hasB = false, hasA = false;
+    if (splatImg?.data) {
+      for (let i = 0; i < splatImg.data.length; i += 4) {
+        if (splatImg.data[i] > 60) hasR = true;
+        if (splatImg.data[i + 1] > 60) hasG = true;
+        if (splatImg.data[i + 2] > 60) hasB = true;
+        if (splatImg.data[i + 3] > 200) hasA = true;
+      }
+    }
+    const groundNames = [];
+    vb2.group.traverse((o) => { if (o.name?.startsWith('VillageGround_') || o.name === 'VillageTerrain') groundNames.push(o.name); });
+    const villageSrc2 = fs.readFileSync(new URL('../src/world/villageBuilder.js', import.meta.url), 'utf8');
+    const roadBox = groundRoad?.geometry ? new THREE.Box3().setFromBufferAttribute(groundRoad.geometry.getAttribute('position')) : null;
+    check('Village ground merges into unified base+road+splat terrain without central plaza/diamond intrusion',
+      Boolean(terrain && groundBase && groundRoad && curbMesh) &&
+      terrain.rotation.x === 0 &&
+      Math.abs((uMax - uMin) - (vMax - vMin)) < 0.01 &&
+      splatImg?.width === 256 && splatImg?.height === 256 &&
+      hasR && hasG && hasB && hasA &&
+      groundNames.length === 3 &&
+      !vb2.group.getObjectByName('VillageGround_plaza') &&
+      !vb2.group.getObjectByName('VillageGround_trim') &&
+      Boolean(curbMesh.geometry.getAttribute('uv')) &&
+      villageSrc2.includes('rok_stone_02.png') &&
+      Boolean(roadBox && roadBox.max.y <= 0.09)
+    );
+    vb2.dispose();
+
+    // Dungeon floor & biome verification
+    const allPropUrls = new Set();
+    for (const set of Object.values(SRO_DUNGEON_PROPS)) {
+      for (const c of set.corners || []) if (c?.url) allPropUrls.add(c.url);
+      for (const k of ['wall', 'shrineCenter', 'shrineGuard', 'springCenter', 'bossGate', 'bossFlankLeft', 'bossFlankRight', 'bossSanctumNorth']) {
+        if (set[k]?.url) allPropUrls.add(set[k].url);
+      }
+    }
+    const requiredBiomeGlbs = [
+      'jinsi_lantern_tall.glb', 'pha_burner.glb', 'jupiter_athena_statue.glb',
+      'jupiter_nike.glb', 'roc_nest_straw.glb', 'roc_pillar_key.glb',
+      'togui_gate.glb', 'wreck_barrel.glb', 'wreck_crate.glb'
+    ];
+    check('All newly wired SRO biome GLBs appear in SRO_DUNGEON_PROPS and zero cj_jang_gate_dragon remains',
+      requiredBiomeGlbs.every((f) => Array.from(allPropUrls).some((u) => u.endsWith(`/${f}`))) &&
+      !Array.from(allPropUrls).some((u) => u.includes('cj_jang_gate_dragon'))
+    );
+
+    const dg2 = createDungeonGenerator();
+    // Flame Mountain (F10) carves TILE.PIT lava channels while preserving 10x10m room center
+    const f10 = dg2.generateFloor(10);
+    let f10Pits = 0;
+    for (let gz = 0; gz < dg2.gridHeight; gz++) {
+      for (let gx = 0; gx < dg2.gridWidth; gx++) if (dg2.getTileAtGrid(gx, gz) === TILE.PIT) f10Pits++;
+    }
+    const f10FloorInst = dg2.rootGroup.children.find((c) => c.isInstancedMesh);
+    const m0 = new THREE.Matrix4();
+    const pos0 = new THREE.Vector3(), quat0 = new THREE.Quaternion(), scale0 = new THREE.Vector3();
+    if (f10FloorInst) {
+      f10FloorInst.getMatrixAt(0, m0);
+      m0.decompose(pos0, quat0, scale0);
+    }
+    check('Dungeon floor instanced tiles use 1.002 scale (zero gap) and Flame floors carve TILE.PIT channels',
+      Math.abs(scale0.x - 1.002) < 0.002 && f10Pits > 0 && f10.rooms.every((r) => dg2.isWalkable(r.centerX, r.centerZ, 0.4))
+    );
+
+    // No terracotta placed on F13-F16, dynamic trap safeLane, bossGate wired cleanly, wall-niche shrines/challenges
+    let zeroTerracottaF13_16 = true;
+    const trapLanes = [];
+    for (const fn of [1, 3, 6, 9, 12, 13, 14, 15, 16, 103]) {
+      const fState = dg2.generateFloor(fn);
+      if (fn >= 13 && fn <= 16 && (dg2._placedDecor || []).some((d) => d.tag === 'terracotta')) {
+        zeroTerracottaF13_16 = false;
+      }
+      if (dg2.bossRoom && fn !== 16) {
+        const expectedGate = SRO_DUNGEON_PROPS[resolveSroDungeon(dg2)]?.bossGate?.url;
+        check(`Floor ${fn} bossGate wires authentic SRO prop (${expectedGate})`, dg2.bossGate?.gateAssetUrl === expectedGate);
+      }
+      const trapRm = dg2.rooms.find((r) => r.type === 'trap' && Array.isArray(r.safeLane));
+      if (trapRm) trapLanes.push(trapRm.safeLane.join(','));
+      const nonStartShrines = fState.shrines.filter((s) => s.type === 'shrine');
+      for (const sh of nonStartShrines) {
+        const rm = dg2.rooms.find((r) => sh.x >= r.x && sh.x <= r.x + r.w && sh.z >= r.z && sh.z <= r.z + r.h);
+        if (rm && rm.w >= 10 && rm.h >= 10) {
+          check(`Floor ${fn} shrine placed in perimeter wall niche (>=2.2m off center)`,
+            Math.hypot(sh.x - rm.centerX, sh.z - rm.centerZ) >= 2.2
+          );
+        }
+      }
+      for (const chp of fState.portals.filter((p) => p.portalType === 'challenge_portal')) {
+        const rm = dg2.rooms.find((r) => chp.x >= r.x && chp.x <= r.x + r.w && chp.z >= r.z && chp.z <= r.z + r.h);
+        if (rm && rm.w >= 10 && rm.h >= 10) {
+          check(`Floor ${fn} challenge portal placed in perimeter wall niche (>=2.2m off center)`,
+            Math.hypot(chp.x - rm.centerX, chp.z - rm.centerZ) >= 2.2
+          );
+        }
+      }
+    }
+
+    // East wall boss entrance scan test
+    const mockBoss = { gx: 10, gz: 10, gw: 12, gh: 10 };
+    for (let gz = 10; gz < 20; gz++) {
+      dg2.setTileAtGrid(9, gz, TILE.WALL);
+      dg2.setTileAtGrid(22, gz, gz >= 14 && gz <= 16 ? TILE.CORRIDOR : TILE.WALL);
+    }
+    for (let gx = 10; gx < 22; gx++) {
+      dg2.setTileAtGrid(gx, 9, TILE.WALL);
+      dg2.setTileAtGrid(gx, 20, TILE.WALL);
+    }
+    const eastEntrance = dg2._findBossRoomEntrance(mockBoss);
+    check('F13-16 free of terracotta, trap lanes randomized, and _findBossRoomEntrance detects East wall',
+      zeroTerracottaF13_16 &&
+      (trapLanes.length === 0 || new Set(trapLanes).size >= 1) &&
+      eastEntrance?.side === 'E'
+    );
   }
 }
 

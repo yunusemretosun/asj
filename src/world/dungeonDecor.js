@@ -570,13 +570,32 @@ export function addWallPillars(b, gen, wallTiles, style, rand) {
   let bannerIdx = 0;
 
   for (const w of wallTiles) {
-    let open = null; let n = 0;
+    const openDirs = [];
     for (const d of dirs) {
       const t = gen.getTileAtGrid(w.gx + d[0], w.gz + d[1]);
-      if (t === 1 || t === 3 || t === 4 || t === 5) { open = d; n++; }
+      if (t === 1 || t === 3 || t === 4 || t === 5) openDirs.push(d);
     }
-    if (n !== 1) continue; // only flat wall faces, never corners or doorways
+    const n = openDirs.length;
+    const isFlatWall = n === 1;
+    const isInnerCorner = n === 2 && (openDirs[0][0] + openDirs[1][0] !== 0) && (openDirs[0][1] + openDirs[1][1] !== 0);
+    if (!isFlatWall && !isInnerCorner) continue;
     const p = gen.gridToWorld(w.gx, w.gz);
+
+    if (isInnerCorner) {
+      const sx = openDirs[0][0] + openDirs[1][0];
+      const sz = openDirs[0][1] + openDirs[1][1];
+      const px = p.x + sx * (T * 0.5 + 0.04);
+      const pz = p.z + sz * (T * 0.5 + 0.04);
+      if (nearOpening(gen, px, pz, 2.8) || blocked(gen, px, pz, 2.8, 0.22)) continue;
+      const h = 2.95;
+      b.add('box', px, h * 0.5, pz, 0.34, h, 0.34, 0, jit(style.stone, rand, 0.12));
+      b.add('box', px, 0.14, pz, 0.44, 0.28, 0.44, 0, tint(style.stone, 0.78));
+      b.add('box', px, h - 0.12, pz, 0.46, 0.22, 0.46, 0, trimCol);
+      registerDecor(gen, px, pz, 0.18, 'wall_pilaster', false);
+      continue;
+    }
+
+    const open = openDirs[0];
     const faceX = p.x + open[0] * (T * 0.5 + 0.05);
     const faceZ = p.z + open[1] * (T * 0.5 + 0.05);
     const horiz = open[1] !== 0; // N/S wall runs along X; W/E wall runs along Z
@@ -588,6 +607,7 @@ export function addWallPillars(b, gen, wallTiles, style, rand) {
     if ((w.gx * 3 + w.gz * 5) % 4 === 0) {
       const px = p.x + open[0] * (T * 0.5 + 0.08);
       const pz = p.z + open[1] * (T * 0.5 + 0.08);
+      if (blocked(gen, px, pz, 2.8, 0.2)) continue;
       const h = 2.85;
       b.add('box', px, h * 0.5, pz, horiz ? 0.42 : 0.18, h, horiz ? 0.18 : 0.42, 0, jit(style.stone, rand, 0.14));
       b.add('box', px, 0.14, pz, horiz ? 0.54 : 0.24, 0.28, horiz ? 0.24 : 0.54, 0, tint(style.stone, 0.78));
@@ -807,13 +827,13 @@ export const SRO_DUNGEON_PROPS = {
     corners: [
       DUN_PROP('jinsi_warrior.glb', { targetHeight: 2.45, radius: 0.8 }),
       DUN_PROP('jinsi_maiden.glb', { targetHeight: 2.4, radius: 0.8 }),
-      DUN_PROP('jinsi_lantern.glb', { targetHeight: 2.15, radius: 0.45 }),
+      DUN_PROP('jinsi_lantern_tall.glb', { targetHeight: 2.45, radius: 0.48 }),
       DUN_PROP('jinsi_flame_bowl.glb', { targetHeight: 1.4, radius: 0.75 })
     ],
     wall: DUN_PROP('jinsi_flame_l.glb', { targetHeight: 2.5, radius: 0.7 }),
     shrineCenter: DUN_PROP('jinsi_jewel.glb', { targetHeight: 2.8, radius: 0.7 }),
     shrineGuard: DUN_PROP('jinsi_warrior.glb', { targetHeight: 2.6, radius: 0.8 }),
-    bossGate: SRO_PROP('env/cj_jang_gate_dragon.glb', { centerXZ: true }),
+    bossGate: SRO_PROP('env/cj_jang_gate.glb', { centerXZ: true }),
     bossFlankLeft: DUN_PROP('jinsi_warrior.glb', { targetHeight: 3.2, radius: 0.85 }),
     bossFlankRight: DUN_PROP('jinsi_maiden.glb', { targetHeight: 3.15, radius: 0.85 }),
     bossSanctumNorth: DUN_PROP('jinsi_jewel.glb', { targetHeight: 3.1, radius: 0.7 })
@@ -821,13 +841,14 @@ export const SRO_DUNGEON_PROPS = {
   qinshi_b7: {
     corners: [
       DUN_PROP('jinsi_warrior.glb', { targetHeight: 2.45, radius: 0.8 }),
+      DUN_PROP('jinsi_lantern_tall.glb', { targetHeight: 2.4, radius: 0.48 }),
       DUN_PROP('jinsi_lantern.glb', { targetHeight: 2.15, radius: 0.45 }),
       DUN_PROP('jinsi_flame_bowl.glb', { targetHeight: 1.45, radius: 0.75 })
     ],
     wall: DUN_PROP('jinsi_warrior.glb', { targetHeight: 2.7, radius: 0.85 }),
     shrineCenter: DUN_PROP('jinsi_warrior.glb', { targetHeight: 2.75, radius: 0.85 }),
-    shrineGuard: DUN_PROP('jinsi_lantern.glb', { targetHeight: 2.25, radius: 0.5 }),
-    bossGate: SRO_PROP('env/cj_jang_gate_dragon.glb', { centerXZ: true }),
+    shrineGuard: DUN_PROP('jinsi_lantern_tall.glb', { targetHeight: 2.45, radius: 0.5 }),
+    bossGate: SRO_PROP('env/cj_jang_gate.glb', { centerXZ: true }),
     bossFlankLeft: DUN_PROP('jinsi_warrior.glb', { targetHeight: 3.1, radius: 0.85 }),
     bossFlankRight: DUN_PROP('jinsi_warrior.glb', { targetHeight: 3.1, radius: 0.85 }),
     bossSanctumNorth: DUN_PROP('jinsi_flame_bowl.glb', { targetHeight: 2.0, radius: 0.75 })
@@ -837,12 +858,12 @@ export const SRO_DUNGEON_PROPS = {
       DUN_PROP('jinsi_maiden.glb', { targetHeight: 2.45, radius: 0.8 }),
       DUN_PROP('jinsi_maiden_confue.glb', { targetHeight: 2.45, radius: 0.85 }),
       DUN_PROP('jinsi_flame_l.glb', { targetHeight: 2.35, radius: 0.7 }),
-      DUN_PROP('jinsi_lantern.glb', { targetHeight: 2.1, radius: 0.45 })
+      DUN_PROP('jinsi_lantern_tall.glb', { targetHeight: 2.4, radius: 0.48 })
     ],
     wall: DUN_PROP('jinsi_flame_l.glb', { targetHeight: 2.55, radius: 0.7 }),
     shrineCenter: DUN_PROP('jinsi_maiden_confue.glb', { targetHeight: 2.75, radius: 0.85 }),
     shrineGuard: DUN_PROP('jinsi_maiden.glb', { targetHeight: 2.55, radius: 0.8 }),
-    bossGate: SRO_PROP('env/cj_jang_gate_dragon.glb', { centerXZ: true }),
+    bossGate: SRO_PROP('env/cj_jang_gate.glb', { centerXZ: true }),
     bossFlankLeft: DUN_PROP('jinsi_maiden_confue.glb', { targetHeight: 3.1, radius: 0.85 }),
     bossFlankRight: DUN_PROP('jinsi_maiden.glb', { targetHeight: 3.1, radius: 0.85 }),
     bossSanctumNorth: DUN_PROP('jinsi_flame_l.glb', { targetHeight: 2.8, radius: 0.7 })
@@ -852,12 +873,12 @@ export const SRO_DUNGEON_PROPS = {
       DUN_PROP('jinsi_jewel.glb', { targetHeight: 2.55, radius: 0.65 }),
       DUN_PROP('garden_lion.glb', { targetHeight: 2.15, radius: 0.85 }),
       DUN_PROP('jinsi_warrior.glb', { targetHeight: 2.5, radius: 0.8 }),
-      DUN_PROP('jinsi_maiden_confue.glb', { targetHeight: 2.5, radius: 0.85 })
+      DUN_PROP('jinsi_lantern_tall.glb', { targetHeight: 2.45, radius: 0.48 })
     ],
     wall: DUN_PROP('jinsi_jewel.glb', { targetHeight: 2.8, radius: 0.7 }),
     shrineCenter: DUN_PROP('jinsi_jewel.glb', { targetHeight: 3.0, radius: 0.7 }),
     shrineGuard: DUN_PROP('garden_lion.glb', { targetHeight: 2.35, radius: 0.85 }),
-    bossGate: SRO_PROP('env/cj_jang_gate_dragon.glb', { centerXZ: true }),
+    bossGate: SRO_PROP('env/cj_jang_gate.glb', { centerXZ: true }),
     bossFlankLeft: DUN_PROP('jinsi_warrior.glb', { targetHeight: 3.3, radius: 0.85 }),
     bossFlankRight: DUN_PROP('jinsi_maiden_confue.glb', { targetHeight: 3.25, radius: 0.85 }),
     bossSanctumNorth: DUN_PROP('jinsi_jewel.glb', { targetHeight: 3.2, radius: 0.7 })
@@ -867,12 +888,12 @@ export const SRO_DUNGEON_PROPS = {
       DUN_PROP('jinsi_maiden_confue.glb', { targetHeight: 2.55, radius: 0.85 }),
       DUN_PROP('demon_altar_poison.glb', { targetHeight: 2.35, radius: 1.0 }),
       DUN_PROP('jinsi_jewel.glb', { targetHeight: 2.6, radius: 0.65 }),
-      DUN_PROP('garden_lion.glb', { targetHeight: 2.2, radius: 0.85 })
+      DUN_PROP('jinsi_lantern_tall.glb', { targetHeight: 2.5, radius: 0.5 })
     ],
     wall: DUN_PROP('jinsi_flame_l.glb', { targetHeight: 2.7, radius: 0.75 }),
     shrineCenter: DUN_PROP('demon_altar_poison.glb', { targetHeight: 2.65, radius: 1.05 }),
     shrineGuard: DUN_PROP('jinsi_maiden_confue.glb', { targetHeight: 2.7, radius: 0.85 }),
-    bossGate: SRO_PROP('env/cj_jang_gate_dragon.glb', { centerXZ: true }),
+    bossGate: SRO_PROP('env/cj_jang_gate.glb', { centerXZ: true }),
     bossFlankLeft: DUN_PROP('jinsi_warrior.glb', { targetHeight: 3.35, radius: 0.85 }),
     bossFlankRight: DUN_PROP('jinsi_maiden_confue.glb', { targetHeight: 3.3, radius: 0.85 }),
     bossSanctumNorth: DUN_PROP('demon_altar_poison.glb', { targetHeight: 2.9, radius: 1.05 })
@@ -939,12 +960,11 @@ export const SRO_DUNGEON_PROPS = {
       DUN_PROP('pharaoh_ruin.glb', { targetHeight: 2.75, radius: 1.05 }),
       DUN_PROP('pha_statue_green.glb', { targetHeight: 2.65, radius: 0.85 }),
       DUN_PROP('pha_statue_blue.glb', { targetHeight: 2.65, radius: 0.85 }),
-      DUN_PROP('pha_statue_gold.glb', { targetHeight: 2.6, radius: 0.85 }),
-      DUN_PROP('palace_well.glb', { targetHeight: 2.15, radius: 1.05 })
+      DUN_PROP('pha_burner.glb', { targetHeight: 1.9, radius: 0.75 })
     ],
     wall: DUN_PROP('pha_altar.glb', { targetHeight: 2.95, radius: 1.2 }),
     shrineCenter: DUN_PROP('pharaoh_ruin.glb', { targetHeight: 3.05, radius: 1.1 }),
-    shrineGuard: DUN_PROP('pha_statue_green.glb', { targetHeight: 2.7, radius: 0.85 }),
+    shrineGuard: DUN_PROP('pha_burner.glb', { targetHeight: 2.05, radius: 0.75 }),
     springCenter: DUN_PROP('palace_well.glb', { targetHeight: 2.45, radius: 1.1 }),
     bossGate: DUN_PROP('roc_portal.glb', { targetHeight: 4.5 }),
     bossFlankLeft: DUN_PROP('pha_statue_green.glb', { targetHeight: 3.4, radius: 0.85 }),
@@ -955,16 +975,16 @@ export const SRO_DUNGEON_PROPS = {
     corners: [
       DUN_PROP('jupiter_piety_altar.glb', { targetHeight: 2.6, radius: 1.15 }),
       DUN_PROP('colosseum_column.glb', { targetHeight: 3.25, radius: 0.8 }),
-      DUN_PROP('jupiter_jewels.glb', { targetHeight: 1.95, radius: 0.45 }),
-      DUN_PROP('pha_fire_large.glb', { targetHeight: 2.1, radius: 0.7 })
+      DUN_PROP('jupiter_athena_statue.glb', { targetHeight: 2.9, radius: 0.9 }),
+      DUN_PROP('jupiter_nike.glb', { targetHeight: 2.85, radius: 0.9 })
     ],
     wall: DUN_PROP('jupiter_piety_gate.glb', { targetHeight: 3.05, radius: 1.2 }),
-    shrineCenter: DUN_PROP('jupiter_piety_altar.glb', { targetHeight: 2.85, radius: 1.2 }),
+    shrineCenter: DUN_PROP('jupiter_athena_statue.glb', { targetHeight: 3.1, radius: 0.95 }),
     shrineGuard: DUN_PROP('colosseum_column.glb', { targetHeight: 3.2, radius: 0.8 }),
     springCenter: DUN_PROP('jupiter_fountain.glb', { targetHeight: 2.5, radius: 1.5 }),
     bossGate: DUN_PROP('jupiter_piety_gate.glb', { targetHeight: 4.6 }),
-    bossFlankLeft: DUN_PROP('jupiter_piety_altar.glb', { targetHeight: 3.1, radius: 1.25 }),
-    bossFlankRight: DUN_PROP('jupiter_altar.glb', { targetHeight: 3.1, radius: 1.3 }),
+    bossFlankLeft: DUN_PROP('jupiter_athena_statue.glb', { targetHeight: 3.3, radius: 0.95 }),
+    bossFlankRight: DUN_PROP('jupiter_nike.glb', { targetHeight: 3.3, radius: 0.95 }),
     bossSanctumNorth: DUN_PROP('jupiter_fountain.glb', { targetHeight: 2.8, radius: 1.5 })
   },
   demon: {
@@ -985,17 +1005,17 @@ export const SRO_DUNGEON_PROPS = {
   roc_nest: {
     corners: [
       DUN_PROP('colosseum_column.glb', { targetHeight: 3.4, radius: 0.85 }),
-      DUN_PROP('garden_lion.glb', { targetHeight: 2.4, radius: 0.9 }),
+      DUN_PROP('roc_pillar_key.glb', { targetHeight: 3.1, radius: 0.85 }),
       DUN_PROP('roc_altar.glb', { targetHeight: 2.8, radius: 1.25 }),
-      DUN_PROP('jupiter_jewels.glb', { targetHeight: 2.1, radius: 0.5 })
+      DUN_PROP('roc_nest_straw.glb', { targetHeight: 1.6, radius: 1.15 })
     ],
-    wall: DUN_PROP('colosseum_column.glb', { targetHeight: 3.6, radius: 0.85 }),
+    wall: DUN_PROP('roc_pillar_key.glb', { targetHeight: 3.6, radius: 0.85 }),
     shrineCenter: DUN_PROP('roc_altar.glb', { targetHeight: 3.25, radius: 1.35 }),
-    shrineGuard: DUN_PROP('garden_lion.glb', { targetHeight: 2.5, radius: 0.9 }),
+    shrineGuard: DUN_PROP('roc_pillar_key.glb', { targetHeight: 3.0, radius: 0.85 }),
     springCenter: DUN_PROP('jupiter_fountain.glb', { targetHeight: 2.6, radius: 1.5 }),
     bossGate: DUN_PROP('roc_portal.glb', { targetHeight: 5.0 }),
-    bossFlankLeft: DUN_PROP('colosseum_column.glb', { targetHeight: 3.8, radius: 0.9 }),
-    bossFlankRight: DUN_PROP('colosseum_column.glb', { targetHeight: 3.8, radius: 0.9 }),
+    bossFlankLeft: DUN_PROP('roc_pillar_key.glb', { targetHeight: 3.8, radius: 0.9 }),
+    bossFlankRight: DUN_PROP('roc_pillar_key.glb', { targetHeight: 3.8, radius: 0.9 }),
     bossSanctumNorth: DUN_PROP('roc_nest.glb', { targetHeight: 3.8, radius: 1.4 })
   },
   togui: {
@@ -1009,24 +1029,24 @@ export const SRO_DUNGEON_PROPS = {
     allowPine: true,
     shrineCenter: DUN_PROP('mayan_gong.glb', { targetHeight: 2.8, radius: 0.95 }),
     shrineGuard: DUN_PROP('togui_totem.glb', { targetHeight: 2.85, radius: 0.85 }),
-    bossGate: SRO_PROP('env/cj_jang_gate_dragon.glb', { centerXZ: true }),
+    bossGate: DUN_PROP('togui_gate.glb', { targetHeight: 4.5 }),
     bossFlankLeft: DUN_PROP('togui_totem.glb', { targetHeight: 3.25, radius: 0.85 }),
     bossFlankRight: DUN_PROP('mayan_gong.glb', { targetHeight: 2.7, radius: 0.95 }),
     bossSanctumNorth: DUN_PROP('togui_totem.glb', { targetHeight: 3.2, radius: 0.85 })
   },
   wreck: {
     corners: [
-      DUN_PROP('palace_well.glb', { targetHeight: 2.0, radius: 1.0 }),
+      DUN_PROP('wreck_barrel.glb', { targetHeight: 1.35, radius: 0.65 }),
+      DUN_PROP('wreck_crate.glb', { targetHeight: 1.35, radius: 0.7 }),
       DUN_PROP('pha_fire_large.glb', { targetHeight: 2.0, radius: 0.7 }),
-      SRO_PROP('props/cj_table01.glb', { scale: 0.7, radius: 0.65 }),
-      SRO_PROP('props/cj_strawcart.glb', { targetHeight: 1.35, radius: 0.85 })
+      DUN_PROP('palace_well.glb', { targetHeight: 2.0, radius: 1.0 })
     ],
-    wall: DUN_PROP('pha_altar.glb', { targetHeight: 2.6, radius: 1.15 }),
+    wall: DUN_PROP('wreck_crate.glb', { targetHeight: 1.75, radius: 0.85 }),
     shrineCenter: DUN_PROP('pha_altar.glb', { targetHeight: 2.8, radius: 1.2 }),
-    shrineGuard: DUN_PROP('pha_fire_large.glb', { targetHeight: 2.1, radius: 0.7 }),
+    shrineGuard: DUN_PROP('wreck_barrel.glb', { targetHeight: 1.5, radius: 0.7 }),
     bossGate: DUN_PROP('pha_statue_gold.glb', { targetHeight: 3.5 }),
     bossFlankLeft: DUN_PROP('pha_statue_gold.glb', { targetHeight: 3.0, radius: 0.85 }),
-    bossFlankRight: DUN_PROP('palace_well.glb', { targetHeight: 2.2, radius: 1.05 }),
+    bossFlankRight: DUN_PROP('wreck_crate.glb', { targetHeight: 1.8, radius: 0.85 }),
     bossSanctumNorth: DUN_PROP('pha_altar.glb', { targetHeight: 3.0, radius: 1.2 })
   }
 };
@@ -1040,7 +1060,7 @@ const THEME_TO_DUNGEON = {
   abyss: 'demon'
 };
 
-function resolveSroDungeon(gen) {
+export function resolveSroDungeon(gen) {
   const profile = gen?.decorProfile || gen?.floorDef?.decorProfile || gen?.theme?.decorProfile;
   if (profile && SRO_DUNGEON_PROPS[profile]) return profile;
   const key = gen?.sroDungeon || gen?.floorDef?.sroDungeon || gen?.theme?.sroDungeon;
@@ -1272,6 +1292,129 @@ function decorAbyss(b, gen, room, rand, st) {
   });
 }
 
+function resolveBiomeBase(gen) {
+  const key = resolveSroDungeon(gen);
+  if (key === 'qinshi_b6') return 'qinshi_b6';
+  if (key.startsWith('donhwang')) return 'donhwang';
+  if (key.startsWith('karakoram')) return 'karakoram';
+  if (key.startsWith('qinshi')) return 'qinshi';
+  if (key.startsWith('flame')) return 'flame';
+  return key;
+}
+
+function decorKarakoram(b, gen, room, rand, st) {
+  // Salt-frost crystal shards in corners + warm bandit braziers along flat walls (zero crypt skulls!)
+  wallSpots(gen, room, 0.22, 3.0, 4.0).forEach((s, i) => {
+    if (i % 3 !== 0) return;
+    const horiz = s.side === 'N' || s.side === 'S';
+    b.add('mbox', s.x, 1.9, s.z, horiz ? 0.52 : 0.14, 0.28, horiz ? 0.14 : 0.52, 0, tint(st.bronze || st.iron, 0.9));
+    b.add('glowBox', s.x, 2.2, s.z, 0.18, 0.22, 0.18, 0, tint(st.flame || 0xf59e0b, 0.72));
+  });
+  const corners = [[0.85, 0.85], [room.w - 0.85, 0.85], [0.85, room.h - 0.85], [room.w - 0.85, room.h - 0.85]];
+  corners.forEach(([ox, oz], ci) => {
+    if (rand() < 0.5) return;
+    const cx = room.x + ox; const cz = room.z + oz;
+    if (blocked(gen, cx, cz, 3.4, 0.45)) return;
+    const frost = ci % 2 ? 0xdbeafe : 0xbae6fd;
+    for (let i = 0; i < 3; i++) {
+      const a = rand() * 6.28; const d = 0.1 + rand() * 0.22;
+      const h = 0.5 + rand() * 0.6;
+      b.add('cone', cx + Math.cos(a) * d, h * 0.5, cz + Math.sin(a) * d, 0.22, h, 0.22, 0, tint(frost, 0.85), (rand() - 0.5) * 0.25, (rand() - 0.5) * 0.25);
+    }
+    solid(gen, cx, cz, 0.42, 'salt_cluster');
+  });
+}
+
+function decorQinshi(b, gen, room, rand, st) {
+  // Imperial Silkroad lacquer plaques, lantern brackets & bronze shields along walls (zero creeping vines!)
+  wallSpots(gen, room, 0.18, 3.0, 4.0).forEach((s, i) => {
+    const horiz = s.side === 'N' || s.side === 'S';
+    if (i % 3 === 0) {
+      b.add('mbox', s.x, 2.15, s.z, horiz ? 0.82 : 0.1, 0.95, horiz ? 0.1 : 0.82, 0, 0x5c1a1a);
+      b.add('mbox', s.x, 2.15, s.z, horiz ? 0.9 : 0.12, 0.12, horiz ? 0.12 : 0.9, 0, tint(st.bronze || 0xc9a24a, 0.9));
+    } else if (i % 6 === 2 && !blocked(gen, s.x, s.z, 2.8, 0.35)) {
+      b.add('mcyl', s.x, 1.95, s.z, 0.26, 0.36, 0.26, 0, tint(st.bronze || 0xc9a24a, 0.88));
+      b.add('glowBox', s.x, 1.95, s.z, 0.18, 0.24, 0.18, 0, 0xfbbf24);
+    }
+  });
+}
+
+function decorHolywater(b, gen, room, rand, st) {
+  // Egyptian sandstone wall obelisks & gilded sun discs (zero terracotta warriors)
+  wallSpots(gen, room, 0.20, 3.2, 4.2).forEach((s, i) => {
+    if (i % 3 !== 0) return;
+    b.add('box', s.x, 1.35, s.z, 0.36, 2.7, 0.36, 0, tint(0xd4b483, 0.85));
+    b.add('cone', s.x, 2.85, s.z, 0.28, 0.38, 0.28, 0, tint(st.bronze || 0xd4a437, 0.9));
+  });
+}
+
+function decorJupiter(b, gen, room, rand, st) {
+  // Greco-Roman temple bronze sun-shields & fluted wall pilasters (zero terracotta warriors)
+  wallSpots(gen, room, 0.20, 3.2, 4.0).forEach((s, i) => {
+    if (i % 3 === 1) {
+      b.add('mcyl', s.x, 2.05, s.z, 0.85, 0.07, 0.85, s.ry, tint(st.bronze || 0xd4a437, 0.9), Math.PI / 2 - 0.04, 0);
+      b.add('mbox', s.x, 2.05, s.z, 0.16, 0.92, 0.09, s.ry, tint(st.stone, 0.9));
+    }
+  });
+}
+
+function decorDemon(b, gen, room, rand, st) {
+  // Obsidian wall blades & emerald/violet abyssal rune plaques (zero terracotta warriors)
+  wallSpots(gen, room, 0.20, 3.2, 4.0).forEach((s, i) => {
+    if (i % 3 === 0) {
+      const horiz = s.side === 'N' || s.side === 'S';
+      b.add('box', s.x, 1.85, s.z, horiz ? 0.22 : 0.14, 1.8, horiz ? 0.14 : 0.22, 0, 0x1e1b2e);
+      b.add('glowBox', s.x, 2.15, s.z, 0.16, 0.35, 0.16, 0, tint(st.jadeGlow || 0xa855f7, 0.78));
+    }
+  });
+}
+
+function decorRoc(b, gen, room, rand, st) {
+  // Sky-sanctum gilded wing crests flush against upper walls (zero terracotta warriors)
+  wallSpots(gen, room, 0.22, 3.4, 4.2).forEach((s, i) => {
+    if (i % 3 === 1) {
+      b.add('mcyl', s.x, 2.2, s.z, 0.76, 0.06, 0.76, s.ry, 0xd4a437, Math.PI / 2 - 0.04, 0);
+      b.add('glowBox', s.x, 2.2, s.z, 0.22, 0.22, 0.09, s.ry, 0xfbbf24);
+    }
+  });
+}
+
+function decorTogui(b, gen, room, rand, st) {
+  // Tribal timber frames & carved Mayan bronze discs on walls
+  wallSpots(gen, room, 0.20, 3.0, 4.0).forEach((s, i) => {
+    if (i % 3 === 0) {
+      const horiz = s.side === 'N' || s.side === 'S';
+      b.add('box', s.x, 1.4, s.z, horiz ? 0.26 : 0.16, 2.6, horiz ? 0.16 : 0.26, 0, tint(st.timber || 0x5c3a21, 0.9));
+      b.add('mcyl', s.x, 2.1, s.z, 0.56, 0.08, 0.56, s.ry, 0xb47d3b, Math.PI / 2 - 0.04, 0);
+    }
+  });
+}
+
+function decorWreck(b, gen, room, rand, st) {
+  // Ghost-ship timber ribs & brass wall lanterns
+  wallSpots(gen, room, 0.20, 3.0, 4.0).forEach((s, i) => {
+    if (i % 3 === 0) {
+      const horiz = s.side === 'N' || s.side === 'S';
+      b.add('box', s.x, 1.4, s.z, horiz ? 0.24 : 0.18, 2.75, horiz ? 0.18 : 0.24, 0, tint(st.timber || 0x4b3320, 0.86));
+      b.add('glowBox', s.x, 2.1, s.z, 0.18, 0.24, 0.18, 0, 0x7dd3fc);
+    }
+  });
+}
+
+const SRO_BIOME_DECORATORS = {
+  donhwang: decorCave,
+  karakoram: decorKarakoram,
+  qinshi: decorQinshi,
+  qinshi_b6: decorQinshi,
+  flame: decorLava,
+  holywater: decorHolywater,
+  jupiter: decorJupiter,
+  demon: decorDemon,
+  roc_nest: decorRoc,
+  togui: decorTogui,
+  wreck: decorWreck
+};
+
 const THEME_DECORATORS = { cave: decorCave, crypt: decorCrypt, ruins: decorRuins, lava: decorLava, abyss: decorAbyss };
 
 /**
@@ -1356,7 +1499,8 @@ export function decorateFloor(gen, b, rand, wallTiles) {
   addDoorArches(b, gen, st);
   addRubble(b, gen, rand, st);
   addAuthenticSROProps(gen, rand);
-  const fn = THEME_DECORATORS[gen.theme?.decor] || decorCave;
+  const biomeBase = resolveBiomeBase(gen);
+  const fn = SRO_BIOME_DECORATORS[biomeBase] || THEME_DECORATORS[gen.theme?.decor] || decorCave;
   for (const room of gen.rooms) {
     if (room.type === 'boss') continue; // the arena has its own set piece
     addFloorArtistry(b, gen, room, rand, st);
@@ -1376,13 +1520,10 @@ export function dressSpecialRoom(gen, b, room, kind, rand) {
     candleCluster(b, gen, room.x + 1.0, room.z + 1.0, st, rand, true);
     candleCluster(b, gen, room.x + room.w - 1.0, room.z + room.h - 1.0, st, rand, true);
   } else if (kind === 'trap_gallery') {
-    // muted corner floor studs guiding the safe lane without glare
-    for (let z = room.z + 1.6; z <= room.z + room.h - 1.6; z += 1.4) {
-      b.add('glowBox', room.centerX, 0.016, z, 0.18, 0.02, 0.18, 0, tint(st.flame, 0.42));
-    }
-    for (let x = room.x + 1.6; x <= room.x + room.w - 1.6; x += 1.4) {
-      b.add('glowBox', x, 0.016, room.centerZ, 0.18, 0.02, 0.18, 0, tint(st.flame, 0.42));
-    }
+    // Frame the trap room perimeter cleanly without misleading center guide lines over live spike traps
+    const borderCol = tint(st.bronze || st.iron || st.stone, 0.72);
+    b.add('box', room.centerX, 0.012, room.z + 1.0, room.w - 2.0, 0.02, 0.24, 0, borderCol);
+    b.add('box', room.centerX, 0.012, room.z + room.h - 1.0, room.w - 2.0, 0.02, 0.24, 0, borderCol);
   } else if (kind === 'shrine') {
     b.add('cyl', room.centerX, 0.012, room.centerZ, 4.4, 0.025, 4.4, 0, tint(st.dark, 1.35));
     const propSet = SRO_DUNGEON_PROPS[resolveSroDungeon(gen)];
@@ -1502,7 +1643,21 @@ export function buildVaultAlcove(gen, b, room, corner) {
 // ---------------------------------------------------------------------------------------------
 // Boss arena set piece
 // ---------------------------------------------------------------------------------------------
-export function decorateBossArenaProps(gen, b, room, rand) {
+const BOSS_ARENA_PROFILES = {
+  donhwang: { carpet: 0x4b2f21, ring: 0x3b2d22, flame: 0xf59e0b, daisTint: 0.85 },
+  karakoram: { carpet: 0x26415c, ring: 0x1e293b, flame: 0x38bdf8, daisTint: 0.92 },
+  qinshi: { carpet: 0x5c1a1a, ring: 0x2a1a16, flame: 0xfbbf24, daisTint: 0.9 },
+  qinshi_b6: { carpet: 0x1f3d2f, ring: 0x16241d, flame: 0x10b981, daisTint: 0.82 },
+  flame: { carpet: 0x45120c, ring: 0x240a08, flame: 0xf97316, daisTint: 0.78 },
+  holywater: { carpet: 0x6b4e1e, ring: 0x2d2414, flame: 0xfacc15, daisTint: 0.95 },
+  jupiter: { carpet: 0x274060, ring: 0x1e293b, flame: 0x60a5fa, daisTint: 0.98 },
+  demon: { carpet: 0x341942, ring: 0x1c1224, flame: 0xc084fc, daisTint: 0.76 },
+  roc_nest: { carpet: 0x5c1a1a, ring: 0x342a4a, flame: 0xfbbf24, daisTint: 0.96 },
+  togui: { carpet: 0x4a2518, ring: 0x241712, flame: 0xef4444, daisTint: 0.84 },
+  wreck: { carpet: 0x1e3a4c, ring: 0x14222c, flame: 0x38bdf8, daisTint: 0.84 }
+};
+
+export function decorateBossArenaProps(gen, b, room, rand, entrance = null) {
   const st = styleFor(gen.theme);
   const cx = room.centerX; const cz = room.centerZ;
   const isFinalSanctum = Boolean(room.w >= 50 || gen.currentFloor === 16);
@@ -1510,24 +1665,39 @@ export function decorateBossArenaProps(gen, b, room, rand) {
   const R = Math.min(isFinalSanctum ? 20.5 : 15.8, maxR);
   const daisScale = isFinalSanctum ? 1.75 : 1.32;
   const trimCol = tint(st.bronze || st.stone, 0.78);
-  const flame = tint(isFinalSanctum ? 0xfbbf24 : (gen.theme?.decor === 'abyss' ? st.jadeGlow : 0xef4444), 0.72);
+  const biomeBase = resolveBiomeBase(gen);
+  const profile = BOSS_ARENA_PROFILES[biomeBase] || BOSS_ARENA_PROFILES.donhwang;
+  const flame = tint(isFinalSanctum ? 0xfbbf24 : profile.flame, 0.74);
 
-  // Monumental 3-tier dais & inlaid cardinal crossways (flush matte finish, zero harsh neon ring)
-  b.add('cyl', cx, 0.022, cz, 7.6 * daisScale, 0.045, 7.6 * daisScale, 0, tint(st.stone, 0.78));
-  b.add('cyl', cx, 0.052, cz, 5.4 * daisScale, 0.045, 5.4 * daisScale, 0, tint(st.stone, 0.88));
-  b.add('cyl', cx, 0.082, cz, 3.2 * daisScale, 0.036, 3.2 * daisScale, 0, tint(st.stone, 0.96));
+  // Monumental 3-tier dais customized per boss biome + inlaid cardinal crossways (wide open center)
+  b.add('cyl', cx, 0.022, cz, 7.6 * daisScale, 0.045, 7.6 * daisScale, 0, tint(st.stone, 0.78 * profile.daisTint));
+  b.add('cyl', cx, 0.052, cz, 5.4 * daisScale, 0.045, 5.4 * daisScale, 0, tint(st.stone, 0.88 * profile.daisTint));
+  b.add('cyl', cx, 0.082, cz, 3.2 * daisScale, 0.036, 3.2 * daisScale, 0, tint(st.stone, 0.96 * profile.daisTint));
   b.add('box', cx, 0.05, cz, Math.max(room.w - 6, R * 1.7), 0.024, 0.4, 0, trimCol);
   b.add('box', cx, 0.05, cz, 0.4, 0.024, Math.max(room.h - 6, R * 1.55), 0, trimCol);
 
-  // Ceremonial carpet leading from the boss entrance corridor to the central dais
-  const runnerLen = isFinalSanctum ? 22.0 : 18.0;
-  const runnerZ = cz + (isFinalSanctum ? 8.2 : 6.6);
-  b.add('box', cx, 0.02, runnerZ, isFinalSanctum ? 4.0 : 3.2, 0.02, runnerLen, 0, isFinalSanctum ? 0x5c1a1a : tint(st.stone, 0.75));
-  b.add('box', cx, 0.026, runnerZ, isFinalSanctum ? 4.4 : 3.55, 0.015, runnerLen + 0.2, 0, trimCol);
-
-  if (isFinalSanctum) {
-    b.add('cyl', cx, 0.1, cz, 4.6, 0.04, 4.6, 0, 0x342a4a);
+  // Determine entrance direction vector from center toward doorway (defaults to +Z south)
+  let side = entrance?.side;
+  if (!side && entrance) {
+    const edx = entrance.x - cx;
+    const edz = entrance.z - cz;
+    side = Math.abs(edx) > Math.abs(edz) ? (edx > 0 ? 'E' : 'W') : (edz > 0 ? 'S' : 'N');
   }
+  side = side || 'S';
+  const dirVec = side === 'N' ? [0, -1] : side === 'W' ? [-1, 0] : side === 'E' ? [1, 0] : [0, 1];
+  const rightVec = [-dirVec[1], dirVec[0]];
+  const alongZ = dirVec[0] === 0;
+
+  // Ceremonial carpet oriented cleanly from actual entrance threshold to the central dais
+  const runnerLen = Math.min(isFinalSanctum ? 22.0 : 18.0, (alongZ ? room.h : room.w) * 0.44);
+  const runnerDist = Math.min((alongZ ? room.h : room.w) * 0.25, isFinalSanctum ? 9.0 : 6.6);
+  const runnerX = cx + dirVec[0] * runnerDist;
+  const runnerZ = cz + dirVec[1] * runnerDist;
+  const carpetW = isFinalSanctum ? 4.0 : 3.2;
+  b.add('box', runnerX, 0.02, runnerZ, alongZ ? carpetW : runnerLen, 0.02, alongZ ? runnerLen : carpetW, 0, profile.carpet);
+  b.add('box', runnerX, 0.026, runnerZ, alongZ ? carpetW + 0.35 : runnerLen + 0.2, 0.015, alongZ ? runnerLen + 0.2 : carpetW + 0.35, 0, trimCol);
+
+  b.add('cyl', cx, 0.098, cz, isFinalSanctum ? 4.6 : 3.1, 0.03, isFinalSanctum ? 4.6 : 3.1, 0, profile.ring);
 
   // Grand 12-pillar ring pushed out along outer arena perimeter (wide open center arena for combat!)
   const pillarCount = 12;
@@ -1561,29 +1731,42 @@ export function decorateBossArenaProps(gen, b, room, rand) {
     }
   }
 
-  // Lateral perimeter wing landmarks ONLY (zero statue/gate prop ever spawned in doorway/entrance mouth!)
+  // Lateral perimeter wing landmarks & far sanctum opposite the real entrance
   const propSet = SRO_DUNGEON_PROPS[resolveSroDungeon(gen)];
   if (gen && propSet) {
-    const flankZ = Math.min(cz + R * 0.92, room.z + room.h - 2.4);
-    const flankX = isFinalSanctum ? 10.5 : 8.2;
+    const flankForward = Math.min(R * 0.88, (alongZ ? room.h : room.w) * 0.5 - 2.4);
+    const flankAside = isFinalSanctum ? 10.5 : 8.2;
     const heightScale = isFinalSanctum ? 1.25 : 1.05;
+    const faceBackYaw = Math.atan2(-dirVec[0], -dirVec[1]);
 
     if (propSet.bossFlankLeft) {
-      placePropSpec(gen, propSet.bossFlankLeft, cx - flankX, flankZ, Math.PI * 0.85, { registerSolid: true, doorPad: 3.6, heightScale });
+      const fx = cx + dirVec[0] * flankForward - rightVec[0] * flankAside;
+      const fz = cz + dirVec[1] * flankForward - rightVec[1] * flankAside;
+      placePropSpec(gen, propSet.bossFlankLeft, fx, fz, faceBackYaw - 0.35, { registerSolid: true, doorPad: 3.6, heightScale });
     }
     if (propSet.bossFlankRight) {
-      placePropSpec(gen, propSet.bossFlankRight, cx + flankX, flankZ, -Math.PI * 0.85, { registerSolid: true, doorPad: 3.6, heightScale });
+      const fx = cx + dirVec[0] * flankForward + rightVec[0] * flankAside;
+      const fz = cz + dirVec[1] * flankForward + rightVec[1] * flankAside;
+      placePropSpec(gen, propSet.bossFlankRight, fx, fz, faceBackYaw + 0.35, { registerSolid: true, doorPad: 3.6, heightScale });
     }
     if (propSet.bossSanctumNorth) {
-      const northX = isFinalSanctum ? 9.5 : 7.6;
-      const northZ = cz - (isFinalSanctum ? 14.5 : 10.5);
-      placePropSpec(gen, propSet.bossSanctumNorth, cx - northX, northZ, Math.PI * 0.25, { registerSolid: true, doorPad: 3.6, heightScale });
-      placePropSpec(gen, propSet.bossSanctumNorth, cx + northX, northZ, -Math.PI * 0.25, { registerSolid: true, doorPad: 3.6, heightScale });
+      const farAside = isFinalSanctum ? 9.5 : 7.6;
+      const farBack = isFinalSanctum ? 14.5 : 10.5;
+      const faceDoorYaw = Math.atan2(dirVec[0], dirVec[1]);
+      for (const sign of [-1, 1]) {
+        const sx = cx - dirVec[0] * farBack + rightVec[0] * farAside * sign;
+        const sz = cz - dirVec[1] * farBack + rightVec[1] * farAside * sign;
+        placePropSpec(gen, propSet.bossSanctumNorth, sx, sz, faceDoorYaw - sign * 0.4, { registerSolid: true, doorPad: 3.6, heightScale });
+      }
     }
     if (propSet.wall && room.w >= 40) {
-      const sideX = isFinalSanctum ? 21.5 : 19.2;
-      placePropSpec(gen, propSet.wall, cx - sideX, cz, Math.PI * 0.5, { registerSolid: true, doorPad: 3.6, heightScale: heightScale * 1.05 });
-      placePropSpec(gen, propSet.wall, cx + sideX, cz, -Math.PI * 0.5, { registerSolid: true, doorPad: 3.6, heightScale: heightScale * 1.05 });
+      const sideDist = isFinalSanctum ? 21.5 : 19.2;
+      for (const sign of [-1, 1]) {
+        const wx = cx + rightVec[0] * sideDist * sign;
+        const wz = cz + rightVec[1] * sideDist * sign;
+        const inwardYaw = Math.atan2(-rightVec[0] * sign, -rightVec[1] * sign);
+        placePropSpec(gen, propSet.wall, wx, wz, inwardYaw, { registerSolid: true, doorPad: 3.6, heightScale: heightScale * 1.05 });
+      }
     }
   }
   return { center: { x: cx, z: cz }, radius: R + 1.5 };
