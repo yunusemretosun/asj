@@ -26,8 +26,8 @@ const THEME_CONFIGS = {
   village: {
     bg: 0x1e293b,
     fog: 0x1e293b,
-    fogNear: 55,
-    fogFar: 130,
+    fogNear: 75,
+    fogFar: 215,
     ambientColor: 0xe2e8f0,
     ambientIntensity: 1.75,
     hemiSky: 0xf8fafc,
@@ -41,89 +41,89 @@ const THEME_CONFIGS = {
     fillLightIntensity: 1.8
   },
   cave: {
-    bg: 0x1e2433,
-    fog: 0x1e2433,
-    fogNear: 52,
-    fogFar: 120,
-    ambientColor: 0xfef3c7,
+    bg: 0x141a18,
+    fog: 0x141a18,
+    fogNear: 48,
+    fogFar: 115,
+    ambientColor: 0xdcfce7,
     ambientIntensity: 1.85,
-    hemiSky: 0xfffbeb,
-    hemiGround: 0x78716c,
+    hemiSky: 0xecfdf5,
+    hemiGround: 0x52525b,
     hemiIntensity: 1.45,
-    dirColor: 0xfff7ed,
+    dirColor: 0xfef08a,
     dirIntensity: 1.95,
-    heroLightColor: 0xffedd5,
+    heroLightColor: 0xa7f3d0,
     heroLightIntensity: 2.85,
-    fillLightColor: 0xfde68a,
+    fillLightColor: 0x86efac,
     fillLightIntensity: 2.25
   },
   crypt: {
-    bg: 0x1c2237,
-    fog: 0x1c2237,
-    fogNear: 52,
-    fogFar: 120,
-    ambientColor: 0xe0e7ff,
-    ambientIntensity: 1.85,
-    hemiSky: 0xeef2ff,
-    hemiGround: 0x64748b,
-    hemiIntensity: 1.45,
-    dirColor: 0xe0f2fe,
-    dirIntensity: 1.95,
-    heroLightColor: 0xbae6fd,
+    bg: 0x0f172a,
+    fog: 0x0f172a,
+    fogNear: 40,
+    fogFar: 100,
+    ambientColor: 0x94a3b8,
+    ambientIntensity: 1.75,
+    hemiSky: 0xc7d2fe,
+    hemiGround: 0x1e293b,
+    hemiIntensity: 1.35,
+    dirColor: 0x38bdf8,
+    dirIntensity: 1.90,
+    heroLightColor: 0x93c5fd,
     heroLightIntensity: 2.85,
-    fillLightColor: 0xc7d2fe,
-    fillLightIntensity: 2.25
+    fillLightColor: 0x64748b,
+    fillLightIntensity: 2.15
   },
   ruins: {
-    bg: 0x1a2e2b,
-    fog: 0x1a2e2b,
-    fogNear: 52,
-    fogFar: 120,
-    ambientColor: 0xdcfce7,
+    bg: 0x1c1917,
+    fog: 0x1c1917,
+    fogNear: 44,
+    fogFar: 110,
+    ambientColor: 0xfef08a,
     ambientIntensity: 1.85,
-    hemiSky: 0xf0fdf4,
-    hemiGround: 0x577568,
+    hemiSky: 0xfef9c3,
+    hemiGround: 0x44403c,
     hemiIntensity: 1.45,
-    dirColor: 0xfef9c3,
-    dirIntensity: 1.95,
-    heroLightColor: 0xfef08a,
-    heroLightIntensity: 2.75,
-    fillLightColor: 0xa7f3d0,
-    fillLightIntensity: 2.2
+    dirColor: 0xfde047,
+    dirIntensity: 2.05,
+    heroLightColor: 0xfde047,
+    heroLightIntensity: 2.80,
+    fillLightColor: 0xfde68a,
+    fillLightIntensity: 2.25
   },
   lava: {
-    bg: 0x2c1614,
-    fog: 0x2c1614,
-    fogNear: 52,
-    fogFar: 120,
-    ambientColor: 0xffedd5,
+    bg: 0x27170a,
+    fog: 0x27170a,
+    fogNear: 42,
+    fogFar: 105,
+    ambientColor: 0xfed7aa,
     ambientIntensity: 1.85,
-    hemiSky: 0xfff7ed,
-    hemiGround: 0x9a3412,
-    hemiIntensity: 1.45,
-    dirColor: 0xffedd5,
-    dirIntensity: 2.0,
+    hemiSky: 0xffedd5,
+    hemiGround: 0x7c2d12,
+    hemiIntensity: 1.40,
+    dirColor: 0xfb923c,
+    dirIntensity: 2.10,
     heroLightColor: 0xfdba74,
-    heroLightIntensity: 2.9,
-    fillLightColor: 0xfed7aa,
-    fillLightIntensity: 2.3
+    heroLightIntensity: 2.90,
+    fillLightColor: 0xd97706,
+    fillLightIntensity: 2.25
   },
   boss: {
-    bg: 0x251736,
-    fog: 0x251736,
-    fogNear: 52,
-    fogFar: 120,
-    ambientColor: 0xf3e8ff,
-    ambientIntensity: 1.85,
-    hemiSky: 0xfaf5ff,
-    hemiGround: 0x6b21a8,
-    hemiIntensity: 1.45,
-    dirColor: 0xffe4e6,
-    dirIntensity: 2.0,
-    heroLightColor: 0xfef08a,
+    bg: 0x1f0b0c,
+    fog: 0x1f0b0c,
+    fogNear: 38,
+    fogFar: 95,
+    ambientColor: 0xfecaca,
+    ambientIntensity: 1.80,
+    hemiSky: 0xfee2e2,
+    hemiGround: 0x450a0a,
+    hemiIntensity: 1.40,
+    dirColor: 0xef4444,
+    dirIntensity: 2.10,
+    heroLightColor: 0xf87171,
     heroLightIntensity: 2.95,
-    fillLightColor: 0xe9d5ff,
-    fillLightIntensity: 2.35
+    fillLightColor: 0xb91c1c,
+    fillLightIntensity: 2.30
   }
 };
 
@@ -139,8 +139,12 @@ export class Renderer {
     const width = window.innerWidth || 1280;
     const height = window.innerHeight || 720;
 
-    this.camera = new THREE.PerspectiveCamera(44, width / height, 0.1, 180);
+    this.camera = new THREE.PerspectiveCamera(44, width / height, 0.1, 340);
     this.cameraTarget = new THREE.Vector3(0, 0, 0);
+    this._scratchTarget = new THREE.Vector3(0, 0, 0);
+    this._scratchProj = new THREE.Vector3(0, 0, 0);
+    this._scratchRayTarget = new THREE.Vector3(0, 0, 0);
+    this._scratchNdc = new THREE.Vector2(0, 0);
     this.cameraZoom = 1.0;
     this.cameraYaw = 0; // Orbit angle around Y
     this.cameraPitchHeight = 13.5;
@@ -243,9 +247,25 @@ export class Renderer {
         : key.includes('village') || key.includes('town') || key.includes('hub') ? THEME_CONFIGS.village
         : THEME_CONFIGS.cave);
 
+    const defaultThemeWeather = {
+      village: 'petals',
+      cave: 'spores',
+      crypt: 'mist',
+      ruins: 'incense',
+      lava: 'sand',
+      boss: 'embers'
+    };
+
+    const targetThemeId = cfg === THEME_CONFIGS.village ? 'village'
+      : cfg === THEME_CONFIGS.cave ? 'cave'
+      : cfg === THEME_CONFIGS.crypt ? 'crypt'
+      : cfg === THEME_CONFIGS.ruins ? 'ruins'
+      : cfg === THEME_CONFIGS.lava ? 'lava'
+      : cfg === THEME_CONFIGS.boss ? 'boss' : 'cave';
+
     this._atmo = null;
     this._setDust?.(false);
-    this.setWeather?.(key.includes('village') || key.includes('town') || key.includes('hub') ? 'petals' : null);
+    this.setWeather?.(defaultThemeWeather[targetThemeId] || null);
     this.scene.background.setHex(cfg.bg);
     if (this.scene.fog) {
       this.scene.fog.color.setHex(cfg.fog);
@@ -269,10 +289,14 @@ export class Renderer {
    * Apply a per-floor atmosphere override on top of the current theme (floorData.atmosphere from
    * dungeonGenerator). Fog/ambient/key light blend smoothly over ~0.6s in update(). Values are
    * clamped so tombs stay moody but readable from the isometric camera.
-   * atm: { fogColor, fogNear, fogFar, ambientColor, ambientIntensity, keyLightColor, keyLightIntensity, dust }
+   * atm: { fogColor, fogNear, fogFar, ambientColor, ambientIntensity, keyLightColor, keyLightIntensity, dust, weather, weatherColor }
    */
   applyAtmosphere(atm = null) {
-    if (!atm || typeof atm !== 'object') { this._atmo = null; this._setDust(false); return; }
+    if (!atm || typeof atm !== 'object') {
+      this._atmo = null;
+      this._setDust(false);
+      return;
+    }
     const num = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
     const fog = this.scene.fog;
     const target = {
@@ -345,39 +369,153 @@ export class Renderer {
   }
 
   /**
-   * Ambient weather particle system around the hero ('rain' | 'snow' | 'embers' | 'petals' | 'spores' | null).
-   * Uses a single pooled THREE.Points buffer with per-particle drift/fall/rise wrap-around.
+   * Ambient weather / atmospheric particle system around the hero:
+   * ('mist' | 'spores' | 'incense' | 'sand' | 'embers' | 'petals' | 'snow' | 'rain' | null).
+   *
+   * Rules:
+   * - Fallback is NEVER snow. If kind is missing, null, 'none', 'clear', 'off', or unknown,
+   *   particles are turned off.
+   * - Snow is restricted exclusively to frozen summits. Normal dungeon floors NEVER receive snow.
    */
   setWeather(kind = null, options = {}) {
-    const w = kind ? String(kind).toLowerCase() : '';
-    if (!w || w === 'none' || w === 'clear') {
+    const w = kind ? String(kind).toLowerCase().trim() : '';
+    if (!w || w === 'none' || w === 'clear' || w === 'off' || w === 'null') {
       this._weatherKind = null;
+      this._weatherCfg = null;
       if (this._weatherPoints) this._weatherPoints.visible = false;
       return;
     }
 
     const presets = {
-      rain:   { color: 0x93c5fd, size: 0.11, opacity: 0.62, vy: -13.5, vx: -1.6, vz: 0.8, sway: 0.15, spanY: 9.0 },
-      snow:   { color: 0xe2e8f0, size: 0.12, opacity: 0.78, vy: -2.1,  vx: 0.45, vz: 0.3, sway: 1.1,  spanY: 8.0 },
-      embers: { color: 0xf97316, size: 0.11, opacity: 0.85, vy: 2.3,   vx: 0.35, vz: -0.25, sway: 0.9, spanY: 7.5 },
-      petals: { color: 0xfbcfe8, size: 0.10, opacity: 0.68, vy: -1.25, vx: 0.55, vz: 0.35, sway: 1.25, spanY: 7.5 },
-      spores: { color: 0x6ee7b7, size: 0.09, opacity: 0.65, vy: 0.65,  vx: 0.2,  vz: 0.2,  sway: 0.85, spanY: 6.5 }
+      // 1. mist: Crypts, catacombs & graveyards - low cold ground mist, slow drifting pale slate specks
+      mist: {
+        color: 0x94a3b8,
+        size: 0.16,
+        opacity: 0.38,
+        vy: -0.06,
+        vx: 0.22,
+        vz: 0.16,
+        sway: 0.45,
+        spanY: 3.8,
+        minY: 0.08,
+        blending: THREE.NormalBlending
+      },
+      // 2. spores: Caves & subterranean mines - bioluminescent emerald/amber spores drifting upward
+      spores: {
+        color: 0x86efac,
+        size: 0.10,
+        opacity: 0.70,
+        vy: 0.65,
+        vx: 0.20,
+        vz: 0.22,
+        sway: 0.85,
+        spanY: 6.5,
+        minY: 0.10,
+        blending: THREE.AdditiveBlending
+      },
+      // 3. incense: Qin-Shi tombs & ancient ruins - ancient temple gold dust and rising incense embers
+      incense: {
+        color: 0xfde047,
+        size: 0.09,
+        opacity: 0.75,
+        vy: 0.85,
+        vx: 0.32,
+        vz: -0.20,
+        sway: 1.05,
+        spanY: 7.2,
+        minY: 0.10,
+        blending: THREE.AdditiveBlending
+      },
+      // 4. sand: Taklamakan desert & arid wastes - strong windblown sandstorm grains sweeping horizontally
+      sand: {
+        color: 0xd97706,
+        size: 0.08,
+        opacity: 0.68,
+        vy: -0.32,
+        vx: 4.80,
+        vz: 1.50,
+        sway: 0.40,
+        spanY: 6.0,
+        minY: 0.10,
+        blending: THREE.NormalBlending
+      },
+      // 5. embers: Magma caverns & underworld abyss - hot red/orange fiery embers rising from the deep
+      embers: {
+        color: 0xef4444,
+        size: 0.11,
+        opacity: 0.85,
+        vy: 2.30,
+        vx: 0.35,
+        vz: -0.25,
+        sway: 0.95,
+        spanY: 7.8,
+        minY: 0.10,
+        blending: THREE.AdditiveBlending
+      },
+      // 6. petals: Village / safe hub - soft pink cherry blossom petals drifting gracefully downward
+      petals: {
+        color: 0xfbcfe8,
+        size: 0.11,
+        opacity: 0.72,
+        vy: -1.25,
+        vx: 0.55,
+        vz: 0.35,
+        sway: 1.25,
+        spanY: 7.5,
+        minY: 0.10,
+        blending: THREE.NormalBlending
+      },
+      // 7. snow: Reserved ONLY for true icy mountain summits
+      snow: {
+        color: 0xe2e8f0,
+        size: 0.12,
+        opacity: 0.78,
+        vy: -2.10,
+        vx: 0.45,
+        vz: 0.30,
+        sway: 1.10,
+        spanY: 8.0,
+        minY: 0.10,
+        blending: THREE.NormalBlending
+      },
+      // 8. rain: Heavy downpour
+      rain: {
+        color: 0x93c5fd,
+        size: 0.11,
+        opacity: 0.62,
+        vy: -13.5,
+        vx: -1.60,
+        vz: 0.80,
+        sway: 0.15,
+        spanY: 9.0,
+        minY: 0.10,
+        blending: THREE.NormalBlending
+      }
     };
-    const cfg = presets[w] || presets.snow;
+
+    const cfg = presets[w];
+    // CRITICAL: NEVER fallback to snow! If unknown, hide particles and clear weather.
+    if (!cfg) {
+      this._weatherKind = null;
+      this._weatherCfg = null;
+      if (this._weatherPoints) this._weatherPoints.visible = false;
+      return;
+    }
+
     this._weatherKind = w;
     this._weatherCfg = {
       ...cfg,
-      color: Number.isFinite(Number(options.color)) ? Number(options.color) : cfg.color
+      color: Number.isFinite(Number(options?.color)) ? Number(options.color) : cfg.color
     };
 
     if (!this._weatherPoints) {
-      const count = 200;
+      const count = 180;
       const pos = new Float32Array(count * 3);
       const phases = new Float32Array(count);
       for (let i = 0; i < count; i++) {
-        pos[i * 3] = (Math.random() - 0.5) * 28;
+        pos[i * 3] = (Math.random() - 0.5) * 72;
         pos[i * 3 + 1] = Math.random() * 8.5;
-        pos[i * 3 + 2] = (Math.random() - 0.5) * 28;
+        pos[i * 3 + 2] = (Math.random() - 0.5) * 72;
         phases[i] = Math.random() * Math.PI * 2;
       }
       const geo = new THREE.BufferGeometry();
@@ -388,7 +526,7 @@ export class Renderer {
         transparent: true,
         opacity: this._weatherCfg.opacity,
         depthWrite: false,
-        blending: THREE.AdditiveBlending
+        blending: this._weatherCfg.blending || THREE.AdditiveBlending
       });
       this._weatherPoints = new THREE.Points(geo, mat);
       this._weatherPoints.userData.noFlash = true;
@@ -401,6 +539,23 @@ export class Renderer {
     mat.color.setHex(this._weatherCfg.color);
     mat.size = this._weatherCfg.size;
     mat.opacity = this._weatherCfg.opacity;
+    mat.blending = this._weatherCfg.blending || THREE.AdditiveBlending;
+    mat.needsUpdate = true;
+
+    // Reposition any particles outside the new vertical bounds immediately
+    const posAttr = this._weatherPoints.geometry.getAttribute('position');
+    if (posAttr && posAttr.array) {
+      const arr = posAttr.array;
+      const spanY = this._weatherCfg.spanY || 8.0;
+      const minY = this._weatherCfg.minY ?? 0.08;
+      for (let i = 1; i < arr.length; i += 3) {
+        if (arr[i] < minY || arr[i] > minY + spanY) {
+          arr[i] = minY + Math.random() * spanY;
+        }
+      }
+      posAttr.needsUpdate = true;
+    }
+
     this._weatherPoints.visible = true;
   }
 
@@ -408,27 +563,48 @@ export class Renderer {
     const pts = this._weatherPoints;
     const cfg = this._weatherCfg;
     if (!pts || !pts.visible || !cfg) return;
-    if (heroPos) {
-      pts.position.x = heroPos.x || 0;
-      pts.position.z = heroPos.z || 0;
+
+    // Accompany hero / camera smoothly across a wide 72x72 area instead of hard-snapping to hero's head
+    const targetX = this.cameraTarget ? this.cameraTarget.x : (heroPos ? (heroPos.x || 0) : 0);
+    const targetZ = this.cameraTarget ? this.cameraTarget.z : (heroPos ? (heroPos.z || 0) : 0);
+    if (!pts.userData.initializedPos) {
+      pts.position.x = targetX;
+      pts.position.z = targetZ;
+      pts.userData.initializedPos = true;
+    } else {
+      const dx = targetX - pts.position.x;
+      const dz = targetZ - pts.position.z;
+      const distSq = dx * dx + dz * dz;
+      if (distSq > 900) {
+        // Fast snap on floor transition / distant teleport
+        pts.position.x = targetX;
+        pts.position.z = targetZ;
+      } else {
+        // Gentle lerp with wide tolerance so particles do not bunch up on top of character
+        const k = Math.min(1, dt * 2.0);
+        pts.position.x += dx * k;
+        pts.position.z += dz * k;
+      }
     }
+
     const attr = pts.geometry.getAttribute('position');
     const arr = attr.array;
     const phases = pts.userData.phases;
     const n = phases.length;
     const spanY = cfg.spanY || 8.0;
+    const minY = cfg.minY ?? 0.08;
     for (let i = 0; i < n; i++) {
       const idx = i * 3;
       const ph = phases[i];
       arr[idx] += (cfg.vx + Math.sin(elapsed * 1.7 + ph) * cfg.sway) * dt;
       arr[idx + 1] += cfg.vy * dt;
       arr[idx + 2] += (cfg.vz + Math.cos(elapsed * 1.4 + ph) * cfg.sway) * dt;
-      if (arr[idx + 1] < 0.08) arr[idx + 1] += spanY;
-      else if (arr[idx + 1] > spanY) arr[idx + 1] -= spanY;
-      if (arr[idx] < -14) arr[idx] += 28;
-      else if (arr[idx] > 14) arr[idx] -= 28;
-      if (arr[idx + 2] < -14) arr[idx + 2] += 28;
-      else if (arr[idx + 2] > 14) arr[idx + 2] -= 28;
+      if (arr[idx + 1] < minY) arr[idx + 1] += spanY;
+      else if (arr[idx + 1] > minY + spanY) arr[idx + 1] -= spanY;
+      if (arr[idx] < -36) arr[idx] += 72;
+      else if (arr[idx] > 36) arr[idx] -= 72;
+      if (arr[idx + 2] < -36) arr[idx + 2] += 72;
+      else if (arr[idx + 2] > 36) arr[idx + 2] -= 72;
     }
     attr.needsUpdate = true;
   }
@@ -512,7 +688,7 @@ export class Renderer {
   }
 
   worldToScreen(worldPos) {
-    const v = new THREE.Vector3(worldPos.x || 0, worldPos.y || 0, worldPos.z || 0);
+    const v = this._scratchProj.set(worldPos.x || 0, worldPos.y || 0, worldPos.z || 0);
     v.project(this.camera);
     const halfW = (window.innerWidth || 1280) * 0.5;
     const halfH = (window.innerHeight || 720) * 0.5;
@@ -526,11 +702,10 @@ export class Renderer {
   screenToGround(clientX, clientY, groundY = 0) {
     const w = window.innerWidth || 1280;
     const h = window.innerHeight || 720;
-    const ndc = new THREE.Vector2((clientX / w) * 2 - 1, -(clientY / h) * 2 + 1);
-    this.raycaster.setFromCamera(ndc, this.camera);
+    this._scratchNdc.set((clientX / w) * 2 - 1, -(clientY / h) * 2 + 1);
+    this.raycaster.setFromCamera(this._scratchNdc, this.camera);
     this.groundPlane.constant = -groundY;
-    const target = new THREE.Vector3();
-    const hit = this.raycaster.ray.intersectPlane(this.groundPlane, target);
+    const hit = this.raycaster.ray.intersectPlane(this.groundPlane, this._scratchRayTarget);
     return hit || this.cameraTarget.clone();
   }
 
@@ -1504,10 +1679,8 @@ export class Renderer {
   updateCamera(targetPos, dt = 0.016) {
     if (targetPos) {
       const lerpFactor = Math.min(1, dt * 9.5);
-      this.cameraTarget.lerp(
-        new THREE.Vector3(targetPos.x || 0, targetPos.y || 0, targetPos.z || 0),
-        lerpFactor
-      );
+      this._scratchTarget.set(targetPos.x || 0, targetPos.y || 0, targetPos.z || 0);
+      this.cameraTarget.lerp(this._scratchTarget, lerpFactor);
     }
 
     const dist = this.cameraDistance * this.cameraZoom;

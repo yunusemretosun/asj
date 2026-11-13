@@ -1001,15 +1001,23 @@
 .skill-detail h4 { margin: 0 0 4px; font-family: var(--arc-font-title); color: var(--arc-metal-hi); font-size: 16px; }
 .skill-detail p { margin: 2px 0; color: var(--arc-text-dim); font-size: 12px; }
 .skill-detail .sd-meta { color: var(--arc-sp-hi); font-size: 12px; }
-.skill-actions { display: flex; flex-direction: column; gap: 6px; align-items: stretch; min-width: 190px; }
-.hotkey-row { display: flex; gap: 4px; align-items: center; }
+.skill-actions { display: flex; flex-direction: column; gap: 6px; align-items: stretch; min-width: 245px; }
+.hotkey-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .hotkey-row .hk-btn {
-  flex: 1; padding: 4px 0; text-align: center; cursor: pointer;
+  flex: 1 0 22px; padding: 4px 2px; text-align: center; cursor: pointer;
   background: #1a1526; border: 2px solid var(--arc-metal-lo); border-radius: 4px; font-weight: 900; font-size: 12px; color: var(--arc-text);
 }
 .hotkey-row .hk-btn:hover { border-color: var(--arc-metal-hi); }
 .hotkey-row .hk-btn.cur { border-color: var(--arc-sp-hi); background: #17315a; color: #fff; }
 .hotkey-row .hk-btn:disabled, .hotkey-row .hk-btn.dis { opacity: .35; cursor: not-allowed; }
+.hud-slot.potion.as-skill { border-color: #8a7440; }
+.inv-quickbar { display: flex; align-items: center; gap: 4px; margin-top: 6px; width: 100%; font-size: 11px; color: var(--arc-text-mute); }
+.inv-quickbar .hk-btn {
+  min-width: 26px; padding: 3px 6px; background: #1a1526; border: 1px solid var(--arc-metal-lo);
+  border-radius: 4px; color: var(--arc-text); cursor: pointer; font-weight: 800; font-size: 11px;
+}
+.inv-quickbar .hk-btn:hover { border-color: var(--arc-metal-hi); }
+.inv-quickbar .hk-btn.cur { border-color: var(--arc-sp-hi); background: #17315a; color: #fff; }
 
 /* --------------------------------------------------------------------------
    Quests
@@ -1668,3 +1676,650 @@ html.asj-creating .arc-overlay, html.asj-creating .arc-tooltip { display: none !
 
 .skill-tree-wrap { overflow: auto; }
 @media (max-width: 900px) { .alchemy-layout { grid-template-columns: 1fr; } .hud-alch-banner { font-size: 24px; } }
+
+/* =============================================================================
+   COMPANION PET SYSTEM UI
+   ============================================================================= */
+.pet-menu-layout {
+  display: grid;
+  grid-template-columns: 310px 1fr;
+  gap: 18px;
+  min-height: 420px;
+}
+.pet-card-active {
+  background: linear-gradient(180deg, rgba(30, 41, 59, 0.75) 0%, rgba(15, 23, 42, 0.95) 100%);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+.pet-avatar-large {
+  font-size: 52px;
+  text-align: center;
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.2) 0%, transparent 70%);
+  padding: 8px 0;
+  border-radius: 50%;
+  animation: pet-avatar-bob 3s ease-in-out infinite alternate;
+}
+@keyframes pet-avatar-bob {
+  from { transform: translateY(0); }
+  to { transform: translateY(-5px); }
+}
+.pet-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  width: fit-content;
+}
+.pet-status-badge.summoned {
+  background: rgba(34, 197, 94, 0.2);
+  color: #4ade80;
+  border: 1px solid rgba(74, 222, 128, 0.4);
+}
+.pet-status-badge.dismissed {
+  background: rgba(148, 163, 184, 0.15);
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+.pet-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 6px currentColor;
+}
+.pet-roster-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 12px;
+  align-content: start;
+}
+.pet-roster-item {
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 6px;
+  padding: 12px;
+  display: flex;
+  gap: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease-out;
+}
+.pet-roster-item:hover {
+  background: rgba(30, 41, 59, 0.85);
+  border-color: rgba(99, 102, 241, 0.5);
+  transform: translateY(-2px);
+}
+.pet-roster-item.active {
+  border-color: #facc15;
+  box-shadow: 0 0 10px rgba(250, 204, 21, 0.25);
+  background: rgba(30, 41, 59, 0.9);
+}
+.pet-roster-icon {
+  font-size: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+}
+@media (max-width: 900px) {
+  .pet-menu-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Live HUD Pet Companion Widget */
+.pet-hud-widget {
+  position: absolute;
+  top: 14px;
+  left: 356px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 11px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.9), rgba(30, 41, 59, 0.85));
+  border: 1px solid rgba(250, 204, 21, 0.45);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+  color: #f8fafc;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: transform 0.14s ease, border-color 0.14s ease, background 0.14s ease;
+}
+.pet-hud-widget:hover {
+  transform: translateY(-1px);
+  border-color: #fde047;
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.95), rgba(51, 65, 85, 0.9));
+}
+.pet-hud-widget.dismissed {
+  border-color: rgba(148, 163, 184, 0.35);
+  opacity: 0.82;
+}
+.pet-hud-widget.hidden {
+  display: none;
+}
+.pet-hud-ic {
+  font-size: 22px;
+  line-height: 1;
+}
+.pet-hud-meta {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+.pet-hud-meta b {
+  font-size: 12px;
+  color: #fef08a;
+}
+.pet-hud-lv {
+  color: #38bdf8;
+  font-weight: 700;
+  margin-left: 3px;
+}
+.pet-hud-meta small {
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+/* Alchemy Mode Tabs & Magic Stones (Blue Stats / Astral) */
+.alcm-mode-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.alcm-mode-tab {
+  flex: 1;
+  padding: 7px 10px;
+  border-radius: 5px;
+  border: 1px solid rgba(180, 83, 9, 0.45);
+  background: rgba(28, 25, 23, 0.7);
+  color: #d6d3d1;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.14s ease;
+}
+.alcm-mode-tab:hover {
+  border-color: #f59e0b;
+  color: #fef3c7;
+}
+.alcm-mode-tab.active {
+  background: linear-gradient(135deg, rgba(180, 83, 9, 0.45), rgba(217, 119, 6, 0.3));
+  border-color: #fbbf24;
+  color: #fde047;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.25);
+}
+.alcm-stones-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.alcm-stone-item-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+.alcm-blue-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.alcm-blue-tag {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: rgba(56, 189, 248, 0.16);
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  color: #7dd3fc;
+}
+.alcm-astral-tag {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: rgba(168, 85, 247, 0.2);
+  border: 1px solid rgba(192, 132, 252, 0.55);
+  color: #e9d5ff;
+}
+.alcm-stone-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 290px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.alcm-stone-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+.alcm-stone-row.has {
+  border-color: rgba(56, 189, 248, 0.35);
+}
+.alcm-stone-row.empty {
+  opacity: 0.58;
+}
+.alcm-stone-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.alcm-stone-icon {
+  font-size: 20px;
+  width: 30px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+/* Timed Challenge Banner (Top-Center) */
+.challenge-hud-banner {
+  display: none;
+  position: fixed;
+  top: 52px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 45;
+  min-width: 340px;
+  max-width: 520px;
+  padding: 9px 16px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(28, 25, 23, 0.92), rgba(69, 26, 3, 0.88));
+  border: 1.5px solid rgba(245, 158, 11, 0.7);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55), 0 0 18px rgba(245, 158, 11, 0.25);
+  color: #fef3c7;
+  text-align: center;
+  pointer-events: none;
+}
+.challenge-hud-banner.on {
+  display: block;
+}
+.challenge-hud-banner.done {
+  background: linear-gradient(135deg, rgba(6, 78, 59, 0.94), rgba(16, 185, 129, 0.35));
+  border-color: #34d399;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55), 0 0 22px rgba(16, 185, 129, 0.4);
+}
+.challenge-hud-banner .ch-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+.challenge-hud-banner .ch-title {
+  font-family: var(--arc-font-title);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  color: #fde047;
+}
+.challenge-hud-banner.done .ch-title {
+  color: #6ee7b7;
+}
+.challenge-hud-banner .ch-timer {
+  font-size: 16px;
+  font-weight: 800;
+  color: #fb923c;
+  text-shadow: 0 0 8px rgba(249, 115, 22, 0.5);
+}
+.challenge-hud-banner .ch-sub {
+  margin-top: 3px;
+  font-size: 11px;
+  color: #e2e8f0;
+}
+
+/* Town Pet Shop & Story Ending */
+.petshop-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.petshop-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.85), rgba(69, 26, 3, 0.5));
+  border: 1px solid rgba(251, 191, 36, 0.35);
+}
+.petshop-gold {
+  font-size: 14px;
+  color: #fde047;
+  white-space: nowrap;
+}
+.petshop-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(235px, 1fr));
+  gap: 12px;
+}
+.petshop-card {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 13px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.78);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+}
+.petshop-card.owned {
+  border-color: rgba(52, 211, 153, 0.55);
+  background: rgba(6, 78, 59, 0.24);
+}
+.petshop-card-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.petshop-icon {
+  font-size: 28px;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+}
+.petshop-name {
+  font-weight: 700;
+  color: #f8fafc;
+  font-size: 14px;
+}
+.petshop-title {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-bottom: 3px;
+}
+.petshop-role {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(56, 189, 248, 0.14);
+  color: #7dd3fc;
+}
+.petshop-desc {
+  font-size: 11px;
+  line-height: 1.45;
+  color: #cbd5e1;
+}
+.petshop-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.petshop-stats span {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(250, 204, 21, 0.12);
+  color: #fde68a;
+}
+.petshop-foot {
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid rgba(148, 163, 184, 0.15);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.petshop-price {
+  font-weight: 800;
+  color: #facc15;
+  font-size: 13px;
+}
+.petshop-price.poor {
+  color: #f87171;
+}
+.petshop-owned-badge {
+  font-size: 12px;
+  font-weight: 700;
+  color: #34d399;
+}
+
+.story-ending-modal {
+  text-align: center;
+  padding: 16px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+.story-ending-crest {
+  font-size: 54px;
+  filter: drop-shadow(0 0 18px rgba(250, 204, 21, 0.7));
+}
+.story-ending-title {
+  margin: 0;
+  font-family: var(--arc-font-title);
+  font-size: 26px;
+  letter-spacing: 1.4px;
+  color: #fde047;
+  text-shadow: 0 2px 14px rgba(234, 179, 8, 0.45);
+}
+.story-ending-sub {
+  margin: 0;
+  font-size: 15px;
+  color: #f1f5f9;
+}
+.story-ending-lore {
+  max-width: 580px;
+  padding: 14px 18px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  color: #cbd5e1;
+  font-size: 13px;
+  line-height: 1.65;
+}
+.story-ending-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 10px;
+  width: 100%;
+  max-width: 480px;
+}
+.story-ending-stats div {
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: rgba(30, 41, 59, 0.7);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.story-ending-stats span {
+  font-size: 11px;
+  color: #94a3b8;
+}
+.story-ending-stats b {
+  font-size: 14px;
+  color: #f8fafc;
+}
+.story-ending-reward {
+  font-size: 13px;
+  font-weight: 700;
+  color: #4ade80;
+}
+.story-ending-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+/* ── Oakhaven Town Hall Services ───────────────────────────────────────── */
+.townhall-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.townhall-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.78);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+}
+.townhall-gold {
+  font-size: 13px;
+  color: #fde68a;
+  white-space: nowrap;
+}
+.townhall-hint {
+  font-size: 12px;
+  color: #cbd5e1;
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+.townhall-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+}
+.townhall-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 8px;
+  background: rgba(24, 21, 38, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+}
+.townhall-card.active {
+  border-color: rgba(251, 191, 36, 0.55);
+  box-shadow: inset 0 0 18px rgba(251, 191, 36, 0.08);
+}
+.townhall-card-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.townhall-icon {
+  font-size: 26px;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.75);
+  border-radius: 8px;
+  border: 1px solid rgba(251, 191, 36, 0.25);
+}
+.townhall-title {
+  font-weight: 700;
+  font-size: 14px;
+  color: #f8fafc;
+}
+.townhall-sub {
+  font-size: 11px;
+  color: #94a3b8;
+}
+.townhall-badge {
+  color: #4ade80;
+  font-weight: 700;
+}
+.townhall-desc {
+  font-size: 12px;
+  color: #cbd5e1;
+  line-height: 1.45;
+  flex: 1;
+}
+.townhall-bar {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.townhall-bar > div {
+  height: 100%;
+  background: linear-gradient(90deg, #f59e0b, #fde047);
+  transition: width 0.2s;
+}
+.townhall-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(148, 163, 184, 0.15);
+}
+.townhall-cost {
+  font-weight: 700;
+  font-size: 13px;
+  color: #fde047;
+}
+.townhall-cost.poor {
+  color: #f87171;
+}
+.townhall-forge-layout {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 14px;
+  align-items: start;
+}
+.townhall-forge-card {
+  background: rgba(24, 21, 38, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.townhall-affixes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.65);
+}
+.townhall-affix {
+  font-size: 12px;
+  color: #93c5fd;
+}
+.townhall-affix.mute {
+  color: #64748b;
+  font-style: italic;
+}
+.townhall-forge-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.townhall-forge-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(30, 41, 59, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}

@@ -88,6 +88,8 @@ export function attachGLBModel(targetGroup, url, {
   targetHeight = null,
   targetSpan = null,
   yOffset = 0,
+  zOffset = 0,
+  xOffset = 0,
   rotationY = 0,
   groundAtZero = false,
   centerXZ = false,
@@ -131,6 +133,8 @@ export function attachGLBModel(targetGroup, url, {
       clone.position.x = -bounds.center.x * s;
       clone.position.z = -bounds.center.z * s;
     }
+    if (xOffset) clone.position.x += xOffset;
+    if (zOffset) clone.position.z += zOffset;
     if (rotationY) clone.rotation.y = rotationY;
 
     const excludeSet = excludeMeshNames
@@ -345,6 +349,19 @@ export function disposeObject3D(obj, keepMaterials = null) {
         m.dispose();
       }
     }
+  });
+}
+
+function enableSafeFrustumCulling(obj, minRadius = 2.8) {
+  if (!obj) return;
+  obj.traverse((c) => {
+    if (!c.isMesh) return;
+    if (c.geometry && !c.geometry.boundingSphere) c.geometry.computeBoundingSphere?.();
+    if (c.isSkinnedMesh && typeof c.computeBoundingSphere === 'function') {
+      c.computeBoundingSphere();
+      if (c.boundingSphere && c.boundingSphere.radius < minRadius) c.boundingSphere.radius = minRadius;
+    }
+    c.frustumCulled = true;
   });
 }
 
@@ -821,7 +838,7 @@ export const SRO_STARTER_SETS = {
 
 export function getEquipmentGlbTier(item) {
   if (!item) return '01';
-  const m = String(item.visualModel || item.visualGlb || item.icon || item.id || '').match(/(?:sword|blade|tblade|spear|staff|bow|axe|shield|heavy|light|clothes)_0([1-4])/i);
+  const m = String(item.visualModel || item.visualGlb || item.icon || item.baseId || item.id || '').match(/(?:sword|blade|tblade|spear|staff|bow|axe|shield|heavy|light|clothes)_0?([1-4])/i);
   if (m) return '0' + m[1];
   const t = Number(item.tier ?? itemVisualTier(item) ?? 0);
   if (t >= 3) return '04';
@@ -837,8 +854,8 @@ export function getEquipmentGlbTier(item) {
 export function getArmorVisualSet(item, defaultType = 'heavy') {
   if (!item) return null;
   if (item.visualSet) return item.visualSet;
-  const m = String(item.icon || item.visualGlb || item.id || '').match(/(heavy|light|clothes)_0[1-4]/i);
-  if (m) return m[0].toLowerCase();
+  const m = String(item.icon || item.visualGlb || item.baseId || item.id || '').match(/(heavy|light|clothes)_0?([1-4])/i);
+  if (m) return `${m[1].toLowerCase()}_0${m[2]}`;
 
   let type = defaultType;
   const sub = String(item.armorFamily || item.subType || item.subtype || item.type || item.armorType || '').toLowerCase();
@@ -861,7 +878,7 @@ export function getWeaponGlbInfo(weapon, classId) {
   if (rawSub === 'staff' || (!rawSub && classId === 'wizard' && !/spear|bow|sword|blade|axe/.test(probe))) return { file: null, type: 'staff', tier, procedural: true };
   if (rawSub === 'axe') return { file: null, type: 'axe', tier, procedural: true };
 
-  const m = String(weapon?.visualModel || weapon?.visualGlb || weapon?.icon || weapon?.id || '').match(/(sword|blade|tblade|spear|staff|bow|axe|shield)_0([1-4])/i);
+  const m = String(weapon?.visualModel || weapon?.visualGlb || weapon?.icon || weapon?.baseId || weapon?.id || '').match(/(sword|blade|tblade|spear|staff|bow|axe|shield)_0?([1-4])/i);
   if (m) {
     const matchedType = m[1].toLowerCase();
     const procedural = matchedType === 'staff' || matchedType === 'axe';
@@ -1025,11 +1042,22 @@ export function createEuropeanStaffMesh(weaponItem = null, tierStr = '01') {
     { wood: 0x2e1a2f, metal: 0xd4a017, gem: 0xa855f7, len: 1.75, prongs: 4, orb: 0.09 },
     { wood: 0x1c1030, metal: 0xfacc15, gem: 0xf43f5e, len: 1.85, prongs: 5, orb: 0.1 },
   ];
-  const st = styles[degNum - 1];
+  const st = styles[degNum - 1] || styles[0];
+  const sealId = String(weaponItem?.seal || '').toLowerCase().replace(/^sealof/, '');
+  const rarity = String(weaponItem?.rarity || '').toLowerCase();
+  const gemCol = sealId === 'sun' ? 0xfbbf24
+    : sealId === 'moon' ? 0xc4b5fd
+    : sealId === 'star' ? 0x7dd3fc
+    : rarity === 'unique' ? 0xf97316
+    : rarity === 'epic' ? 0xa855f7
+    : rarity === 'rare' ? 0xfacc15
+    : rarity === 'magic' ? 0x38bdf8
+    : st.gem;
+
   const woodMat = new THREE.MeshStandardMaterial({ color: st.wood, roughness: 0.7, metalness: 0.08 });
   const metalMat = new THREE.MeshStandardMaterial({ color: st.metal, roughness: 0.28, metalness: 0.88 });
   const gemMat = new THREE.MeshStandardMaterial({
-    color: st.gem, emissive: new THREE.Color(st.gem), emissiveIntensity: 0.9, roughness: 0.1, metalness: 0.2,
+    color: gemCol, emissive: new THREE.Color(gemCol), emissiveIntensity: 0.95, roughness: 0.1, metalness: 0.2,
     transparent: true, opacity: 0.92,
   });
 
@@ -1085,7 +1113,7 @@ export function createEuropeanStaffMesh(weaponItem = null, tierStr = '01') {
   tip.rotation.x = Math.PI / 2;
   tip.position.z = orbZ + st.orb + 0.07;
   g.add(tip);
-  const glow = new THREE.PointLight(st.gem, 0.6 + degNum * 0.15, 2.2);
+  const glow = new THREE.PointLight(gemCol, 0.6 + degNum * 0.15, 2.2);
   glow.position.z = orbZ;
   g.add(glow);
 
@@ -1387,6 +1415,8 @@ export const CLASS_CLIP_MAP = {
     ATTACK4: ['ATTACK4_sword_base_04'],
     CAST1: ['SKILL_1_skill_ch_sword_smash_a'],
     CAST2: ['SKILL_2_skill_ch_sword_chain_a'],
+    CAST3: ['SKILL_5_skill_ch_sword_geomgi_a'],
+    CAST4: ['SKILL_7_skill_ch_sword_downattack_a'],
     DEFENCE: ['SKILL_3_skill_ch_sword_shield_wait'],
   },
   axeman: {
@@ -1395,16 +1425,22 @@ export const CLASS_CLIP_MAP = {
     ATTACK2: ['ATTACK2_skill_eu_warrior_duala_attack02'],
     ATTACK3: ['SKILL_10_skill_eu_warrior_duala_twist_a', 'ATTACK1_skill_eu_warrior_duala_attack01'],
     ATTACK4: ['SKILL_4_skill_eu_warrior_duala_cross_a'],
-    CAST1: ['SKILL_40_skill_eu_warrior_duala_whirlwind_a'],
-    CAST2: ['SKILL_4_skill_eu_warrior_duala_cross_a'],
+    CAST1: ['SKILL_4_skill_eu_warrior_duala_cross_a'],
+    CAST2: ['SKILL_10_skill_eu_warrior_duala_twist_a'],
+    CAST3: ['SKILL_40_skill_eu_warrior_duala_whirlwind_a'],
+    CAST4: ['SKILL_40_skill_eu_warrior_twohanda_cry_a'],
   },
   wizard: {
+    STAND1: ['ATTREADY_skill_eu_wizard_twohand_attack_ready', 'STAND1'],
+    WALK: ['WALK', 'WALK_chinaman_fighter_walkforward'],
     RUN: ['RUN_europe_man_fighter_tstaff_run'],
     ATTACK1: ['ATTACK1_skill_eu_wizard_twohand_attack01'],
     ATTACK2: ['ATTACK1_skill_eu_wizard_twohand_attack01'],
     ATTACK3: ['SKILL_1_skill_eu_wizard_twohand_target_shot'],
     CAST1: ['SKILL_1_skill_eu_wizard_twohand_target_shot'],
     CAST2: ['SKILL_2_skill_eu_wizard_twohand_area_shot'],
+    CAST3: ['SKILL_20_skill_eu_wizard_firea_spray_a'],
+    CAST4: ['SKILL_2_skill_eu_wizard_twohand_area_shot', 'SKILL_1_skill_eu_wizard_twohand_target_shot'],
   },
   archer: {
     RUN: ['RUN_bow_run_fighter', 'RUN_bow_run_merchant'],
@@ -1413,6 +1449,9 @@ export const CLASS_CLIP_MAP = {
     ATTACK3: ['ATTACK1_skill_ch_bow_normal'],
     CAST1: ['SKILL_1_skill_ch_bow_critical_a'],
     CAST2: ['SKILL_2_skill_ch_bow_chain_a'],
+    CAST3: ['SKILL_10_skill_ch_bow_power_a'],
+    CAST4: ['SKILL_7_skill_ch_bow_area_a'],
+    CAST5: ['SKILL_3_skill_ch_bow_call_a'],
   },
 };
 
@@ -2752,19 +2791,7 @@ export function createHeroMesh(equipment = {}, look = {}) {
       } else if (weaponInfo.type === 'staff') {
         const staffMesh = createEuropeanStaffMesh(weaponItem, weaponInfo.tier || '01');
         applyGLBWeaponGlow(staffMesh, weaponItem);
-        // Hold the staff upright: orient the shaft (+Z) to the hero's up axis, tilted slightly forward,
-        // relative to the hand pose at mount time so it then follows the hand animation.
-        const staffPivot = new THREE.Group();
-        staffPivot.name = 'EuropeanStaffPivot';
-        staffPivot.add(staffMesh);
-        if (rWeaponMount) {
-          rWeaponMount.add(staffPivot);
-          root.updateMatrixWorld(true);
-          const qRoot = root.getWorldQuaternion(new THREE.Quaternion());
-          const qMount = rWeaponMount.getWorldQuaternion(new THREE.Quaternion());
-          const upInRoot = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2 + 0.18, 0, 0));
-          staffPivot.quaternion.copy(qMount.invert().multiply(qRoot).multiply(upInRoot));
-        }
+        if (rWeaponMount) rWeaponMount.add(staffMesh);
       } else {
         const mainWeaponUrl = `/assets/sro/equipment/${weaponInfo.file}`;
         loadGLB(mainWeaponUrl).then((entry) => {
@@ -2782,9 +2809,11 @@ export function createHeroMesh(equipment = {}, look = {}) {
     }
 
     // Offhand: Dual-Wield European Axe or Shield
-    if (shieldItem && !isBow) {
+    const cls = getClass(classId);
+    const canUseShield = cls && cls.shield && !cls.twoHanded;
+    if (shieldItem && canUseShield && !isBow) {
       const shieldSubType = String(shieldItem?.subType || shieldItem?.subtype || shieldItem?.visualModel || '').toLowerCase();
-      const shieldIsAxe = isAxeman || shieldSubType.includes('axe') || shieldSubType.includes('tblade') || shieldItem.type === 'weapon';
+      const shieldIsAxe = isAxeman && (shieldSubType.includes('axe') || shieldSubType.includes('tblade') || shieldItem.type === 'weapon');
 
       if (shieldIsAxe) {
         const offhandAxeTier = getEquipmentGlbTier(shieldItem);
@@ -2895,6 +2924,8 @@ export function createHeroMesh(equipment = {}, look = {}) {
 
       // Swap the generic (unarmed) base clips for the class weapon clips embedded in the GLB
       applyClassClipMap(actions, classId);
+      root.userData.uniqueActions = Array.from(new Set(Object.values(actions).filter(Boolean)));
+      root.userData.actionWeights = new Map();
       root.userData.guardPose = buildGuardPose(entry.animations, charClone);
       root.userData.guardWeight = 0;
 
@@ -2916,7 +2947,10 @@ export function createHeroMesh(equipment = {}, look = {}) {
       root.userData.glbHero = charClone;
 
       if (actions['STAND1']) {
+        actions['STAND1'].enabled = true;
+        actions['STAND1'].setEffectiveWeight(1);
         actions['STAND1'].play();
+        root.userData.actionWeights.set(actions['STAND1'], 1);
         mixer.update(0.001);
         root.userData.currentAction = actions['STAND1'];
         root.userData.currentActionName = 'STAND1';
@@ -2955,7 +2989,13 @@ export function createHeroMesh(equipment = {}, look = {}) {
     clearGroup(shieldMount);
     const canShield = cls ? (cls.shield && !cls.twoHanded) : true;
     if (shield && canShield && wType !== 'bow') {
-      shieldMount.add(createShieldMesh(shield));
+      const shieldSub = String(shield?.subtype || shield?.subType || '').toLowerCase();
+      if (shieldSub === 'axe' || shield?.type === 'weapon') {
+        const offAxe = createWeaponMesh(shield);
+        shieldMount.add(offAxe);
+      } else {
+        shieldMount.add(createShieldMesh(shield));
+      }
     }
 
     applyArmorTint();
@@ -2990,7 +3030,7 @@ export function createHeroMesh(equipment = {}, look = {}) {
   /**
    * Apply hero class + appearance. Rebuilds class parts and recolors shared materials.
    */
-  root.userData.setLook = ({ classId, appearance } = {}) => {
+  root.userData.setLook = ({ classId, appearance, equipped } = {}) => {
     if (root.userData.hitFlashTimer > 0) root.userData.setHitFlash(0);
     const cls = getClass(classId || lookState.classId);
     const app = sanitizeAppearance(appearance || (cls.id === lookState.classId ? lookState.appearance : null), cls.id);
@@ -2998,6 +3038,9 @@ export function createHeroMesh(equipment = {}, look = {}) {
     lookState.classId = cls.id;
     lookState.cls = cls;
     lookState.appearance = app;
+    if (equipped !== undefined) {
+      lookState.equipped = equipped || {};
+    }
     root.userData.classId = cls.id;
     root.userData.attackStyle = cls.attackStyle || 'melee';
     root.userData.appearance = { ...app };
@@ -3034,7 +3077,7 @@ export function createHeroMesh(equipment = {}, look = {}) {
   root.userData.setLook({ classId: look?.classId || 'knight', appearance: look?.appearance || null });
 
   // ---------------------------------------------------------------- animation
-  root.userData.animate = (state = 'idle', time = 0, dt = 0.016, comboStep = 0, attackProgress = 0) => {
+  root.userData.animate = (state = 'idle', time = 0, dt = 0.016, comboStep = 0, attackProgress = 0, actionSeq = 0) => {
     const gearFx = root.userData.gearFx;
     if (gearFx && gearFx.length) {
       for (const fx of gearFx) if (fx.target.parent) fx.update(time, dt);
@@ -3060,14 +3103,14 @@ export function createHeroMesh(equipment = {}, look = {}) {
       let targetActionName = 'STAND1';
       let targetTimeScale = 1.0;
       let targetLoop = THREE.LoopRepeat;
-      let clamp = false;
 
       const st = String(state || 'idle').toLowerCase();
+      const isAttackSt = st === 'attack' || st === 'shoot' || st === 'melee' || st === 'slash';
+      const isSkillSt = st === 'cast' || st === 'skill' || st.includes('prep') || st.includes('release') || st.includes('recover') || st.includes('wizard_') || st.includes('force_') || st.includes('bicheon_') || st.includes('heuksal_') || st.includes('pachon_');
 
       if (st === 'dead' || st === 'die' || st === 'death') {
         targetActionName = 'DIE1';
         targetLoop = THREE.LoopOnce;
-        clamp = true;
       } else if (st === 'damage' || st === 'hurt' || st === 'hit') {
         targetActionName = 'DAMAGE1';
         targetLoop = THREE.LoopOnce;
@@ -3086,14 +3129,14 @@ export function createHeroMesh(equipment = {}, look = {}) {
       } else if (st === 'dash') {
         targetActionName = 'RUN';
         targetTimeScale = 1.6;
-      } else if (st === 'attack' || st === 'shoot' || st === 'melee' || st === 'slash') {
+      } else if (isAttackSt) {
         const stage = comboStep > 0 ? ((comboStep - 1) % 3) + 1 : 1;
         const wanted = stage === 2 ? 'ATTACK2' : stage === 3 ? 'ATTACK3' : 'ATTACK1';
         targetActionName = root.userData.actions?.[wanted] ? wanted : 'ATTACK1';
         targetTimeScale = isBerserk ? 1.4 : 1.15;
         targetLoop = THREE.LoopOnce;
-      } else if (st === 'cast' || st === 'skill') {
-        const castSlot = (comboStep % 2 === 0) ? 'CAST2' : 'CAST1';
+      } else if (isSkillSt) {
+        const castSlot = comboStep === 3 ? 'CAST3' : comboStep === 4 ? 'CAST4' : (comboStep % 2 === 0) ? 'CAST2' : 'CAST1';
         targetActionName = root.userData.actions?.[castSlot] ? castSlot : ((comboStep % 2 === 0) ? 'ATTACK3' : 'ATTACK2');
         targetTimeScale = isBerserk ? 1.3 : 1.1;
         targetLoop = THREE.LoopOnce;
@@ -3105,37 +3148,102 @@ export function createHeroMesh(equipment = {}, look = {}) {
 
       const actions = root.userData.actions;
       if (actions) {
-        const targetAction = actions[targetActionName] || actions['STAND1'];
-        if (targetAction && targetLoop === THREE.LoopOnce && !clamp) {
-          // Weapon clips (e.g. EU staff 1.7s) are longer than the gameplay swing; speed them up to fit
-          const clipDur = targetAction.getClip?.().duration || 0;
-          const windowSec = st === 'cast' || st === 'skill' ? 0.9 : 0.6;
-          if (clipDur > windowSec) targetTimeScale *= clipDur / windowSec;
-        }
+        const targetAction = actions[targetActionName] || actions['STAND1'] || root.userData.uniqueActions?.[0];
         if (targetAction) {
-          if (root.userData.currentAction !== targetAction) {
-            const prev = root.userData.currentAction;
-            targetAction.reset();
-            targetAction.timeScale = targetTimeScale;
-            targetAction.setLoop(targetLoop, targetLoop === THREE.LoopOnce ? 1 : Infinity);
-            targetAction.clampWhenFinished = clamp;
-            targetAction.fadeIn(0.12);
-            if (prev) prev.fadeOut(0.12);
+          if (targetLoop === THREE.LoopOnce && st !== 'dead' && st !== 'die' && st !== 'death') {
+            // Fit longer weapon/spell clips cleanly into combat timings (without warping 7s spray beams)
+            const clipDur = targetAction.getClip?.().duration || 0;
+            const windowSec = isSkillSt ? 0.95 : 0.6;
+            if (clipDur > windowSec) {
+              const scaleRatio = Math.min(2.6, clipDur / windowSec);
+              targetTimeScale *= scaleRatio;
+            }
+          }
+
+          const weights = (root.userData.actionWeights ||= new Map());
+          if (!root.userData.uniqueActions) {
+            root.userData.uniqueActions = Array.from(new Set(Object.values(actions).filter(Boolean)));
+          }
+
+          const prevAction = root.userData.currentAction;
+          const prevSeq = root.userData.lastActionSeq;
+          const prevCombo = root.userData.lastComboStep;
+          const switchedAction = prevAction !== targetAction;
+          const restartedSameOneShot = !switchedAction && targetLoop === THREE.LoopOnce && (
+            (actionSeq && prevSeq !== actionSeq) ||
+            ((isAttackSt || isSkillSt) && prevCombo !== comboStep) ||
+            !targetAction.enabled
+          );
+
+          targetAction.stopFading();
+          targetAction.timeScale = targetTimeScale;
+          targetAction.setLoop(targetLoop, targetLoop === THREE.LoopOnce ? 1 : Infinity);
+          // Critical: ALWAYS clamp LoopOnce clips so finished skill/attack animations NEVER disable and revert to bind T-pose
+          targetAction.clampWhenFinished = targetLoop === THREE.LoopOnce;
+
+          if (switchedAction || restartedSameOneShot) {
+            targetAction.time = 0;
+            targetAction.paused = false;
+            targetAction.enabled = true;
             targetAction.play();
             root.userData.currentAction = targetAction;
             root.userData.currentActionName = targetActionName;
           } else {
-            targetAction.timeScale = targetTimeScale;
-            if (targetLoop === THREE.LoopOnce && (st === 'attack' || st === 'cast')) {
-              if (root.userData.lastComboStep !== comboStep) {
-                targetAction.reset();
-                targetAction.play();
+            targetAction.enabled = true;
+            if (targetLoop === THREE.LoopRepeat) targetAction.paused = false;
+          }
+
+          // Deterministic weight crossfade whose enabled weights ALWAYS normalize to 1.000 (zero T-pose leakage)
+          let activeOtherWeight = 0;
+          for (const act of root.userData.uniqueActions) {
+            if (act === targetAction) continue;
+            const w = weights.get(act) || 0;
+            if (act.enabled && w > 0.0001) activeOtherWeight += w;
+          }
+
+          const fadeDur = (isAttackSt || isSkillSt) ? 0.08 : 0.11;
+          const stepW = Math.min(1, Math.max(0.016, dt) / fadeDur);
+          let targetW = activeOtherWeight <= 0.001
+            ? 1.0
+            : Math.min(1.0, (weights.get(targetAction) || 0) + stepW);
+          if (targetW < 0.01) targetW = stepW;
+          weights.set(targetAction, targetW);
+
+          let totalW = targetW;
+          for (const act of root.userData.uniqueActions) {
+            if (act === targetAction) continue;
+            let w = weights.get(act) || 0;
+            if (w > 0) {
+              w = Math.max(0, w - stepW);
+              if (w <= 0.001) {
+                weights.set(act, 0);
+                act.setEffectiveWeight(0);
+                act.enabled = false;
+                act.stop();
+              } else {
+                act.stopFading();
+                act.enabled = true;
+                weights.set(act, w);
+                totalW += w;
               }
+            } else if (act.enabled) {
+              act.setEffectiveWeight(0);
+              act.enabled = false;
+              act.stop();
             }
+          }
+
+          const invTotal = totalW > 0.0001 ? 1 / totalW : 1;
+          for (const act of root.userData.uniqueActions) {
+            if (!act.enabled) continue;
+            const normW = (act === targetAction ? targetW : (weights.get(act) || 0)) * invTotal;
+            weights.set(act, normW);
+            act.setEffectiveWeight(normW);
           }
         }
       }
       root.userData.lastComboStep = comboStep;
+      root.userData.lastActionSeq = actionSeq;
       root.userData.mixer.update(dt);
       const guardPose = root.userData.guardPose;
       if (guardPose) {
@@ -3341,8 +3449,8 @@ export function createHeroMesh(equipment = {}, look = {}) {
       leftArmPivot.rotation.y = -0.5;
       capePivot.rotation.x = 0.3;
     } else if (state === 'wizard_prep' || state === 'force_prep' || (state === 'windup' && (lookState.classId === 'wizard' || style === 'magic_bolt'))) {
-      // Wizard (Force): Floating/levitating cast pose during prep
-      bodyPivot.position.y = 0.78 + Math.sin(time * 6) * 0.03;
+      // Wizard (Force): Cast pose during prep
+      bodyPivot.position.y = 0.70;
       bodyPivot.rotation.x = -0.15;
       leftLegPivot.rotation.x = 0.25;
       rightLegPivot.rotation.x = -0.2;
@@ -3367,8 +3475,8 @@ export function createHeroMesh(equipment = {}, look = {}) {
       staffLift = 1.2 * thrust;
       capePivot.rotation.x = 0.75 * thrust;
     } else if (state === 'wizard_recover' || state === 'force_recover') {
-      // Wizard (Force): Hover recover
-      bodyPivot.position.y = 0.71;
+      // Wizard (Force): Grounded recover
+      bodyPivot.position.y = 0.70;
       rightArmPivot.rotation.x = -0.6;
       leftArmPivot.rotation.x = -0.3;
       capePivot.rotation.x = 0.3;
@@ -3623,26 +3731,45 @@ export const SRO_MOB_GLB_MAP = {
 };
 
 export const SRO_BOSS_GLB_MAP = {
-  tigerwoman: { url: '/assets/sro/mobs/tigerwoman.glb', height: 2.25, yOffset: 0 },
-  tigergirl: { url: '/assets/sro/mobs/tigerwoman.glb', height: 2.25, yOffset: 0 },
-  earthking: { url: '/assets/sro/mobs/earthking.glb', height: 2.15, yOffset: 0 },
-  bluetiger: { url: '/assets/sro/mobs/bluetiger.glb', height: 2.35, yOffset: 0 },
-  banditlord: { url: '/assets/sro/mobs/hyungno.glb', height: 2.25, yOffset: 0 },
-  hyeongcheon: { url: '/assets/sro/mobs/hyeongcheon.glb', height: 2.65, yOffset: 0 }
+  tigerwoman: { url: '/assets/sro/mobs/tigerwoman.glb', height: 1.62, yOffset: 0 },
+  tigergirl: { url: '/assets/sro/mobs/tigerwoman.glb', height: 1.62, yOffset: 0 },
+  uruchi: { url: '/assets/sro/mobs/uruchi.glb', height: 2.15, yOffset: 0 },
+  banditlord: { url: '/assets/sro/mobs/uruchi.glb', height: 2.15, yOffset: 0 },
+  isyutaru: { url: '/assets/sro/mobs/isyutaru.glb', height: 2.15, yOffset: 0 },
+  lordyarkan: { url: '/assets/sro/mobs/bonelord.glb', height: 2.35, yOffset: 0 },
+  lord_yarkan: { url: '/assets/sro/mobs/bonelord.glb', height: 2.35, yOffset: 0 },
+  earthking: { url: '/assets/sro/mobs/earthking.glb', height: 2.35, yOffset: 0 },
+  bluetiger: { url: '/assets/sro/mobs/bluetiger.glb', height: 1.78, yOffset: 0 },
+  demonshaitan: { url: '/assets/sro/mobs/tahomet.glb', height: 2.25, yOffset: 0 },
+  demon_shaitan: { url: '/assets/sro/mobs/tahomet.glb', height: 2.25, yOffset: 0 },
+  hyeongcheon: { url: '/assets/sro/mobs/hyeongcheon.glb', height: 2.65, yOffset: 0 },
+  roc: { url: '/assets/sro/mobs/roc.glb', height: null, targetSpan: 4.3, yOffset: 0 },
+  medusa: { url: '/assets/sro/mobs/whitesnake.glb', height: 2.20, yOffset: 0 },
+  whitesnake: { url: '/assets/sro/mobs/whitesnake.glb', height: 2.20, yOffset: 0 }
 };
 
-export function resolveMonsterGlb(rawType, isBoss, customGlbPath = null, customTargetHeight = null) {
+export function resolveMonsterGlb(rawType, isBoss, customGlbPath = null, customTargetHeight = null, customTargetSpan = null) {
   if (customGlbPath) {
-    return { url: customGlbPath, height: customTargetHeight || (isBoss ? 2.25 : 1.65), yOffset: 0 };
+    return {
+      url: customGlbPath,
+      height: customTargetSpan ? null : (customTargetHeight || (isBoss ? 2.25 : 1.65)),
+      targetSpan: customTargetSpan || null,
+      yOffset: 0
+    };
   }
   const t = String(rawType || '').toLowerCase().replace(/[\s_-]+/g, '');
   if (isBoss) {
     if (t.includes('tigerwoman') || t.includes('tigergirl') || t.includes('queen')) return SRO_BOSS_GLB_MAP.tigerwoman;
-    if (t.includes('bluetiger')) return SRO_BOSS_GLB_MAP.bluetiger;
-    if (t.includes('bandit')) return SRO_BOSS_GLB_MAP.banditlord;
+    if (t.includes('uruchi') || t.includes('bandit')) return SRO_BOSS_GLB_MAP.uruchi;
+    if (t.includes('medusa') || t.includes('whitesnake') || t.includes('gorgon')) return SRO_BOSS_GLB_MAP.medusa;
+    if (t.includes('isyutaru') || t.includes('yeoha')) return SRO_BOSS_GLB_MAP.isyutaru;
+    if (t.includes('lordyarkan') || t.includes('yarkan') || t.includes('bonelord')) return SRO_BOSS_GLB_MAP.lordyarkan;
     if (t.includes('earthking') || t.includes('king') || t.includes('gargoyle')) return SRO_BOSS_GLB_MAP.earthking;
-    if (t.includes('hyeongcheon') || t.includes('general') || t.includes('devil') || t.includes('chaos') || t.includes('boss')) return SRO_BOSS_GLB_MAP.hyeongcheon;
-    return SRO_BOSS_GLB_MAP.hyeongcheon;
+    if (t.includes('bluetiger')) return SRO_BOSS_GLB_MAP.bluetiger;
+    if (t.includes('roc')) return SRO_BOSS_GLB_MAP.roc;
+    if (t.includes('demonshaitan') || t.includes('shaitan') || t.includes('tahomet')) return SRO_BOSS_GLB_MAP.demonshaitan;
+    if (t.includes('hyeongcheon') || t.includes('general') || t.includes('devil') || t.includes('chaos') || t.includes('boss')) return SRO_BOSS_GLB_MAP.demonshaitan;
+    return SRO_BOSS_GLB_MAP.demonshaitan;
   }
 
   if (t.includes('mangnyang') || t.includes('mangyang')) return SRO_MOB_GLB_MAP.mangnyang;
@@ -3671,6 +3798,874 @@ export function resolveMonsterGlb(rawType, isBoss, customGlbPath = null, customT
 /**
  * Create distinct 3D Monster / Boss meshes with animations
  */
+export function resolveUniquePrefabKey(cfg = {}) {
+  const probe = String(
+    cfg.uniqueId || cfg.uniquePrefab || cfg.id || cfg.type || cfg.name || ''
+  ).toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (!probe) return null;
+  if (probe.includes('tigergirl') || probe.includes('tigerwoman')) return 'tigerwoman';
+  if (probe.includes('uruchi')) return 'uruchi';
+  if (probe.includes('isyutaru')) return 'isyutaru';
+  if (probe.includes('lordyarkan') || probe.includes('yarkan')) return 'lord_yarkan';
+  if (probe.includes('demonshaitan') || probe.includes('shaitan')) return 'demon_shaitan';
+  if (probe === 'roc' || probe.includes('skysovereign') || probe.includes('monarchofroc') || (probe.includes('roc') && !probe.includes('rock'))) return 'roc';
+  if (probe.includes('medusa')) return 'medusa';
+  return null;
+}
+
+/**
+ * Bespoke multi-part 3D rigs for Silkroad Online Unique bosses so each Unique
+ * has an unmistakable silhouette, mount/wings/halos, and phase animations.
+ */
+function buildUniqueBossMesh(uniqueKey, bodyGroup, cfg = {}) {
+  const mat = (opts) => new THREE.MeshStandardMaterial({ roughness: 0.42, metalness: 0.35, ...opts });
+  const glowMat = (color, intensity = 0.9, extra = {}) => new THREE.MeshStandardMaterial({
+    color,
+    emissive: new THREE.Color(color),
+    emissiveIntensity: intensity,
+    roughness: 0.25,
+    metalness: 0.45,
+    ...extra
+  });
+
+  if (uniqueKey === 'uruchi') {
+    // Uruchi — Black Robber Overlord astride an Armored War-Drake Steed with Sashimono War-Banners
+    const drakeScaleMat = mat({ color: 0x3b0d0c, roughness: 0.55, metalness: 0.45 });
+    const bronzeArmorMat = mat({ color: 0xb45309, roughness: 0.3, metalness: 0.85 });
+    const crimsonClothMat = mat({ color: 0xb91c1c, roughness: 0.6, metalness: 0.15 });
+    const obsidianMat = mat({ color: 0x18181b, roughness: 0.35, metalness: 0.75 });
+    const emberMat = glowMat(0xf97316, 1.05);
+    const goldBladeMat = glowMat(0xfef08a, 0.75, { color: 0xfacc15, metalness: 0.9, roughness: 0.18 });
+
+    const steedGroup = new THREE.Group();
+    bodyGroup.add(steedGroup);
+
+    // Muscular armored War-Drake barrel body
+    const drakeBody = new THREE.Mesh(new THREE.SphereGeometry(0.46, 14, 10), drakeScaleMat);
+    drakeBody.scale.set(0.95, 0.82, 1.68);
+    drakeBody.position.set(0, 0.72, -0.05);
+    steedGroup.add(drakeBody);
+
+    // Armored barding breastplate & shoulder shields
+    const chestArmor = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.46, 0.42), bronzeArmorMat);
+    chestArmor.position.set(0, 0.76, 0.54);
+    chestArmor.rotation.x = -0.25;
+    steedGroup.add(chestArmor);
+
+    for (let s = 0; s < 3; s++) {
+      const dorsal = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.28, 6), obsidianMat);
+      dorsal.position.set(0, 1.05 - s * 0.04, 0.15 - s * 0.32);
+      dorsal.rotation.x = -0.4;
+      steedGroup.add(dorsal);
+    }
+
+    // Thick neck + fierce horned Drake head
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.3, 0.56, 10), drakeScaleMat);
+    neck.position.set(0, 1.02, 0.68);
+    neck.rotation.x = 0.55;
+    steedGroup.add(neck);
+
+    const drakeHead = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.3, 0.52), obsidianMat);
+    drakeHead.position.set(0, 1.24, 0.96);
+    steedGroup.add(drakeHead);
+
+    const snout = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.36, 6), bronzeArmorMat);
+    snout.rotation.x = Math.PI / 2;
+    snout.position.set(0, 1.2, 1.26);
+    steedGroup.add(snout);
+
+    for (const side of [-1, 1]) {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.045, 6, 6), emberMat);
+      eye.position.set(side * 0.15, 1.3, 1.12);
+      steedGroup.add(eye);
+      const horn = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.46, 7), bronzeArmorMat);
+      horn.position.set(side * 0.2, 1.44, 0.8);
+      horn.rotation.set(-0.75, 0, side * -0.45);
+      steedGroup.add(horn);
+    }
+
+    // Segmented spiked tail
+    const tail = new THREE.Group();
+    tail.position.set(0, 0.72, -0.78);
+    for (let i = 0; i < 3; i++) {
+      const seg = new THREE.Mesh(new THREE.ConeGeometry(0.14 - i * 0.03, 0.34, 6), drakeScaleMat);
+      seg.rotation.x = -Math.PI / 2 - 0.18 * i;
+      seg.position.set(0, -0.06 * i, -0.18 - i * 0.25);
+      tail.add(seg);
+    }
+    steedGroup.add(tail);
+
+    // 4 heavy armored War-Drake legs
+    const legs = [];
+    for (const [lx, lz] of [[-0.32, 0.46], [0.32, 0.46], [-0.34, -0.5], [0.34, -0.5]]) {
+      const leg = new THREE.Group();
+      leg.position.set(lx, 0.62, lz);
+      const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.08, 0.56, 8), drakeScaleMat);
+      thigh.position.y = -0.26;
+      const hoof = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 0.14, 8), emberMat);
+      hoof.position.y = -0.55;
+      leg.add(thigh, hoof);
+      steedGroup.add(leg);
+      legs.push(leg);
+    }
+
+    // Rider group atop ornate saddle
+    const rider = new THREE.Group();
+    rider.position.set(0, 1.06, 0.02);
+    bodyGroup.add(rider);
+
+    const saddle = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.14, 0.54), bronzeArmorMat);
+    saddle.position.y = 0.02;
+    rider.add(saddle);
+
+    const riderTorso = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.23, 0.58, 10), obsidianMat);
+    riderTorso.position.y = 0.38;
+    rider.add(riderTorso);
+
+    const chestMedallion = new THREE.Mesh(new THREE.OctahedronGeometry(0.11, 0), emberMat);
+    chestMedallion.position.set(0, 0.42, 0.24);
+    rider.add(chestMedallion);
+
+    // Layered crimson-gold spiked shoulder pauldrons
+    for (const side of [-1, 1]) {
+      const pauldron = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), bronzeArmorMat);
+      pauldron.scale.set(1.2, 0.75, 1.1);
+      pauldron.position.set(side * 0.34, 0.6, 0);
+      rider.add(pauldron);
+      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.26, 6), goldBladeMat);
+      spike.position.set(side * 0.44, 0.72, 0);
+      spike.rotation.z = side * -0.55;
+      rider.add(spike);
+    }
+
+    // Winged Bronze/Crimson Kabuto War Helm
+    const riderHead = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 8), mat({ color: 0x7f1d1d }));
+    riderHead.position.y = 0.84;
+    rider.add(riderHead);
+
+    const helm = new THREE.Mesh(new THREE.ConeGeometry(0.23, 0.24, 8), bronzeArmorMat);
+    helm.position.y = 0.96;
+    rider.add(helm);
+
+    for (const side of [-1, 1]) {
+      const eye = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.03, 0.02), emberMat);
+      eye.position.set(side * 0.07, 0.85, 0.17);
+      rider.add(eye);
+      const crestHorn = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.38, 6), goldBladeMat);
+      crestHorn.position.set(side * 0.16, 1.06, 0.08);
+      crestHorn.rotation.set(0.25, 0, side * -0.52);
+      rider.add(crestHorn);
+    }
+
+    // Twin iconic Sashimono War-Banners on back
+    const banners = [];
+    for (const side of [-1, 1]) {
+      const bannerGrp = new THREE.Group();
+      bannerGrp.position.set(side * 0.26, 0.56, -0.24);
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.25, 6), bronzeArmorMat);
+      pole.position.y = 0.55;
+      const cloth = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.72, 0.025), crimsonClothMat);
+      cloth.position.set(side * 0.14, 0.76, -0.02);
+      const trim = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.08, 0.03), bronzeArmorMat);
+      trim.position.set(side * 0.14, 1.08, -0.02);
+      bannerGrp.add(pole, cloth, trim);
+      bannerGrp.rotation.x = -0.18;
+      rider.add(bannerGrp);
+      banners.push(bannerGrp);
+    }
+
+    // Right Arm + Colossal Moon-Crescent Great-Glaive
+    const weaponArm = new THREE.Group();
+    weaponArm.position.set(-0.36, 0.54, 0.08);
+    const armMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.07, 0.44, 8), obsidianMat);
+    armMesh.position.y = -0.18;
+    weaponArm.add(armMesh);
+
+    const glaive = new THREE.Group();
+    glaive.position.set(0, -0.34, 0.15);
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.036, 2.05, 8), bronzeArmorMat);
+    shaft.rotation.x = Math.PI / 2.2;
+    glaive.add(shaft);
+    const crescent = new THREE.Mesh(new THREE.TorusGeometry(0.26, 0.055, 6, 12, Math.PI * 1.15), goldBladeMat);
+    crescent.position.set(0, 0.18, 0.96);
+    crescent.rotation.y = Math.PI / 2;
+    const tipSpear = new THREE.Mesh(new THREE.ConeGeometry(0.075, 0.42, 6), emberMat);
+    tipSpear.position.set(0, 0.16, 1.12);
+    tipSpear.rotation.x = Math.PI / 2.2;
+    glaive.add(crescent, tipSpear);
+    weaponArm.add(glaive);
+    rider.add(weaponArm);
+
+    // Left Arm + Spiked Siege Shield
+    const shieldArm = new THREE.Group();
+    shieldArm.position.set(0.36, 0.54, 0.08);
+    const shieldDisc = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.28, 0.06, 8), bronzeArmorMat);
+    shieldDisc.rotation.x = Math.PI / 2;
+    shieldDisc.position.set(0.08, -0.16, 0.18);
+    const shieldSpike = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.22, 6), emberMat);
+    shieldSpike.rotation.x = Math.PI / 2;
+    shieldSpike.position.set(0.08, -0.16, 0.3);
+    shieldArm.add(shieldDisc, shieldSpike);
+    rider.add(shieldArm);
+
+    return {
+      visualTopY: 2.85,
+      animate(state, time, dt, phase = 1) {
+        const isMoving = state === 'chase' || state === 'walk' || state === 'patrol';
+        const cycle = time * (isMoving ? 11.5 : 3.2);
+        const amp = isMoving ? 0.5 : 0.08;
+        legs[0].rotation.x = Math.sin(cycle) * amp;
+        legs[1].rotation.x = -Math.sin(cycle) * amp;
+        legs[2].rotation.x = -Math.sin(cycle) * amp;
+        legs[3].rotation.x = Math.sin(cycle) * amp;
+        tail.rotation.y = Math.sin(time * 4.5) * 0.22;
+        steedGroup.position.y = isMoving ? Math.abs(Math.sin(cycle)) * 0.08 : 0;
+        if (state === 'telegraph' || state === 'skill') {
+          steedGroup.rotation.x = -0.18;
+          rider.position.y = 1.14;
+          weaponArm.rotation.x = -1.75 + Math.sin(time * 12) * 0.18;
+        } else if (state === 'attack') {
+          steedGroup.rotation.x = 0.06;
+          weaponArm.rotation.x = -0.35 + Math.sin(time * 18) * 1.15;
+          weaponArm.rotation.y = Math.cos(time * 14) * 0.45;
+        } else {
+          steedGroup.rotation.x = 0;
+          rider.position.y = 1.06 + steedGroup.position.y * 0.8;
+          weaponArm.rotation.x = -0.3 + Math.sin(time * 2.5) * 0.08;
+          weaponArm.rotation.y = 0;
+        }
+        banners.forEach((b, i) => {
+          b.rotation.z = (i === 0 ? -0.12 : 0.12) + Math.sin(time * (4.5 + phase) + i) * 0.12;
+          b.rotation.x = -0.22 + Math.cos(time * 5 + i) * 0.08;
+        });
+      }
+    };
+  }
+
+  if (uniqueKey === 'isyutaru') {
+    // Isyutaru — Levitating Karakorum Frost Empress (4 Crystalline Ice Wings + Hexagonal Ice Mirror Halo + 6 Frozen Lances)
+    const frostSilkMat = mat({ color: 0xe0f2fe, roughness: 0.25, metalness: 0.2 });
+    const sapphireMat = mat({ color: 0x0284c7, roughness: 0.3, metalness: 0.5 });
+    const iceCrystalMat = glowMat(0x7dd3fc, 0.85, {
+      color: 0xbae6fd,
+      transparent: true,
+      opacity: 0.88,
+      metalness: 0.65,
+      roughness: 0.12
+    });
+    const coreIceMat = glowMat(0x38bdf8, 1.25);
+
+    const floatBody = new THREE.Group();
+    floatBody.position.y = 0.28;
+    bodyGroup.add(floatBody);
+
+    // Flared imperial silk gown
+    const lowerGown = new THREE.Mesh(new THREE.ConeGeometry(0.46, 1.02, 12), sapphireMat);
+    lowerGown.position.y = 0.56;
+    floatBody.add(lowerGown);
+
+    const upperCorset = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.26, 0.5, 10), frostSilkMat);
+    upperCorset.position.y = 1.16;
+    floatBody.add(upperCorset);
+
+    const crystalBrooch = new THREE.Mesh(new THREE.OctahedronGeometry(0.11, 0), coreIceMat);
+    crystalBrooch.position.set(0, 1.24, 0.2);
+    floatBody.add(crystalBrooch);
+
+    // Frost Empress Head & Crystalline Tiara Crown
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 10), mat({ color: 0xf1f5f9, roughness: 0.35, metalness: 0.1 }));
+    head.position.y = 1.56;
+    floatBody.add(head);
+
+    for (const side of [-1, 1]) {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.032, 6, 6), coreIceMat);
+      eye.position.set(side * 0.065, 1.57, 0.16);
+      floatBody.add(eye);
+    }
+
+    for (let c = -2; c <= 2; c++) {
+      const shard = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.3 - Math.abs(c) * 0.045, 5), iceCrystalMat);
+      shard.position.set(c * 0.075, 1.82 - Math.abs(c) * 0.03, 0.02);
+      shard.rotation.z = -c * 0.2;
+      floatBody.add(shard);
+    }
+
+    // Iconic Spinning Hexagonal Ice Mirror Halo behind back
+    const mirrorHalo = new THREE.Group();
+    mirrorHalo.position.set(0, 1.38, -0.32);
+    const hexRing = new THREE.Mesh(new THREE.TorusGeometry(0.56, 0.035, 6, 6), coreIceMat);
+    mirrorHalo.add(hexRing);
+    for (let m = 0; m < 6; m++) {
+      const ang = (m / 6) * Math.PI * 2;
+      const mirrorNode = new THREE.Mesh(new THREE.OctahedronGeometry(0.11, 0), iceCrystalMat);
+      mirrorNode.scale.set(0.7, 1.35, 0.35);
+      mirrorNode.position.set(Math.cos(ang) * 0.56, Math.sin(ang) * 0.56, 0);
+      mirrorNode.rotation.z = ang;
+      mirrorHalo.add(mirrorNode);
+    }
+    floatBody.add(mirrorHalo);
+
+    // 4 Articulated Crystalline Ice Wings
+    const wings = [];
+    for (const [side, yOff, scaleW, rotBase] of [[-1, 1.38, 1.0, 0.3], [1, 1.38, 1.0, 0.3], [-1, 1.05, 0.72, -0.25], [1, 1.05, 0.72, -0.25]]) {
+      const wGrp = new THREE.Group();
+      wGrp.position.set(side * 0.2, yOff, -0.18);
+      for (let f = 0; f < 3; f++) {
+        const blade = new THREE.Mesh(new THREE.OctahedronGeometry(0.16 * scaleW, 0), iceCrystalMat);
+        blade.scale.set(2.9, 0.48, 0.16);
+        blade.position.set(side * (0.36 + f * 0.14) * scaleW, (0.18 - f * 0.16) * scaleW, -0.05);
+        blade.rotation.z = side * (0.42 - f * 0.28 + rotBase);
+        wGrp.add(blade);
+      }
+      floatBody.add(wGrp);
+      wings.push({ grp: wGrp, side, upper: scaleW > 0.8 });
+    }
+
+    // 6 Orbiting Frozen Lances
+    const lanceOrbit = new THREE.Group();
+    lanceOrbit.position.y = 1.15;
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      const lance = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.58, 5), iceCrystalMat);
+      lance.position.set(Math.cos(a) * 0.92, Math.sin(a * 2) * 0.15, Math.sin(a) * 0.92);
+      lance.rotation.x = Math.PI / 2;
+      lance.rotation.z = -a;
+      lanceOrbit.add(lance);
+    }
+    floatBody.add(lanceOrbit);
+
+    // Right arm with Frost Sceptre
+    const sceptreArm = new THREE.Group();
+    sceptreArm.position.set(-0.3, 1.24, 0.08);
+    const staffPole = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 1.35, 8), sapphireMat);
+    staffPole.position.set(0, -0.08, 0.16);
+    staffPole.rotation.x = 0.25;
+    const staffGem = new THREE.Mesh(new THREE.OctahedronGeometry(0.14, 0), coreIceMat);
+    staffGem.position.set(0, 0.62, 0.34);
+    sceptreArm.add(staffPole, staffGem);
+    floatBody.add(sceptreArm);
+
+    return {
+      visualTopY: 2.65,
+      animate(state, time, dt, phase = 1) {
+        const hover = Math.sin(time * 2.8) * 0.12;
+        floatBody.position.y = 0.28 + hover;
+        mirrorHalo.rotation.z = time * (0.9 + phase * 0.35);
+        lanceOrbit.rotation.y = time * (1.8 + phase * 0.5);
+        lanceOrbit.scale.setScalar((state === 'skill' || state === 'telegraph') ? 1.32 : 1.0);
+        const flapFreq = state === 'skill' || state === 'attack' ? 8.5 : 4.2;
+        for (const w of wings) {
+          const offset = w.upper ? 0 : 0.7;
+          w.grp.rotation.y = w.side * (0.25 + Math.sin(time * flapFreq + offset) * 0.32);
+        }
+        if (state === 'telegraph' || state === 'skill') {
+          sceptreArm.rotation.x = -0.95 + Math.sin(time * 10) * 0.18;
+        } else if (state === 'attack') {
+          sceptreArm.rotation.x = -0.5 + Math.sin(time * 16) * 0.75;
+        } else {
+          sceptreArm.rotation.x = Math.sin(time * 2.2) * 0.1;
+        }
+      }
+    };
+  }
+
+  if (uniqueKey === 'lord_yarkan') {
+    // Lord Yarkan — Colossal Taklamakan Demon Monarch (Horns + Spinning Flaming Solar Wheel + Magma Core + Burning Great-Glaive)
+    const obsidianMat = mat({ color: 0x1c1917, roughness: 0.38, metalness: 0.75 });
+    const bronzeGoldMat = mat({ color: 0xd97706, roughness: 0.26, metalness: 0.88 });
+    const magmaMat = glowMat(0xf97316, 1.3, { color: 0xfb923c });
+    const goldEmissive = glowMat(0xfacc15, 0.9);
+
+    const titan = new THREE.Group();
+    bodyGroup.add(titan);
+
+    // Massive Demon Legs & Greaves
+    const legL = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.13, 0.76, 8), obsidianMat);
+    legL.position.set(0.22, 0.38, 0);
+    const legR = legL.clone();
+    legR.position.x = -0.22;
+    titan.add(legL, legR);
+
+    // Broad Plated Demon Torso + Exposed Magma Core
+    const torso = new THREE.Mesh(new THREE.DodecahedronGeometry(0.46, 0), obsidianMat);
+    torso.scale.set(1.22, 1.18, 0.82);
+    torso.position.y = 1.12;
+    titan.add(torso);
+
+    const magmaCore = new THREE.Mesh(new THREE.OctahedronGeometry(0.22, 0), magmaMat);
+    magmaCore.scale.set(1.0, 1.25, 0.55);
+    magmaCore.position.set(0, 1.14, 0.34);
+    titan.add(magmaCore);
+
+    // Layered Gold Pauldrons with Spikes
+    for (const side of [-1, 1]) {
+      const pauldron = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.28, 0.42), bronzeGoldMat);
+      pauldron.position.set(side * 0.54, 1.44, 0);
+      pauldron.rotation.z = side * -0.28;
+      titan.add(pauldron);
+      const shoulderSpike = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.42, 6), magmaMat);
+      shoulderSpike.position.set(side * 0.68, 1.66, 0);
+      shoulderSpike.rotation.z = side * -0.45;
+      titan.add(shoulderSpike);
+    }
+
+    // Demon Head & Towering Swept Obsidian-Gold Devil Horns
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.38, 0.36), obsidianMat);
+    head.position.y = 1.78;
+    titan.add(head);
+
+    for (const side of [-1, 1]) {
+      const eye = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.045, 0.03), magmaMat);
+      eye.position.set(side * 0.09, 1.81, 0.19);
+      titan.add(eye);
+      const hornLower = new THREE.Mesh(new THREE.ConeGeometry(0.085, 0.44, 7), bronzeGoldMat);
+      hornLower.position.set(side * 0.26, 2.02, -0.02);
+      hornLower.rotation.z = side * -0.75;
+      const hornTip = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.42, 7), magmaMat);
+      hornTip.position.set(side * 0.42, 2.28, 0.06);
+      hornTip.rotation.z = side * 0.2;
+      titan.add(hornLower, hornTip);
+    }
+
+    // Iconic Spinning Flaming Solar Wheel behind shoulders
+    const solarWheel = new THREE.Group();
+    solarWheel.position.set(0, 1.42, -0.44);
+    const wheelRim = new THREE.Mesh(new THREE.TorusGeometry(0.66, 0.05, 8, 24), bronzeGoldMat);
+    solarWheel.add(wheelRim);
+    for (let s = 0; s < 8; s++) {
+      const a = (s / 8) * Math.PI * 2;
+      const ray = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.32, 5), magmaMat);
+      ray.position.set(Math.cos(a) * 0.8, Math.sin(a) * 0.8, 0);
+      ray.rotation.z = a - Math.PI / 2;
+      solarWheel.add(ray);
+    }
+    titan.add(solarWheel);
+
+    // Swirling Desert Sand Ring around boots
+    const sandRing = new THREE.Mesh(new THREE.TorusGeometry(0.75, 0.045, 6, 24), goldEmissive);
+    sandRing.rotation.x = Math.PI / 2;
+    sandRing.position.y = 0.12;
+    titan.add(sandRing);
+
+    // Arms + Twin-Edged Burning Great-Glaive
+    const armR = new THREE.Group();
+    armR.position.set(-0.56, 1.32, 0.06);
+    const bicepR = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.09, 0.62, 8), obsidianMat);
+    bicepR.position.y = -0.26;
+    armR.add(bicepR);
+
+    const polearm = new THREE.Group();
+    polearm.position.set(0, -0.5, 0.16);
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 2.35, 8), bronzeGoldMat);
+    pole.rotation.x = Math.PI / 2.2;
+    const bladeFront = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.68, 4), magmaMat);
+    bladeFront.position.set(0, 0.22, 1.15);
+    bladeFront.rotation.x = Math.PI / 2.2;
+    const bladeBack = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.44, 4), goldEmissive);
+    bladeBack.position.set(0, -0.18, -1.05);
+    bladeBack.rotation.x = -Math.PI / 1.8;
+    polearm.add(pole, bladeFront, bladeBack);
+    armR.add(polearm);
+    titan.add(armR);
+
+    const armL = new THREE.Group();
+    armL.position.set(0.56, 1.32, 0.06);
+    const bicepL = bicepR.clone();
+    const clawL = new THREE.Mesh(new THREE.OctahedronGeometry(0.16, 0), magmaMat);
+    clawL.position.y = -0.58;
+    armL.add(bicepL, clawL);
+    titan.add(armL);
+
+    return {
+      visualTopY: 2.85,
+      animate(state, time, dt, phase = 1) {
+        solarWheel.rotation.z = time * (1.2 + phase * 0.55);
+        sandRing.rotation.z = time * 2.2;
+        magmaCore.scale.y = 1.25 + Math.sin(time * 5) * 0.12;
+        if (state === 'chase' || state === 'walk') {
+          const w = time * 7.5;
+          legL.rotation.x = Math.sin(w) * 0.45;
+          legR.rotation.x = -Math.sin(w) * 0.45;
+          armR.rotation.x = -0.35 + Math.cos(w) * 0.3;
+          armL.rotation.x = -0.25 - Math.cos(w) * 0.3;
+          titan.position.y = Math.abs(Math.sin(w)) * 0.06;
+        } else if (state === 'telegraph' || state === 'skill') {
+          titan.position.y = 0.08;
+          armR.rotation.x = -1.9 + Math.sin(time * 10) * 0.2;
+          armL.rotation.x = -1.6;
+        } else if (state === 'attack') {
+          armR.rotation.x = -0.25 + Math.sin(time * 16) * 1.25;
+          armL.rotation.x = -0.45 - Math.sin(time * 16) * 0.6;
+        } else {
+          legL.rotation.x = 0;
+          legR.rotation.x = 0;
+          titan.position.y = Math.sin(time * 2.5) * 0.03;
+          armR.rotation.x = -0.25 + Math.sin(time * 2.5) * 0.08;
+          armL.rotation.x = -0.2;
+        }
+      }
+    };
+  }
+
+  if (uniqueKey === 'demon_shaitan') {
+    // Demon Shaitan — Towering Winged Archfiend (Flapping Obsidian-Crimson Bat Wings + Curved Ram Horns + Molten Core + Abyssal Hell-Scythe)
+    const abyssMat = mat({ color: 0x111827, roughness: 0.45, metalness: 0.65 });
+    const demonSkinMat = mat({ color: 0x450a0a, roughness: 0.5, metalness: 0.35 });
+    const hellfireMat = glowMat(0xef4444, 1.35, { color: 0xdc2626 });
+    const lavaEdgeMat = glowMat(0xfb923c, 1.15);
+    const wingMembraneMat = mat({ color: 0x991b1b, emissive: new THREE.Color(0x7f1d1d), emissiveIntensity: 0.45, transparent: true, opacity: 0.88, side: THREE.DoubleSide });
+
+    const fiend = new THREE.Group();
+    bodyGroup.add(fiend);
+
+    const legL = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.1, 0.78, 8), demonSkinMat);
+    legL.position.set(0.2, 0.39, 0);
+    const legR = legL.clone();
+    legR.position.x = -0.2;
+    fiend.add(legL, legR);
+
+    const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.28, 0.82, 8), demonSkinMat);
+    torso.position.y = 1.12;
+    fiend.add(torso);
+
+    // Glowing Molten Ribcage Core
+    for (let r = 0; r < 3; r++) {
+      const rib = new THREE.Mesh(new THREE.TorusGeometry(0.24 - r * 0.03, 0.028, 6, 12, Math.PI), hellfireMat);
+      rib.position.set(0, 1.28 - r * 0.14, 0.16);
+      rib.rotation.x = Math.PI / 2;
+      fiend.add(rib);
+    }
+
+    // Archfiend Skull Crown + Twisted Ram Horns
+    const head = new THREE.Mesh(new THREE.DodecahedronGeometry(0.21, 0), abyssMat);
+    head.position.y = 1.72;
+    fiend.add(head);
+
+    for (const side of [-1, 1]) {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.038, 6, 6), lavaEdgeMat);
+      eye.position.set(side * 0.08, 1.74, 0.18);
+      fiend.add(eye);
+      const ramHorn = new THREE.Mesh(new THREE.TorusGeometry(0.18, 0.05, 6, 12, Math.PI * 1.35), abyssMat);
+      ramHorn.position.set(side * 0.2, 1.84, -0.02);
+      ramHorn.rotation.y = side * Math.PI / 2;
+      ramHorn.rotation.z = 0.35;
+      fiend.add(ramHorn);
+      const hornPoint = new THREE.Mesh(new THREE.ConeGeometry(0.055, 0.3, 6), hellfireMat);
+      hornPoint.position.set(side * 0.32, 1.98, 0.14);
+      hornPoint.rotation.set(0.45, 0, side * -0.4);
+      fiend.add(hornPoint);
+    }
+
+    // Massive Articulated Obsidian-Crimson Demon Bat Wings
+    const batWings = [];
+    for (const side of [-1, 1]) {
+      const wGrp = new THREE.Group();
+      wGrp.position.set(side * 0.28, 1.42, -0.22);
+      const spar = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.03, 1.45, 6), abyssMat);
+      spar.rotation.z = side * -1.05;
+      spar.position.set(side * 0.62, 0.34, -0.08);
+      wGrp.add(spar);
+      for (let m = 0; m < 3; m++) {
+        const panel = new THREE.Mesh(new THREE.ConeGeometry(0.32 - m * 0.04, 0.92 - m * 0.1, 4), wingMembraneMat);
+        panel.scale.set(0.95, 1.0, 0.14);
+        panel.position.set(side * (0.42 + m * 0.28), 0.12 - m * 0.1, -0.1);
+        panel.rotation.z = side * (0.35 + m * 0.15);
+        wGrp.add(panel);
+      }
+      fiend.add(wGrp);
+      batWings.push({ grp: wGrp, side });
+    }
+
+    // Abyssal Hell-Scythe
+    const scytheArm = new THREE.Group();
+    scytheArm.position.set(-0.48, 1.36, 0.08);
+    const armMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.07, 0.56, 7), abyssMat);
+    armMesh.position.y = -0.24;
+    scytheArm.add(armMesh);
+    const scytheGrp = new THREE.Group();
+    scytheGrp.position.set(0, -0.48, 0.15);
+    const scythePole = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.035, 2.2, 8), abyssMat);
+    scythePole.rotation.x = Math.PI / 2.2;
+    const scytheBlade = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.06, 6, 14, Math.PI * 0.95), lavaEdgeMat);
+    scytheBlade.position.set(0, 0.24, 1.02);
+    scytheBlade.rotation.y = Math.PI / 2;
+    scytheBlade.rotation.z = 0.6;
+    scytheGrp.add(scythePole, scytheBlade);
+    scytheArm.add(scytheGrp);
+    fiend.add(scytheArm);
+
+    const clawArmL = new THREE.Group();
+    clawArmL.position.set(0.48, 1.36, 0.08);
+    const lArmMesh = armMesh.clone();
+    const emberOrb = new THREE.Mesh(new THREE.OctahedronGeometry(0.16, 0), hellfireMat);
+    emberOrb.position.set(0.04, -0.56, 0.12);
+    clawArmL.add(lArmMesh, emberOrb);
+    fiend.add(clawArmL);
+
+    // Orbiting Hellfire Shards
+    const embers = new THREE.Group();
+    embers.position.y = 1.15;
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2;
+      const s = new THREE.Mesh(new THREE.OctahedronGeometry(0.09, 0), lavaEdgeMat);
+      s.position.set(Math.cos(a) * 0.85, 0, Math.sin(a) * 0.85);
+      embers.add(s);
+    }
+    fiend.add(embers);
+
+    return {
+      visualTopY: 2.8,
+      animate(state, time, dt, phase = 1) {
+        embers.rotation.y = time * (2.2 + phase * 0.8);
+        const flapSpeed = state === 'skill' || state === 'chase' ? 6.5 : 3.2;
+        for (const w of batWings) {
+          w.grp.rotation.y = w.side * (0.18 + Math.sin(time * flapSpeed) * 0.42);
+          w.grp.rotation.z = w.side * Math.cos(time * flapSpeed) * 0.12;
+        }
+        if (state === 'chase' || state === 'walk') {
+          const w = time * 8.5;
+          legL.rotation.x = Math.sin(w) * 0.48;
+          legR.rotation.x = -Math.sin(w) * 0.48;
+          fiend.position.y = 0.08 + Math.abs(Math.sin(w)) * 0.08;
+        } else {
+          legL.rotation.x = 0;
+          legR.rotation.x = 0;
+          fiend.position.y = Math.sin(time * 3.0) * 0.08;
+        }
+        if (state === 'telegraph' || state === 'skill') {
+          scytheArm.rotation.x = -1.8 + Math.sin(time * 12) * 0.22;
+          clawArmL.rotation.x = -1.4;
+        } else if (state === 'attack') {
+          scytheArm.rotation.x = -0.3 + Math.sin(time * 18) * 1.25;
+        } else {
+          scytheArm.rotation.x = -0.25 + Math.sin(time * 2.5) * 0.1;
+          clawArmL.rotation.x = -0.15;
+        }
+      }
+    };
+  }
+
+  if (uniqueKey === 'roc') {
+    // Roc — Colossal Four-Winged Celestial Avian Sky-Leviathan (NO humanoid body; pure Griffin/Storm-Phoenix!)
+    const azurePlumeMat = mat({ color: 0x0369a1, roughness: 0.35, metalness: 0.45 });
+    const royalFeatherMat = mat({ color: 0x0284c7, roughness: 0.3, metalness: 0.55 });
+    const goldArmorMat = mat({ color: 0xfacc15, roughness: 0.22, metalness: 0.9 });
+    const stormGlowMat = glowMat(0x38bdf8, 1.3, { color: 0x7dd3fc });
+    const lightningGoldMat = glowMat(0xfef08a, 1.1, { color: 0xfde047 });
+
+    const birdRoot = new THREE.Group();
+    birdRoot.position.y = 0.52;
+    bodyGroup.add(birdRoot);
+
+    // Aerodynamic Avian Thorax + Golden Breast Keel Plate
+    const birdBody = new THREE.Mesh(new THREE.SphereGeometry(0.52, 16, 12), azurePlumeMat);
+    birdBody.scale.set(0.95, 0.88, 1.55);
+    birdBody.position.set(0, 0.82, -0.05);
+    birdRoot.add(birdBody);
+
+    const breastArmor = new THREE.Mesh(new THREE.ConeGeometry(0.42, 0.85, 8), goldArmorMat);
+    breastArmor.rotation.x = Math.PI / 1.8;
+    breastArmor.position.set(0, 0.8, 0.45);
+    birdRoot.add(breastArmor);
+
+    // Curved Plumed Neck + Fierce Raptor Eagle Head + Hooked Golden Beak
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.32, 0.65, 10), royalFeatherMat);
+    neck.position.set(0, 1.22, 0.62);
+    neck.rotation.x = 0.5;
+    birdRoot.add(neck);
+
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 10), azurePlumeMat);
+    head.scale.set(0.95, 0.92, 1.25);
+    head.position.set(0, 1.52, 0.88);
+    birdRoot.add(head);
+
+    const upperBeak = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.42, 6), goldArmorMat);
+    upperBeak.rotation.x = Math.PI / 1.85;
+    upperBeak.position.set(0, 1.48, 1.2);
+    const beakTipHook = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.16, 5), goldArmorMat);
+    beakTipHook.rotation.x = Math.PI * 0.95;
+    beakTipHook.position.set(0, 1.38, 1.36);
+    birdRoot.add(upperBeak, beakTipHook);
+
+    for (const side of [-1, 1]) {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.048, 6, 6), stormGlowMat);
+      eye.position.set(side * 0.16, 1.56, 1.02);
+      birdRoot.add(eye);
+      const brow = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.34, 5), lightningGoldMat);
+      brow.position.set(side * 0.15, 1.72, 0.78);
+      brow.rotation.set(-0.75, 0, side * -0.35);
+      birdRoot.add(brow);
+    }
+
+    // 5-Plume Celestial Storm Crest
+    for (let c = -2; c <= 2; c++) {
+      const crest = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.48 - Math.abs(c) * 0.08, 5), c % 2 === 0 ? stormGlowMat : goldArmorMat);
+      crest.position.set(c * 0.06, 1.82 - Math.abs(c) * 0.04, 0.68);
+      crest.rotation.x = -0.65;
+      crest.rotation.z = -c * 0.16;
+      birdRoot.add(crest);
+    }
+
+    // FOUR Massive Articulated Azure-Gold Feathered Wings
+    const allWings = [];
+    for (const [side, yOff, zOff, wingScale, phaseShift] of [
+      [-1, 1.08, 0.22, 1.15, 0.0],
+      [1, 1.08, 0.22, 1.15, 0.0],
+      [-1, 0.94, -0.26, 0.85, 0.7],
+      [1, 0.94, -0.26, 0.85, 0.7]
+    ]) {
+      const wGrp = new THREE.Group();
+      wGrp.position.set(side * 0.34, yOff, zOff);
+      const pinion = new THREE.Mesh(new THREE.BoxGeometry(0.95 * wingScale, 0.12, 0.26), goldArmorMat);
+      pinion.position.set(side * 0.48 * wingScale, 0.05, 0);
+      wGrp.add(pinion);
+      for (let f = 0; f < 6; f++) {
+        const feather = new THREE.Mesh(
+          new THREE.ConeGeometry(0.11 * wingScale, (1.28 - f * 0.12) * wingScale, 5),
+          f % 2 === 0 ? royalFeatherMat : stormGlowMat
+        );
+        feather.scale.set(0.7, 1.0, 0.22);
+        feather.position.set(side * (0.45 + f * 0.22) * wingScale, -0.18 * wingScale, -0.18 - f * 0.06);
+        feather.rotation.z = side * (1.25 - f * 0.08);
+        wGrp.add(feather);
+      }
+      birdRoot.add(wGrp);
+      allWings.push({ grp: wGrp, side, phaseShift });
+    }
+
+    // Fanned Celestial Tail Plumage
+    const tailFan = new THREE.Group();
+    tailFan.position.set(0, 0.78, -0.82);
+    for (let t = -3; t <= 3; t++) {
+      const tailFeather = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.95 - Math.abs(t) * 0.08, 5), t % 2 === 0 ? goldArmorMat : stormGlowMat);
+      tailFeather.scale.set(0.85, 1.0, 0.2);
+      tailFeather.rotation.x = -Math.PI / 2.2;
+      tailFeather.rotation.z = t * 0.22;
+      tailFeather.position.set(t * 0.12, 0, -0.35);
+      tailFan.add(tailFeather);
+    }
+    birdRoot.add(tailFan);
+
+    // Golden Raptor Talons
+    const talons = [];
+    for (const side of [-1, 1]) {
+      const leg = new THREE.Group();
+      leg.position.set(side * 0.28, 0.42, 0.08);
+      const shank = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.06, 0.44, 7), goldArmorMat);
+      shank.position.y = -0.2;
+      leg.add(shank);
+      for (const clawIdx of [-1, 0, 1]) {
+        const claw = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.24, 5), stormGlowMat);
+        claw.position.set(clawIdx * 0.065, -0.44, 0.1);
+        claw.rotation.x = 0.8;
+        leg.add(claw);
+      }
+      birdRoot.add(leg);
+      talons.push(leg);
+    }
+
+    // Celestial Storm Halo + Orbiting Thunder Orbs
+    const stormHalo = new THREE.Group();
+    stormHalo.position.y = 1.15;
+    for (let o = 0; o < 4; o++) {
+      const a = (o / 4) * Math.PI * 2;
+      const orb = new THREE.Mesh(new THREE.OctahedronGeometry(0.11, 0), lightningGoldMat);
+      orb.position.set(Math.cos(a) * 1.15, Math.sin(a * 2) * 0.18, Math.sin(a) * 1.15);
+      stormHalo.add(orb);
+    }
+    birdRoot.add(stormHalo);
+
+    return {
+      visualTopY: 2.75,
+      animate(state, time, dt, phase = 1) {
+        const hover = Math.sin(time * 3.4) * 0.14;
+        birdRoot.position.y = 0.52 + hover;
+        stormHalo.rotation.y = time * (2.2 + phase * 0.7);
+        const flapSpeed = (state === 'skill' || state === 'attack' || state === 'chase') ? 8.8 : 4.6;
+        for (const w of allWings) {
+          w.grp.rotation.z = w.side * Math.sin(time * flapSpeed + w.phaseShift) * 0.48;
+          w.grp.rotation.y = w.side * 0.18 * Math.cos(time * flapSpeed + w.phaseShift);
+        }
+        tailFan.rotation.x = Math.sin(time * 3.5) * 0.12;
+        if (state === 'telegraph' || state === 'skill') {
+          birdRoot.rotation.x = -0.22;
+          talons.forEach((t) => { t.rotation.x = -0.55; });
+        } else if (state === 'attack') {
+          birdRoot.rotation.x = 0.24;
+          talons.forEach((t, i) => { t.rotation.x = Math.sin(time * 16 + i) * 0.5; });
+        } else {
+          birdRoot.rotation.x = 0.04;
+          talons.forEach((t) => { t.rotation.x = 0.1 + Math.sin(time * 3) * 0.08; });
+        }
+      }
+    };
+  }
+
+  // Fallback unique key: 'medusa' — Abyssal Gorgon Queen
+  const emeraldMat = mat({ color: 0x065f46, roughness: 0.35, metalness: 0.45 });
+  const goldScaleMat = mat({ color: 0xeab308, roughness: 0.25, metalness: 0.85 });
+  const venomGlow = glowMat(0x4ade80, 1.15);
+
+  const gorgon = new THREE.Group();
+  bodyGroup.add(gorgon);
+
+  const tailSegments = [];
+  for (let i = 0; i < 5; i++) {
+    const seg = new THREE.Mesh(new THREE.SphereGeometry(0.32 - i * 0.045, 10, 8), i % 2 === 0 ? emeraldMat : goldScaleMat);
+    seg.position.set(0, 0.22, -i * 0.34);
+    gorgon.add(seg);
+    tailSegments.push(seg);
+  }
+
+  const upperTorso = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.22, 0.72, 10), emeraldMat);
+  upperTorso.position.y = 0.86;
+  gorgon.add(upperTorso);
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8), mat({ color: 0xa7f3d0, roughness: 0.4 }));
+  head.position.y = 1.42;
+  gorgon.add(head);
+
+  for (const side of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 6), venomGlow);
+    eye.position.set(side * 0.075, 1.44, 0.18);
+    gorgon.add(eye);
+  }
+
+  const snakeLocks = [];
+  for (let s = 0; s < 8; s++) {
+    const a = (s / 8) * Math.PI * 2;
+    const snake = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.34, 5), venomGlow);
+    snake.position.set(Math.cos(a) * 0.22, 1.62, Math.sin(a) * 0.22);
+    snake.rotation.z = -Math.cos(a) * 0.45;
+    snake.rotation.x = Math.sin(a) * 0.45;
+    gorgon.add(snake);
+    snakeLocks.push({ mesh: snake, a });
+  }
+
+  const staffArm = new THREE.Group();
+  staffArm.position.set(-0.32, 1.05, 0.1);
+  const staff = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.4, 7), goldScaleMat);
+  const venomOrb = new THREE.Mesh(new THREE.OctahedronGeometry(0.14, 0), venomGlow);
+  venomOrb.position.y = 0.74;
+  staffArm.add(staff, venomOrb);
+  gorgon.add(staffArm);
+
+  return {
+    visualTopY: 2.5,
+    animate(state, time) {
+      tailSegments.forEach((seg, i) => {
+        seg.position.x = Math.sin(time * 4.5 - i * 0.7) * (0.08 + i * 0.04);
+      });
+      snakeLocks.forEach((sl, i) => {
+        sl.mesh.rotation.z = -Math.cos(sl.a) * (0.4 + Math.sin(time * 5 + i) * 0.2);
+      });
+      staffArm.rotation.x = (state === 'skill' || state === 'telegraph')
+        ? -1.1 + Math.sin(time * 10) * 0.2
+        : Math.sin(time * 2.5) * 0.12;
+    }
+  };
+}
+
 export function createMonsterMesh(typeOrConfig = 'slime', options = {}) {
   const cfg = typeof typeOrConfig === 'object' && typeOrConfig !== null
     ? { ...typeOrConfig, ...options }
@@ -3679,8 +4674,9 @@ export function createMonsterMesh(typeOrConfig = 'slime', options = {}) {
   const rawType = String(cfg.type || cfg.id || cfg.name || 'slime').toLowerCase();
   const isBoss = Boolean(cfg.isBoss || rawType.includes('boss') || rawType.includes('lord') || rawType.includes('king') || rawType.includes('queen'));
   const isElite = Boolean(cfg.isElite || cfg.elite);
+  const isGiant = Boolean(cfg.isGiant);
   const tier = Number(cfg.tier || cfg.level || 1);
-  const baseScale = Number(cfg.scale || (isBoss ? 1.85 : isElite ? 1.28 : 1.0));
+  const baseScale = Number(cfg.scale || (isBoss ? 1.85 : isGiant ? 1.62 : isElite ? 1.28 : 1.0));
 
   const root = new THREE.Group();
   root.name = `Monster_${rawType}`;
@@ -3695,8 +4691,20 @@ export function createMonsterMesh(typeOrConfig = 'slime', options = {}) {
   let rightLeg = null;
   let extraPart = null;
 
+  const uniqueKey = resolveUniquePrefabKey(cfg);
+  const usesBespokeUniqueRig = Boolean(
+    uniqueKey && uniqueKey !== 'tigerwoman' && (isBoss || cfg.uniquePrefab || cfg.uniqueId)
+  );
+
   // Determine archetype from name/type
-  if (rawType.includes('slime') || rawType.includes('blob') || rawType.includes('ooze') || rawType.includes('jelly')) {
+  if (usesBespokeUniqueRig) {
+    animKind = 'unique';
+    const uniqueBuilt = buildUniqueBossMesh(uniqueKey, bodyGroup, cfg);
+    if (uniqueBuilt?.visualTopY) root.userData.visualTopY = uniqueBuilt.visualTopY;
+    if (typeof uniqueBuilt?.animate === 'function') {
+      root.userData.animateUniqueParts = uniqueBuilt.animate;
+    }
+  } else if (rawType.includes('slime') || rawType.includes('blob') || rawType.includes('ooze') || rawType.includes('jelly')) {
     animKind = 'slime';
     const slimeColor = cfg.color ?? (rawType.includes('red') || rawType.includes('fire') || tier >= 8 ? 0xef4444
       : rawType.includes('blue') || rawType.includes('ice') || tier >= 4 ? 0x38bdf8
@@ -4009,16 +5017,18 @@ export function createMonsterMesh(typeOrConfig = 'slime', options = {}) {
     bodyGroup.add(leftLeg, rightLeg);
   }
 
-  // Add Elite / Boss ground aura ring
-  if (isElite || isBoss) {
-    const auraColor = isBoss ? 0xef4444 : 0xfacc15;
+  // Add Elite / Boss / Giant ground aura ring
+  if (isElite || isBoss || isGiant) {
+    const auraColor = isBoss ? 0xef4444 : isGiant ? 0xf59e0b : 0xfacc15;
+    const ringInner = isGiant ? 0.75 : 0.55;
+    const ringOuter = isGiant ? 0.98 : 0.72;
     const auraRing = new THREE.Mesh(
-      new THREE.RingGeometry(0.55, 0.72, 24),
+      new THREE.RingGeometry(ringInner, ringOuter, 28),
       new THREE.MeshBasicMaterial({
         color: auraColor,
         side: THREE.DoubleSide,
         transparent: true,
-        opacity: 0.65
+        opacity: isGiant ? 0.85 : 0.65
       })
     );
     auraRing.name = 'AuraRing';
@@ -4031,22 +5041,100 @@ export function createMonsterMesh(typeOrConfig = 'slime', options = {}) {
   }
 
   // SRO Monster / Boss GLB Models
-  const mobSpec = resolveMonsterGlb(rawType, isBoss, cfg.glbPath, cfg.targetHeight);
-  if (mobSpec) {
-    attachGLBModel(root, mobSpec.url, {
-      targetHeight: mobSpec.height,
-      yOffset: mobSpec.yOffset,
-      hideFallback: true,
+  const isTigerBoss = isBoss && (rawType.includes('tigerwoman') || rawType.includes('tigergirl'));
+  const hasMount = isTigerBoss || Boolean(cfg.mountGlbPath);
+  const mountGlbUrl = cfg.mountGlbPath || (isTigerBoss ? '/assets/sro/mobs/bluetiger.glb' : null);
+
+  if (hasMount && mountGlbUrl) {
+    attachGLBModel(root, mountGlbUrl, {
+      targetHeight: cfg.mountTargetHeight || 1.78,
+      yOffset: cfg.mountYOffset || 0,
+      hideFallback: false,
       castShadow: isBoss,
       receiveShadow: true,
       onLoaded: (clone, { animations }) => {
+        root.userData.mountModel = clone;
+        let mountRootBone = null;
+        let saddleBone = null;
+        clone.traverse((b) => {
+          if (!mountRootBone && b.isBone && /^(Bip0[123]|Bone01)$/i.test(b.name)) {
+            mountRootBone = b;
+          }
+          if (!saddleBone && b.name && /saddle/i.test(b.name)) {
+            saddleBone = b;
+          }
+        });
+        enableSafeFrustumCulling(clone, 3.2);
+        const mountBindRootY = mountRootBone ? mountRootBone.position.y : 0;
+        root.userData.saddleBone = saddleBone;
+        if (animations && animations.length > 0) {
+          const mixer = new THREE.AnimationMixer(clone);
+          const actions = {};
+          for (const clip of animations) {
+            actions[clip.name] = mixer.clipAction(clip);
+          }
+          root.userData.mountMixer = mixer;
+          root.userData.mountActions = actions;
+          const stand = actions['STAND1'] || Object.values(actions)[0];
+          if (stand) {
+            stand.play();
+            mixer.update(0.001);
+            root.userData.currentMountAction = stand;
+            if (mountRootBone && mountRootBone.position.y < mountBindRootY - 0.02) {
+              clone.position.y += (mountBindRootY - mountRootBone.position.y) * clone.scale.y;
+            }
+          }
+        }
+      }
+    });
+  }
+
+  // Tiger Girl mounted orb & crown aura (kept alongside tigerwoman.glb + bluetiger.glb)
+  if (isTigerBoss) {
+    const tFlameMat = new THREE.MeshStandardMaterial({
+      color: 0xf97316,
+      emissive: new THREE.Color(0xea580c),
+      emissiveIntensity: 1.0,
+      roughness: 0.25
+    });
+    const tigerCrownOrbit = new THREE.Group();
+    tigerCrownOrbit.position.y = 1.65;
+    tigerCrownOrbit.userData.keepWithGLB = true;
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2;
+      const orb = new THREE.Mesh(new THREE.OctahedronGeometry(0.08, 0), tFlameMat);
+      orb.position.set(Math.cos(a) * 0.72, 0, Math.sin(a) * 0.72);
+      tigerCrownOrbit.add(orb);
+    }
+    root.add(tigerCrownOrbit);
+    root.userData.tigerOrbit = tigerCrownOrbit;
+    root.userData.visualTopY = 2.68;
+  }
+
+  const mobSpec = resolveMonsterGlb(rawType, isBoss, cfg.glbPath, cfg.targetHeight, cfg.targetSpan);
+  if (mobSpec) {
+    const riderYOffset = isTigerBoss ? (mobSpec.yOffset || 0) + 1.02 : mobSpec.yOffset;
+    const riderZOffset = isTigerBoss ? -0.06 : 0;
+    attachGLBModel(root, mobSpec.url, {
+      targetHeight: mobSpec.targetSpan ? null : mobSpec.height,
+      targetSpan: mobSpec.targetSpan || null,
+      yOffset: riderYOffset,
+      zOffset: riderZOffset,
+      hideFallback: true,
+      castShadow: isBoss,
+      receiveShadow: true,
+      onLoaded: (clone, { animations, bounds }) => {
+        root.userData.riderModel = clone;
+        if (!isTigerBoss && bounds && bounds.size.y > 0.01) {
+          root.userData.visualTopY = Math.max(1.8, bounds.size.y * clone.scale.y + 0.35);
+        }
         let rootBone = null;
         clone.traverse((b) => {
           if (!rootBone && b.isBone && /^(Bip0[123]|Bone01)$/i.test(b.name)) {
             rootBone = b;
           }
-          if (b.isMesh) b.frustumCulled = false;
         });
+        enableSafeFrustumCulling(clone, 2.8);
         const bindRootY = rootBone ? rootBone.position.y : 0;
 
         if (animations && animations.length > 0) {
@@ -4058,7 +5146,7 @@ export function createMonsterMesh(typeOrConfig = 'slime', options = {}) {
           root.userData.mixer = mixer;
           root.userData.actions = actions;
           root.userData.currentAction = null;
-          const stand = actions['STAND1'] || Object.values(actions)[0];
+          const stand = actions['STAND1'] || actions['STAND2'] || actions['WAIT01'] || Object.values(actions)[0];
           if (stand) {
             stand.play();
             mixer.update(0.001);
@@ -4068,6 +5156,7 @@ export function createMonsterMesh(typeOrConfig = 'slime', options = {}) {
             if (rootBone && rootBone.position.y < bindRootY - 0.02) {
               const drop = (bindRootY - rootBone.position.y) * clone.scale.y;
               clone.position.y += drop;
+              clone.userData.dropCompY = drop;
             }
           }
         }
@@ -4079,10 +5168,12 @@ export function createMonsterMesh(typeOrConfig = 'slime', options = {}) {
   root.scale.setScalar(baseScale);
   attachHitFlashSupport(root);
 
+  const _saddleTmp = new THREE.Vector3();
   root.userData.animate = (stateOrTime = 'idle', timeOrDt = 0, dtArg = 0.016) => {
     const state = typeof stateOrTime === 'string' ? stateOrTime.toLowerCase() : 'idle';
     const time = typeof stateOrTime === 'number' ? stateOrTime : Number(timeOrDt || 0);
     const dt = typeof stateOrTime === 'number' ? Number(timeOrDt || 0.016) : Number(dtArg || 0.016);
+    const phaseLevel = Number(root.userData.phaseLevel || 1);
 
     if (root.userData.hitFlashTimer > 0) {
       root.userData.hitFlashTimer = Math.max(0, root.userData.hitFlashTimer - dt * 6);
@@ -4090,12 +5181,34 @@ export function createMonsterMesh(typeOrConfig = 'slime', options = {}) {
     }
 
     if (root.userData.auraRing) {
-      root.userData.auraRing.rotation.z = time * 1.8;
+      root.userData.auraRing.rotation.z = time * (1.8 + (phaseLevel - 1) * 1.1);
+      if (phaseLevel > 1) {
+        const pulse = 1 + Math.sin(time * 6) * 0.06 * phaseLevel;
+        root.userData.auraRing.scale.set(pulse, pulse, 1);
+      }
+    }
+    if (root.userData.tigerOrbit) {
+      root.userData.tigerOrbit.rotation.y = time * (2.1 + phaseLevel * 0.6);
     }
 
-    // AnimationMixer for SRO GLB Monster
-    if (root.userData.mixer) {
-      root.userData.mixer.update(dt);
+    // AnimationMixer for SRO GLB Monster & Mount
+    if (root.userData.mixer || root.userData.mountMixer) {
+      if (root.userData.mixer) root.userData.mixer.update(dt);
+      if (root.userData.mountMixer) root.userData.mountMixer.update(dt);
+
+      // Lock rider model onto Blue Tiger 'saddle' bone socket each frame
+      if (root.userData.saddleBone && root.userData.riderModel && root.userData.mountModel) {
+        root.userData.mountModel.updateMatrixWorld(true);
+        root.userData.saddleBone.getWorldPosition(_saddleTmp);
+        root.worldToLocal(_saddleTmp);
+        const rModel = root.userData.riderModel;
+        rModel.position.set(
+          _saddleTmp.x,
+          Math.max(0.75, _saddleTmp.y - 0.14 + (rModel.userData.dropCompY || 0)),
+          _saddleTmp.z - 0.04
+        );
+      }
+
       const actions = root.userData.actions;
       if (actions) {
         let targetName = 'STAND1';
@@ -4108,11 +5221,19 @@ export function createMonsterMesh(typeOrConfig = 'slime', options = {}) {
         } else if (state === 'hurt' || state === 'damage' || state === 'hit') {
           targetName = actions['DAMAGE1'] ? 'DAMAGE1' : (actions['DAMAGE2'] ? 'DAMAGE2' : 'STAND1');
           targetLoop = THREE.LoopOnce;
+        } else if (state === 'telegraph') {
+          targetName = actions['READY01'] ? 'READY01' : (actions['ATTACK2'] ? 'ATTACK2' : (actions['ATTACK1'] ? 'ATTACK1' : 'STAND1'));
+          targetLoop = THREE.LoopRepeat;
         } else if (state === 'attack' || state === 'skill') {
-          targetName = actions['ATTACK1'] ? 'ATTACK1' : (actions['ATTACK2'] ? 'ATTACK2' : 'STAND1');
+          const variant = String(root.userData.attackVariant || (state === 'skill' ? 'ATTACK2' : 'ATTACK1')).toUpperCase();
+          targetName = actions[variant]
+            ? variant
+            : (state === 'skill' && actions['ATTACK3'] ? 'ATTACK3'
+            : (state === 'skill' && actions['ATTACK2'] ? 'ATTACK2'
+            : (actions['ATTACK1'] ? 'ATTACK1' : (actions['ATTACK2'] ? 'ATTACK2' : 'STAND1'))));
           targetLoop = THREE.LoopOnce;
         } else if (state === 'chase' || state === 'walk' || state === 'run') {
-          targetName = actions['RUN'] ? 'RUN' : (actions['WALK'] ? 'WALK' : 'STAND1');
+          targetName = actions['RUN'] ? 'RUN' : (actions['WALK'] ? 'WALK' : (actions['WAIT01'] ? 'WAIT01' : (actions['STAND2'] ? 'STAND2' : 'STAND1')));
         }
 
         const nextAction = actions[targetName] || actions['STAND1'];
@@ -4126,6 +5247,23 @@ export function createMonsterMesh(typeOrConfig = 'slime', options = {}) {
           nextAction.fadeIn(0.18).play();
           root.userData.currentAction = nextAction;
           root.userData.currentActionName = targetName;
+        }
+
+        // Synchronize mount animations in lockstep
+        if (root.userData.mountMixer && root.userData.mountActions) {
+          const mActions = root.userData.mountActions;
+          const mountKey = (state === 'attack' || state === 'skill')
+            ? (mActions['ATTACK1'] ? 'ATTACK1' : 'STAND1')
+            : targetName;
+          const nextMountAction = mActions[mountKey] || mActions['STAND1'];
+          if (nextMountAction && nextMountAction !== root.userData.currentMountAction) {
+            if (root.userData.currentMountAction) root.userData.currentMountAction.fadeOut(0.18);
+            nextMountAction.reset();
+            nextMountAction.setLoop(targetLoop, targetLoop === THREE.LoopOnce ? 1 : Infinity);
+            nextMountAction.clampWhenFinished = clamp;
+            nextMountAction.fadeIn(0.18).play();
+            root.userData.currentMountAction = nextMountAction;
+          }
         }
       }
       return;
@@ -4146,6 +5284,11 @@ export function createMonsterMesh(typeOrConfig = 'slime', options = {}) {
     }
 
     bodyGroup.rotation.x = 0;
+
+    if (typeof root.userData.animateUniqueParts === 'function') {
+      root.userData.animateUniqueParts(state, time, dt, phaseLevel);
+      return;
+    }
 
     if (animKind === 'slime') {
       const speed = state === 'chase' || state === 'walk' ? 8 : 4;
@@ -4293,11 +5436,30 @@ export function createNPCMesh(npcOrRole = 'chief') {
   root.add(ring);
 
   // SRO NPC Character Models with Silkroad animations & SOS glowing weapons
+  const idStr = String(
+    typeof npcOrRole === 'object' ? (npcOrRole.id || npcOrRole.npcId || roleStr) : npcOrRole
+  ).toLowerCase();
   const rLow = roleStr.toLowerCase();
   let npcGlbUrl = '/assets/sro/town/m01.glb';
   let npcTargetH = 1.84;
   let npcSosWeapon = 'sword_04.glb';
-  if (rLow.includes('smith') || rLow.includes('blacksmith') || rLow.includes('weapon') || rLow.includes('forge')) {
+  if (idStr === 'pet_merchant' || rLow.includes('tamer') || rLow.includes('pet')) {
+    npcGlbUrl = '/assets/sro/town/w07.glb';
+    npcTargetH = 1.76;
+    npcSosWeapon = 'bow_04.glb';
+  } else if (idStr === 'accessory_trader' || rLow.includes('accessory') || rLow.includes('jewelry')) {
+    npcGlbUrl = '/assets/sro/town/w05.glb';
+    npcTargetH = 1.76;
+    npcSosWeapon = 'blade_04.glb';
+  } else if (idStr === 'hunter_master' || rLow.includes('hunter')) {
+    npcGlbUrl = '/assets/sro/town/guard_spear.glb';
+    npcTargetH = 1.88;
+    npcSosWeapon = 'spear_04.glb';
+  } else if (idStr === 'storage' || rLow.includes('storage') || rLow.includes('quartermaster')) {
+    npcGlbUrl = '/assets/sro/town/m06.glb';
+    npcTargetH = 1.82;
+    npcSosWeapon = 'sword_04.glb';
+  } else if (rLow.includes('smith') || rLow.includes('blacksmith') || rLow.includes('weapon') || rLow.includes('forge')) {
     npcGlbUrl = '/assets/sro/town/m03.glb';
     npcTargetH = 1.85;
     npcSosWeapon = 'tblade_04.glb';
@@ -4322,7 +5484,7 @@ export function createNPCMesh(npcOrRole = 'chief') {
     npcTargetH = 1.76;
     npcSosWeapon = 'blade_04.glb';
   } else if (rLow.includes('skill') || rLow.includes('master') || rLow.includes('trainer')) {
-    npcGlbUrl = '/assets/sro/town/m03.glb';
+    npcGlbUrl = '/assets/sro/town/m04.glb';
     npcTargetH = 1.85;
     npcSosWeapon = 'sword_04.glb';
   } else if (rLow.includes('woman') || rLow.includes('f1') || rLow.includes('f2')) {
@@ -4343,8 +5505,8 @@ export function createNPCMesh(npcOrRole = 'chief') {
           bonesByName.set(c.name.replace(/_/g, ' '), c);
           if (!rootBone && /^(Bip0[123]|Bone01)$/i.test(c.name)) rootBone = c;
         }
-        if (c.isMesh) c.frustumCulled = false;
       });
+      enableSafeFrustumCulling(clone, 2.4);
       const bindRootY = rootBone ? rootBone.position.y : 0;
 
       // Equip glowing SOS (Seal of Star) weapon in hand using bind-pose socket rotation cancellation
@@ -4394,7 +5556,7 @@ export function createNPCMesh(npcOrRole = 'chief') {
           wClone.traverse((m) => { if (m.isMesh) wMeshes.push(m); });
           wMeshes.forEach((m) => {
             {
-              m.frustumCulled = false;
+              m.frustumCulled = true;
               if (m.material) {
                 const cMat = m.material.clone();
                 cMat.transparent = false;
@@ -4420,7 +5582,7 @@ export function createNPCMesh(npcOrRole = 'chief') {
                   })
                 );
                 shell.scale.setScalar(1.06);
-                shell.frustumCulled = false;
+                shell.frustumCulled = true;
                 m.add(shell);
               }
             }
@@ -4489,8 +5651,9 @@ export function createChestMesh(tier = 'normal', isOpen = false) {
   root.name = `Chest_${tier}`;
 
   const tierStr = String(tier || 'normal').toLowerCase();
-  const isGold = tierStr.includes('boss') || tierStr.includes('gold') || tierStr.includes('epic') || tierStr.includes('rare');
-  const boxColor = isGold ? 0x78350f : 0x451a03;
+  const isStorage = tierStr.includes('storage') || tierStr.includes('vault');
+  const isGold = isStorage || tierStr.includes('boss') || tierStr.includes('gold') || tierStr.includes('epic') || tierStr.includes('rare') || tierStr.includes('legend');
+  const boxColor = isStorage ? 0x1e3a8a : isGold ? 0x78350f : 0x451a03;
   const trimColor = isGold ? 0xfacc15 : 0x94a3b8;
 
   const woodMat = new THREE.MeshStandardMaterial({ color: boxColor, roughness: 0.65, metalness: 0.15 });
@@ -4588,26 +5751,69 @@ export function createChestMesh(tier = 'normal', isOpen = false) {
 /**
  * Create swirling 3D Portal / Teleporter mesh
  */
-export function createPortalMesh(colorOrOptions = 0x38bdf8, type = 'dungeon') {
-  const color = typeof colorOrOptions === 'object' && colorOrOptions !== null
-    ? (colorOrOptions.color ?? 0x38bdf8)
-    : colorOrOptions;
+export function createPortalMesh(colorOrOptions = 0x38bdf8, type = 'dungeon', extraOpts = null) {
+  const optsObj = typeof colorOrOptions === 'object' && colorOrOptions !== null
+    ? { ...colorOrOptions, ...(extraOpts || {}) }
+    : { color: colorOrOptions, ...(extraOpts || {}) };
+  const color = optsObj.color ?? 0x38bdf8;
+  const portalStyle = String(optsObj.portalStyle || type || 'classic');
 
   const root = new THREE.Group();
   root.name = `Portal_${type}`;
 
+  const styleColors = {
+    donhwang_moss: 0x34d399,
+    donhwang_earth: 0xf59e0b,
+    donhwang_tiger: 0xfb923c,
+    oasis_mirage: 0xeab308,
+    karakoram_frost: 0x38bdf8,
+    karakoram_storm: 0x818cf8,
+    qinshi_terracotta: 0xfbbf24,
+    qinshi_lantern: 0x2dd4bf,
+    qinshi_guardian: 0x22d3ee,
+    flame_ash: 0xfb923c,
+    taklamakan_bone: 0xa855f7,
+    flame_core: 0xef4444,
+    holywater_aqua: 0x06b6d4,
+    jupiter_olympus: 0xfde047,
+    shambhala_void: 0xc026d3,
+    roc_celestial: 0x7dd3fc,
+    togui_mask: 0xf97316,
+    wreck_abyss: 0x0ea5e9,
+    medusa_venom: 0x10b981
+  };
+  const accentColor = optsObj.accentColor || styleColors[portalStyle] || color;
+
   const stoneMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.8, metalness: 0.2 });
   const runeMat = new THREE.MeshStandardMaterial({
-    color,
-    emissive: new THREE.Color(color),
+    color: accentColor,
+    emissive: new THREE.Color(accentColor),
     emissiveIntensity: 0.9,
     roughness: 0.2
   });
 
-  // Pedestal base
+  // Pedestal base + style crest
   const pedestal = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 1.35, 0.18, 16), stoneMat);
   pedestal.position.y = 0.09;
   root.add(pedestal);
+
+  // Per-floor distinctive portal sigil pillars / orbiting crystal nodes
+  const styleNodes = [];
+  if (type !== 'selector') {
+    const nodeCount = portalStyle.includes('roc') || portalStyle.includes('jupiter') ? 6 : 4;
+    const nodeGeo = portalStyle.includes('flame') || portalStyle.includes('togui')
+      ? new THREE.ConeGeometry(0.12, 0.34, 4)
+      : new THREE.OctahedronGeometry(0.14, 0);
+    for (let i = 0; i < nodeCount; i++) {
+      const a = (i / nodeCount) * Math.PI * 2;
+      const orbNode = new THREE.Mesh(nodeGeo, runeMat);
+      orbNode.position.set(Math.cos(a) * 1.24, 1.15 + (i % 2) * 0.35, Math.sin(a) * 1.24);
+      orbNode.userData.keepWithGLB = true;
+      orbNode.userData.baseAngle = a;
+      root.add(orbNode);
+      styleNodes.push(orbNode);
+    }
+  }
 
   // Stone Arch
   const arch = new THREE.Mesh(new THREE.TorusGeometry(0.95, 0.14, 10, 24, Math.PI), stoneMat);
@@ -4673,18 +5879,80 @@ export function createPortalMesh(colorOrOptions = 0x38bdf8, type = 'dungeon') {
   }
   const vortexBaseScale = vortex.scale.x;
 
-  // Sealed state (boss rift before the floor boss dies): dim, slow vortex
+  // Extra halo & emergence beacon for Challenge / Challenge-Return portals
+  let outerHalo = null;
+  let spawnBeacon = null;
+  if (type === 'challenge' || type === 'challenge_return') {
+    outerHalo = new THREE.Mesh(
+      new THREE.TorusGeometry(1.18, 0.04, 8, 28),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.78 })
+    );
+    outerHalo.rotation.x = Math.PI / 2;
+    outerHalo.position.y = 0.22;
+    outerHalo.userData.keepWithGLB = true;
+    root.add(outerHalo);
+
+    spawnBeacon = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.18, 0.95, 5.2, 16, 1, true),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.0, side: THREE.DoubleSide, depthWrite: false })
+    );
+    spawnBeacon.position.y = 2.6;
+    spawnBeacon.visible = false;
+    spawnBeacon.userData.keepWithGLB = true;
+    root.add(spawnBeacon);
+  }
+
+  // Sealed state (boss rift / floor clear lock): dim, slow vortex + crimson seal indicator
   root.userData.locked = false;
   root.userData.setLocked = (locked = true) => {
     root.userData.locked = Boolean(locked);
-    vortexMat.opacity = locked ? 0.22 : 0.72;
-    runeMat.emissiveIntensity = locked ? 0.15 : 0.9;
+    vortexMat.opacity = locked ? 0.2 : 0.72;
+    vortexMat.color.setHex(locked ? 0xef4444 : color);
+    runeMat.emissiveIntensity = locked ? 0.18 : 0.9;
+    runeMat.emissive.setHex(locked ? 0x991b1b : accentColor);
+    if (outerHalo) outerHalo.material.opacity = locked ? 0.15 : 0.78;
+  };
+  root.userData.setSealed = root.userData.setLocked;
+
+  let spawnTimer = -1;
+  const spawnDuration = 1.15;
+  root.userData.playSpawnAnimation = () => {
+    spawnTimer = 0;
+    root.scale.setScalar(0.05);
+    if (spawnBeacon) {
+      spawnBeacon.visible = true;
+      spawnBeacon.material.opacity = 0.85;
+    }
   };
 
-  root.userData.animate = (time = 0) => {
+  root.userData.animate = (time = 0, dt = 0.016) => {
     const t = typeof time === 'number' ? time : 0;
-    innerRing.rotation.z = t * (root.userData.locked ? 0.4 : 2.5);
+    const step = typeof dt === 'number' ? dt : 0.016;
+    if (spawnTimer >= 0) {
+      spawnTimer += step;
+      const p = Math.min(1, spawnTimer / spawnDuration);
+      // EaseOutBack bounce-emerge animation
+      const c1 = 1.70158;
+      const c3 = c1 + 1;
+      const s = 1 + c3 * Math.pow(p - 1, 3) + c1 * Math.pow(p - 1, 2);
+      root.scale.setScalar(Math.max(0.05, s));
+      if (spawnBeacon) {
+        spawnBeacon.material.opacity = Math.max(0, (1 - p) * 0.85);
+        spawnBeacon.rotation.y = t * 4.5;
+        if (p >= 1) spawnBeacon.visible = false;
+      }
+      if (p >= 1) {
+        spawnTimer = -1;
+        root.scale.setScalar(1);
+      }
+    }
+    const burstMult = spawnTimer >= 0 ? 4.0 : 1.0;
+    innerRing.rotation.z = t * (root.userData.locked ? 0.4 : 2.5 * burstMult);
     vortex.scale.setScalar(vortexBaseScale * (0.96 + Math.sin(t * 4) * 0.05));
+    if (outerHalo) {
+      outerHalo.rotation.z = -t * 1.4;
+      outerHalo.position.y = 0.22 + Math.sin(t * 2.5) * 0.08;
+    }
   };
 
   enableShadows(root, true, true);
@@ -4692,48 +5960,125 @@ export function createPortalMesh(colorOrOptions = 0x38bdf8, type = 'dungeon') {
 }
 
 /**
- * Create Breakable Dungeon Props (Barrel, Crate, Urn, Crystal)
+ * Create Breakable Dungeon Props (Barrel, Crate, Urn)
+ * Realistic medieval/Silkroad barrels with curved staves, dark iron hoops, wooden lid & rivets.
  */
 export function createBreakableMesh(type = 'barrel') {
   const root = new THREE.Group();
-  const kind = String(type || 'barrel').toLowerCase();
+  const rawKind = String(type || 'barrel').toLowerCase();
+  // Küçük mavi kristal breakable kaldırıldı - urn fallback
+  const kind = rawKind.includes('crystal') ? 'urn' : rawKind;
   root.name = `Breakable_${kind}`;
 
   if (kind.includes('crate') || kind.includes('box')) {
-    const mat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.8 });
-    const box = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.62, 0.62), mat);
+    const woodMat = new THREE.MeshStandardMaterial({ color: 0x783e18, roughness: 0.8 });
+    const metalMat = new THREE.MeshStandardMaterial({ color: 0x2e333b, metalness: 0.8, roughness: 0.4 });
+    const box = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.62, 0.62), woodMat);
     box.position.y = 0.31;
     root.add(box);
-  } else if (kind.includes('urn') || kind.includes('vase') || kind.includes('pot')) {
-    const mat = new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.55 });
-    const urn = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.26, 0.62, 12), mat);
-    urn.position.y = 0.31;
-    root.add(urn);
-  } else if (kind.includes('crystal')) {
-    const mat = new THREE.MeshStandardMaterial({
-      color: 0x38bdf8,
-      emissive: new THREE.Color(0x0284c7),
-      emissiveIntensity: 0.65,
-      roughness: 0.15
-    });
-    const shard = new THREE.Mesh(new THREE.OctahedronGeometry(0.36, 0), mat);
-    shard.scale.set(0.7, 1.4, 0.7);
-    shard.position.y = 0.45;
-    root.add(shard);
-  } else {
-    // Barrel
-    const woodMat = new THREE.MeshStandardMaterial({ color: 0x713f12, roughness: 0.75 });
-    const ironMat = new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.7, roughness: 0.4 });
-    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.3, 0.68, 12), woodMat);
-    barrel.position.y = 0.34;
-    root.add(barrel);
 
-    const hoop1 = new THREE.Mesh(new THREE.TorusGeometry(0.29, 0.02, 6, 14), ironMat);
-    hoop1.rotation.x = Math.PI / 2;
-    hoop1.position.y = 0.48;
-    const hoop2 = hoop1.clone();
-    hoop2.position.y = 0.20;
-    root.add(hoop1, hoop2);
+    const bandH = new THREE.Mesh(new THREE.BoxGeometry(0.63, 0.08, 0.63), metalMat);
+    bandH.position.y = 0.31;
+    root.add(bandH);
+    const bandTop = new THREE.Mesh(new THREE.BoxGeometry(0.63, 0.035, 0.63), metalMat);
+    bandTop.position.y = 0.60;
+    const bandBot = bandTop.clone();
+    bandBot.position.y = 0.02;
+    root.add(bandTop, bandBot);
+  } else if (kind.includes('urn') || kind.includes('vase') || kind.includes('pot')) {
+    const mat = new THREE.MeshStandardMaterial({ color: 0xba5d23, roughness: 0.62 });
+    const darkMat = new THREE.MeshStandardMaterial({ color: 0x7c3814, roughness: 0.7 });
+    const urnPoints = [
+      new THREE.Vector2(0.14, 0),
+      new THREE.Vector2(0.25, 0.22),
+      new THREE.Vector2(0.27, 0.36),
+      new THREE.Vector2(0.16, 0.52),
+      new THREE.Vector2(0.15, 0.60),
+      new THREE.Vector2(0.20, 0.64)
+    ];
+    const urnGeo = new THREE.LatheGeometry(urnPoints, 16);
+    const urnMesh = new THREE.Mesh(urnGeo, mat);
+    root.add(urnMesh);
+
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.19, 0.02, 6, 16), darkMat);
+    rim.rotation.x = Math.PI / 2;
+    rim.position.y = 0.64;
+    root.add(rim);
+  } else {
+    // Premium Realistic Wooden Barrel
+    const H = 0.74;
+    const rEnds = 0.285;
+    const rBelly = 0.365;
+    const segments = 12;
+
+    // Staved bulging barrel body with curved profile
+    const points = [];
+    for (let i = 0; i <= segments; i++) {
+      const t = i / segments;
+      const y = t * H;
+      const bulge = Math.sin(t * Math.PI) * (rBelly - rEnds);
+      points.push(new THREE.Vector2(rEnds + bulge, y));
+    }
+    const bodyGeo = new THREE.LatheGeometry(points, 18);
+    const isExplosive = kind.includes('explosive');
+    const woodMat = new THREE.MeshStandardMaterial({
+      color: isExplosive ? 0xb91c1c : 0x6e3d1b,
+      emissive: isExplosive ? new THREE.Color(0x7f1d1d) : new THREE.Color(0x000000),
+      emissiveIntensity: isExplosive ? 0.45 : 0,
+      roughness: 0.72,
+      metalness: 0.04
+    });
+    const bodyMesh = new THREE.Mesh(bodyGeo, woodMat);
+    root.add(bodyMesh);
+
+    // Recessed Wooden Lid & Top Stave Rim
+    const lidGeo = new THREE.CylinderGeometry(0.275, 0.275, 0.025, 18);
+    const lidMat = new THREE.MeshStandardMaterial({ color: 0x583015, roughness: 0.82 });
+    const lid = new THREE.Mesh(lidGeo, lidMat);
+    lid.position.y = H - 0.02;
+    root.add(lid);
+
+    const rimGeo = new THREE.TorusGeometry(0.288, 0.014, 6, 18);
+    const rimMat = new THREE.MeshStandardMaterial({ color: 0x502a12, roughness: 0.8 });
+    const topRim = new THREE.Mesh(rimGeo, rimMat);
+    topRim.rotation.x = Math.PI / 2;
+    topRim.position.y = H;
+    root.add(topRim);
+
+    // Bung / cork stopper
+    const corkGeo = new THREE.CylinderGeometry(0.032, 0.026, 0.028, 8);
+    const corkMat = new THREE.MeshStandardMaterial({ color: 0x8a5228, roughness: 0.65 });
+    const cork = new THREE.Mesh(corkGeo, corkMat);
+    cork.position.set(0.07, H - 0.005, 0.04);
+    root.add(cork);
+
+    // 4 Prominent Dark Wrought Iron Hoops (Top, upper middle, lower middle, bottom)
+    const calcRadius = (y) => {
+      const t = y / H;
+      return rEnds + Math.sin(t * Math.PI) * (rBelly - rEnds);
+    };
+
+    const hoopYs = [H * 0.87, H * 0.63, H * 0.37, H * 0.13];
+    const hoopMat = new THREE.MeshStandardMaterial({ color: 0x22252a, metalness: 0.85, roughness: 0.38 });
+    const rivetGeo = new THREE.SphereGeometry(0.012, 4, 4);
+
+    hoopYs.forEach((hy) => {
+      const hr = calcRadius(hy);
+      const hoop = new THREE.Mesh(new THREE.TorusGeometry(hr + 0.004, 0.016, 6, 20), hoopMat);
+      hoop.rotation.x = Math.PI / 2;
+      hoop.position.y = hy;
+      root.add(hoop);
+
+      // Rivets around each hoop
+      for (let a = 0; a < 4; a++) {
+        const angle = (a * Math.PI) / 2 + 0.2;
+        const rx = Math.cos(angle) * (hr + 0.015);
+        const rz = Math.sin(angle) * (hr + 0.015);
+        const rivet = new THREE.Mesh(rivetGeo, hoopMat);
+        rivet.position.set(rx, hy, rz);
+        root.add(rivet);
+      }
+    });
   }
 
   attachHitFlashSupport(root);

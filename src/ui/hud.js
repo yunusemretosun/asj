@@ -22,6 +22,7 @@ export const MENU_BUTTONS = [
   { menu: 'compose', key: 'O', icon: '\u2697\uFE0F', label: 'Compose' },
   { menu: 'quests', key: 'Q', icon: '\u{1F4DC}', label: 'Quests' },
   { menu: 'map', key: 'M', icon: '\u{1F5FA}\uFE0F', label: 'Floors' },
+  { menu: 'pet', key: 'P', icon: '\u{1F43E}', label: 'Pet' },
   { menu: '__save', key: 'F5', icon: '\u{1F4BE}', label: 'Save' },
 ];
 
@@ -30,6 +31,7 @@ export const ELEMENT_ICON = { fire: '\u{1F525}', ice: '\u2744\uFE0F', lightning:
 
 const DEFAULT_SKILL_KEYS = ['1', '2', '3', '4', '5'];
 const DEFAULT_POTION_KEYS = ['6', '7', '8', '9'];
+const DEFAULT_ALL_HOTBAR_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
 
 // ---------------------------------------------------------------------------
 // small DOM helpers
@@ -143,9 +145,13 @@ export class HUD {
 
     bars.append(this.elName, this.barHp.el, this.barSp.el, this.barStam.el, berserk);
     hero.append(por, bars);
+    this.elPetBadge = h('div', 'pet-hud-widget interactive');
+    this.elPetBadge.title = 'Companion Pet [P] — Click to manage';
+    this.elPetBadge.addEventListener('click', () => this._menuClick('pet'));
+    this.elChallenge = h('div', 'challenge-hud-banner');
     this.elCombo = h('div', 'hud-combo');
     this.elBuffs = h('div', 'hud-buffs');
-    R.append(hero, this.elCombo, this.elBuffs);
+    R.append(hero, this.elPetBadge, this.elChallenge, this.elCombo, this.elBuffs);
 
     // --- minimap
     const mm = (this.elMM = h('div', 'hud-minimap arc-frame'));
@@ -190,13 +196,29 @@ export class HUD {
     for (let i = 0; i < 5; i++) {
       const s = this._makeSlot('skill', DEFAULT_SKILL_KEYS[i]);
       s.el.addEventListener('click', () => this._emit('skillslot', i));
+      s.el.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        if (this.host && this.host.assignSkill) this.host.assignSkill(null, i);
+      });
       this.skillSlots.push(s); sg.appendChild(s.el);
     }
     const pg = h('div', 'slot-group');
     this.potionSlots = [];
     for (let i = 0; i < 4; i++) {
       const s = this._makeSlot('potion', DEFAULT_POTION_KEYS[i]);
-      s.el.addEventListener('click', () => this.host && this.host.usePotion && this.host.usePotion(i));
+      s.el.addEventListener('click', () => {
+        if (!this.host) return;
+        const bar = (this.host.getSkillBar && this.host.getSkillBar()) || [];
+        if (bar[5 + i]) this._emit('skillslot', 5 + i);
+        else if (this.host.usePotion) this.host.usePotion(i);
+      });
+      s.el.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        if (!this.host) return;
+        const bar = (this.host.getSkillBar && this.host.getSkillBar()) || [];
+        if (bar[5 + i] && this.host.assignSkill) this.host.assignSkill(null, 5 + i);
+        else if (this.host.assignPotion) this.host.assignPotion(i, null);
+      });
       this.potionSlots.push(s); pg.appendChild(s.el);
     }
     const mb = h('div', 'hud-menubtns');
@@ -282,6 +304,8 @@ export class HUD {
     try { this._updateBerserk(ctx, p, dt); } catch (e) { /* ignore */ }
     try { this._updateRestedAndSoaking(ctx, p, dt); } catch (e) { /* ignore */ }
     try { this._updateNemesis(ctx, p, dt); } catch (e) { /* ignore */ }
+    try { this._updatePetWidget(host); } catch (e) { /* ignore */ }
+    try { this._updateChallengeBanner(ctx); } catch (e) { /* ignore */ }
     try { this._updateBar(host, p, dt); } catch (e) { /* keep HUD alive on bad data */ }
     try { this._updateMinimap(host, dt); } catch (e) { /* ignore */ }
     try { this._updateBoss(host); } catch (e) { /* ignore */ }
@@ -370,6 +394,67 @@ export class HUD {
     }
   }
 
+  _updatePetWidget(host) {
+    if (!this.elPetBadge || !host || typeof host.getPets !== 'function') return;
+    const data = host.getPets() || {};
+    const ap = data.activePet;
+    if (!ap || !ap.summoned) {
+      const hasAny = Array.isArray(data.pets) && data.pets.length > 0;
+      const nextKey = hasAny ? 'idle' : 'none';
+      if (this._last.petKey === nextKey) return;
+      this._last.petKey = nextKey;
+      this.elPetBadge.classList.toggle('dismissed', true);
+      this.elPetBadge.classList.toggle('hidden', !hasAny);
+      this.elPetBadge.innerHTML = `<span class="pet-hud-ic">🐾</span><span class="pet-hud-meta"><b>No Pet Active</b><small>Press [P] to summon</small></span>`;
+      return;
+    }
+    const roleTxt = ap.role === 'loot' ? 'Auto-Loot' : ap.role === 'hybrid' ? 'Loot & Combat' : 'Combat Assist';
+    const expPct = ap.maxExp > 0 ? Math.min(100, Math.round((ap.exp / ap.maxExp) * 100)) : 0;
+    const nextKey = `${ap.id}:${ap.level}:${expPct}:${ap.name}`;
+    if (this._last.petKey === nextKey) return;
+    this._last.petKey = nextKey;
+    this.elPetBadge.classList.remove('dismissed', 'hidden');
+    this.elPetBadge.innerHTML = `
+      <span class="pet-hud-ic">${ap.icon || '🐾'}</span>
+      <span class="pet-hud-meta">
+        <b>${esc(ap.name)} <span class="pet-hud-lv">Lv.${ap.level | 0}</span></b>
+        <small>${roleTxt} · [P]</small>
+      </span>`;
+  }
+
+  _updateChallengeBanner(ctx) {
+    if (!this.elChallenge) return;
+    const ch = ctx?.challenge || this.ctx?.challenge || null;
+    if (!ch || !ch.active) {
+      if (this._last.challengeKey !== 'off') {
+        this._last.challengeKey = 'off';
+        this.elChallenge.className = 'challenge-hud-banner';
+        this.elChallenge.innerHTML = '';
+      }
+      return;
+    }
+    const rem = Math.max(0, Number(ch.remaining) || 0).toFixed(1);
+    const wave = ch.wave || 1;
+    const kills = ch.kills || 0;
+    const done = Boolean(ch.completed);
+    const key = `${ch.id}:${done ? 'done' : rem}:${wave}:${kills}`;
+    if (this._last.challengeKey === key) return;
+    this._last.challengeKey = key;
+    this.elChallenge.className = `challenge-hud-banner on ${done ? 'done' : ''}`;
+    if (done) {
+      this.elChallenge.innerHTML = `
+        <div class="ch-title">✨ ${esc(ch.name || 'Challenge Complete!')}</div>
+        <div class="ch-sub">Victory! Loot your reward chests &amp; enter the Emerald Return Portal [E]</div>`;
+    } else {
+      this.elChallenge.innerHTML = `
+        <div class="ch-top">
+          <span class="ch-title">⚔️ ${esc(ch.name || 'Timed Trial')}</span>
+          <span class="ch-timer">⏱ ${rem}s</span>
+        </div>
+        <div class="ch-sub">Wave ${wave} · Slain: ${kills} · ${esc(ch.desc || 'Survive until time runs out!')}</div>`;
+    }
+  }
+
   _updateHero(p, dt) {
     const L = this._last;
     this.elName.firstChild.textContent = (p.classIcon ? p.classIcon + ' ' : '') + (p.name || 'Hero');
@@ -440,46 +525,70 @@ export class HUD {
     });
   }
 
+  _renderSkillSlot(s, sk, p, defaultKey) {
+    if (sk && sk.key) s.key.textContent = sk.key;
+    else if (!s.key.textContent) s.key.textContent = defaultKey;
+    if (!sk) {
+      if (s._ico !== null) {
+        s.icon.innerHTML = '\u2014'; s.el.classList.add('empty'); s._ico = null;
+        s.cost.textContent = ''; s.lv.textContent = ''; s.txt.textContent = '';
+        s.cnt.textContent = ''; s.el.style.opacity = '';
+        s.sweep.style.setProperty('--cd', '0deg');
+        s.el.title = 'Empty slot';
+      }
+      s.el.classList.remove('nosp');
+      return;
+    }
+    const ico = sk.icon || '\u2728';
+    const sig = `skill|${sk.skillId}|${ico}|${sk.level}|${sk.spCost}`;
+    if (s._ico !== sig) {
+      s._ico = sig; s.icon.innerHTML = renderIconHTML(ico, '\u2728'); s.el.classList.remove('empty');
+      s.el.title = `${sk.name || ''} (Right-click to clear)`;
+      s.cost.textContent = sk.spCost ? sk.spCost : ''; s.lv.textContent = sk.level ? 'L' + sk.level : '';
+      s.cnt.textContent = ''; s.el.style.opacity = '';
+    }
+    const cd = Math.max(0, sk.cooldown || 0), max = sk.cooldownMax || 0;
+    const deg = cd > 0 && max > 0 ? Math.round(clamp01(cd / max) * 360) : 0;
+    if (deg !== s._cd) { s.sweep.style.setProperty('--cd', deg + 'deg'); s._cd = deg; }
+    const tx = cd > 0 ? (cd >= 10 ? Math.ceil(cd) : cd.toFixed(1)) + '' : '';
+    if (s.txt.textContent !== tx) s.txt.textContent = tx;
+    if (s._ready === false && cd <= 0) { s.el.classList.remove('ready-flash'); void s.el.offsetWidth; s.el.classList.add('ready-flash'); }
+    s._ready = cd <= 0;
+    s.el.classList.toggle('nosp', !!(p && sk.spCost && p.sp < sk.spCost));
+  }
+
   _updateBar(host, p, dt) {
     const skills = (host.getSkillBar && host.getSkillBar()) || [];
     for (let i = 0; i < this.skillSlots.length; i++) {
-      const s = this.skillSlots[i], sk = skills[i];
-      if (sk && sk.key) s.key.textContent = sk.key;
-      else if (!s.key.textContent) s.key.textContent = DEFAULT_SKILL_KEYS[i];
-      if (!sk) {
-        if (s._ico !== null) { s.icon.innerHTML = '\u2014'; s.el.classList.add('empty'); s._ico = null; s.cost.textContent = ''; s.lv.textContent = ''; s.txt.textContent = ''; s.sweep.style.setProperty('--cd', '0deg'); }
-        continue;
-      }
-      const ico = sk.icon || '\u2728';
-      const sig = `${sk.skillId}|${ico}|${sk.level}|${sk.spCost}`;
-      if (s._ico !== sig) {
-        s._ico = sig; s.icon.innerHTML = renderIconHTML(ico, '\u2728'); s.el.classList.remove('empty');
-        s.el.title = sk.name || ''; s.cost.textContent = sk.spCost ? sk.spCost : ''; s.lv.textContent = sk.level ? 'L' + sk.level : '';
-      }
-      const cd = Math.max(0, sk.cooldown || 0), max = sk.cooldownMax || 0;
-      const deg = cd > 0 && max > 0 ? Math.round(clamp01(cd / max) * 360) : 0;
-      if (deg !== s._cd) { s.sweep.style.setProperty('--cd', deg + 'deg'); s._cd = deg; }
-      const tx = cd > 0 ? (cd >= 10 ? Math.ceil(cd) : cd.toFixed(1)) + '' : '';
-      if (s.txt.textContent !== tx) s.txt.textContent = tx;
-      if (s._ready === false && cd <= 0) { s.el.classList.remove('ready-flash'); void s.el.offsetWidth; s.el.classList.add('ready-flash'); }
-      s._ready = cd <= 0;
-      s.el.classList.toggle('nosp', !!(p && sk.spCost && p.sp < sk.spCost));
+      this._renderSkillSlot(this.skillSlots[i], skills[i], p, DEFAULT_SKILL_KEYS[i]);
     }
     const pots = (host.getPotionSlots && host.getPotionSlots()) || [];
     for (let i = 0; i < this.potionSlots.length; i++) {
-      const s = this.potionSlots[i], q = pots[i];
+      const s = this.potionSlots[i];
+      const sk = skills[5 + i];
+      if (sk) {
+        s.el.classList.add('as-skill');
+        this._renderSkillSlot(s, sk, p, DEFAULT_POTION_KEYS[i]);
+        continue;
+      }
+      s.el.classList.remove('as-skill', 'nosp');
+      const q = pots[i];
       if (q && q.key) s.key.textContent = q.key; else if (!s.key.textContent) s.key.textContent = DEFAULT_POTION_KEYS[i];
       const it = q && q.item;
-      const sig = it ? (it.name + '|' + it.icon) : '';
+      const sig = it ? ('item|' + (it.baseId || it.uid || '') + '|' + it.name + '|' + it.icon) : '';
       if (s._ico !== sig) {
         s._ico = sig; s.icon.innerHTML = it ? renderIconHTML(it.icon, '\u{1F9EA}') : '\u2014';
-        s.el.classList.toggle('empty', !it); s.el.title = it ? it.name : 'Empty potion slot';
+        s.el.classList.toggle('empty', !it);
+        s.el.title = it ? `${it.name} (Right-click to clear)` : 'Empty slot (6-9: Skill or Item)';
+        s.cost.textContent = ''; s.lv.textContent = '';
       }
       const c = it ? (it.count != null ? String(it.count) : '') : '';
       if (s.cnt.textContent !== c) s.cnt.textContent = c;
       const pcd = Math.max(0, (q && q.cooldown) || 0), pmax = (q && q.cooldownMax) || 0;
       const pdeg = it && pcd > 0 && pmax > 0 ? Math.round(clamp01(pcd / pmax) * 360) : 0;
       if (pdeg !== s._cd) { s.sweep.style.setProperty('--cd', pdeg + 'deg'); s._cd = pdeg; }
+      const ptx = it && pcd > 0 ? (pcd >= 10 ? Math.ceil(pcd) : pcd.toFixed(1)) + '' : '';
+      if (s.txt.textContent !== ptx) s.txt.textContent = ptx;
       s.el.style.opacity = it && it.count === 0 ? '.4' : '';
     }
   }
@@ -512,7 +621,7 @@ export class HUD {
       return;
     }
     const bn = this.elBossName.firstChild, bp = this.elBossName.lastChild;
-    const name = (b.title ? b.name + ' \u2014 ' + b.title : b.name) || 'Boss';
+    const name = (b.title && !b.isBoss ? b.name + ' \u2014 ' + b.title : b.name) || 'Boss';
     if (bn.textContent !== name) bn.textContent = name;
     const ph = b.maxPhases > 1 ? `Phase ${b.phase || 1}/${b.maxPhases}` : (b.phase ? `Phase ${b.phase}` : '');
     if (bp.textContent !== ph) bp.textContent = ph;
@@ -554,8 +663,25 @@ export class HUD {
     c.fillStyle = '#050409'; c.fillRect(0, 0, W, H);
     if (!d) return;
     const title = d.zone ? (d.floor ? `${d.zone} \u2014 B${d.floor}F` : d.zone) : '\u2014';
+    const dObj = this.ctx?.dungeon || this.ctx?.world || null;
+    const em = this.ctx?.enemyManager || this.ctx?.enemies || null;
+    const heroLv = Number(this.ctx?.gameState?.hero?.level ?? this.ctx?.hero?.level ?? 0);
+    let zoneLine = title;
+    if ((d.floor || 0) === 0 && heroLv > 0) {
+      zoneLine = heroLv < 10
+        ? `${title} \u00B7 Dış Av Sahası (Zindan: Lv ${heroLv}/10)`
+        : `${title} \u00B7 Zindan Kapısı Açık \u2713`;
+    } else if ((d.floor || 0) > 0 && dObj && em?.getAliveFloorEnemies) {
+      const aliveCount = em.getAliveFloorEnemies(dObj).length;
+      zoneLine = aliveCount > 0
+        ? `${title} \u00B7 Kalan Düşman: ${aliveCount}`
+        : `${title} \u00B7 KAT TEMİZLENDİ \u2713`;
+    }
     if (title !== this._last.zone) {
-      this._last.zone = title; this.elMMTitle.textContent = title; this.elZone.textContent = title;
+      this._last.zone = title; this.elMMTitle.textContent = title;
+    }
+    if (zoneLine !== this._last.zoneLine) {
+      this._last.zoneLine = zoneLine; this.elZone.textContent = zoneLine;
     }
     const mw = d.w || 100, mh = d.h || 100;
     const px = d.player ? d.player.x : 0, py = d.player ? d.player.y : 0;
@@ -587,7 +713,7 @@ export class HUD {
         c.strokeRect(X(r.x), Y(r.y), r.w * scale, r.h * scale);
       }
     }
-    const colors = { enemy: '#ff4444', boss: '#ff2288', chest: '#ffdd44', npc: '#55ff88', portal: '#cc66ff', stairs: '#cc66ff', loot: '#ffffff' };
+    const colors = { enemy: '#ff4444', boss: '#ff2288', miniboss: '#f59e0b', chest: '#ffdd44', npc: '#55ff88', portal: '#cc66ff', stairs: '#cc66ff', loot: '#ffffff' };
     let nemesisDrawn = false;
     for (const e of d.entities || []) {
       const x = X(e.x), y = Y(e.y);
@@ -620,7 +746,7 @@ export class HUD {
       c.beginPath();
       if (e.type === 'chest') { c.rect(x - 3, y - 3, 6, 6); }
       else if (e.type === 'portal' || e.type === 'stairs') { c.moveTo(x, y - 6); c.lineTo(x + 5, y); c.lineTo(x, y + 6); c.lineTo(x - 5, y); c.closePath(); }
-      else c.arc(x, y, e.type === 'boss' ? 6 : 3.2, 0, 6.283);
+      else c.arc(x, y, e.type === 'boss' ? 6 : e.type === 'miniboss' ? 4.8 : 3.2, 0, 6.283);
       c.fill();
       if (e.type === 'npc') { c.strokeStyle = '#000'; c.lineWidth = 1; c.stroke(); }
     }
@@ -768,15 +894,15 @@ export function createHost(ctx = {}) {
   };
   const getInv = () => {
     const g = getGame();
-    return (ctx && ctx.inventory) || (g && g.inventory) || null;
+    return (g && g.inventory) || (ctx && ctx.inventory) || null;
   };
   const getSkillsSys = () => {
     const g = getGame();
-    return (ctx && ctx.skills) || (g && g.skills) || null;
+    return (g && g.skills) || (ctx && ctx.skills) || null;
   };
   const getQuestsSys = () => {
     const g = getGame();
-    return (ctx && ctx.quests) || (g && g.quests) || null;
+    return (g && g.quests) || (ctx && ctx.quests) || null;
   };
   const getDungeon = () => (ctx && (ctx.dungeon || ctx.world || ctx.dungeonGenerator)) || null;
   const getEnemies = () => (ctx && (ctx.enemyManager || ctx.enemies || ctx.enemyAI)) || null;
@@ -881,7 +1007,7 @@ export function createHost(ctx = {}) {
     getSkillBar() {
       if (typeof ctx.getSkillBar === 'function') return ctx.getSkillBar();
       const sk = getSkillsSys();
-      if (!sk) return [null, null, null, null, null];
+      if (!sk) return DEFAULT_ALL_HOTBAR_KEYS.map(() => null);
       if (typeof sk.getSkillBar === 'function') {
         return (sk.getSkillBar() || []).map((s, i) => (s ? {
           ...s,
@@ -889,11 +1015,11 @@ export function createHost(ctx = {}) {
           cooldown: s.cooldown ?? s.remaining ?? 0,
           cooldownMax: s.cooldownMax ?? s.total ?? s.cd ?? 0,
           spCost: s.spCost ?? s.mpCost ?? s.cost ?? 0,
-          key: s.key || DEFAULT_SKILL_KEYS[i],
+          key: s.key || DEFAULT_ALL_HOTBAR_KEYS[i],
         } : null));
       }
       const bar = sk.hotbar || sk.equippedSkills || [];
-      return DEFAULT_SKILL_KEYS.map((k, i) => {
+      return DEFAULT_ALL_HOTBAR_KEYS.map((k, i) => {
         const id = bar[i];
         if (!id) return null;
         const def = typeof id === 'object' ? id : (sk.get ? sk.get(id) : null);
@@ -1032,9 +1158,15 @@ export function createHost(ctx = {}) {
           list.push({ floor: f, name: `Dungeon B${f}F`, unlocked: f <= unlockedMax, recommendedLevel: Math.max(1, f * 2 - 1) });
         }
       }
+      const clearedSet = new Set((g && g.progress && Array.isArray(g.progress.floorsCleared)) ? g.progress.floorsCleared : []);
       const hasVillage = list.some((f) => f.floor === 0);
-      const out = hasVillage ? list : [{ floor: 0, name: 'Oakhaven Village', unlocked: true, recommendedLevel: 1 }, ...list];
-      return out.map((f) => ({ ...f, current: f.floor === curFloor }));
+      const out = hasVillage ? list : [{ floor: 0, name: 'Oakhaven Village', unlocked: true, recommendedLevel: 1, minDungeonLevel: 1 }, ...list];
+      return out.map((f) => ({
+        ...f,
+        cleared: f.floor === 0 ? false : (Boolean(f.cleared) || clearedSet.has(f.floor)),
+        minDungeonLevel: f.minDungeonLevel || (f.floor === 0 ? 1 : 10),
+        current: f.floor === curFloor
+      }));
     },
 
     getMinimap() {
@@ -1161,11 +1293,23 @@ export function createHost(ctx = {}) {
       if (typeof ctx.dropItem === 'function') res = ctx.dropItem(uid);
       else if (inv && typeof inv.drop === 'function') res = inv.drop(uid);
       else if (inv && typeof inv.removeItem === 'function') res = inv.removeItem(uid);
-      if (res && res.item && d && typeof d.spawnGroundLoot === 'function') {
+      // If no global listener already spawned ground loot from 'item:dropped', ensure it spawns in 3D world with toss and cooldown
+      if (res && res.item && d && typeof d.spawnGroundLoot === 'function' && !res._spawned) {
         const pPos = getPlayerPos();
-        try { d.spawnGroundLoot(pPos.x, pPos.z, res.item); } catch (e) { /* ignore */ }
+        const tossX = pPos.x + Math.sin(pPos.angle || 0) * 1.2 + (Math.random() - 0.5) * 0.4;
+        const tossZ = pPos.z + Math.cos(pPos.angle || 0) * 1.2 + (Math.random() - 0.5) * 0.4;
+        try {
+          d.spawnGroundLoot({ x: tossX, z: tossZ }, res.item, null, { x: pPos.x, z: pPos.z }, { pickupCooldown: 1800 });
+        } catch (e) { /* ignore */ }
       }
       return wrapRes(res, 'Dropped item');
+    },
+    quickSellJunk() {
+      const inv = getInv();
+      if (inv && typeof inv.quickSellTrash === 'function') {
+        return wrapRes(inv.quickSellTrash(), 'Sold junk items');
+      }
+      return { ok: false, msg: 'Quick sell unavailable' };
     },
     sellItem(uid, qty) {
       if (typeof ctx.sellItem === 'function') return wrapRes(ctx.sellItem(uid, qty), 'Sold');
@@ -1186,11 +1330,16 @@ export function createHost(ctx = {}) {
       const pc = getPlayerCtrl();
       if (pc && typeof pc.useQuickPotion === 'function') {
         const ok = pc.useQuickPotion(slotIdx);
-        return { ok, msg: ok ? 'Used potion' : 'No potion available' };
+        return { ok, msg: ok ? 'Used item' : 'No item available' };
       }
       if (typeof ctx.usePotion === 'function') return wrapRes(ctx.usePotion(slotIdx));
       const inv = getInv();
       return inv && inv.useQuickSlot ? wrapRes(inv.useQuickSlot(slotIdx)) : { ok: false, msg: 'Empty slot' };
+    },
+    assignPotion(slotIdx, uidOrBaseId) {
+      if (typeof ctx.assignPotion === 'function') return wrapRes(ctx.assignPotion(slotIdx, uidOrBaseId), 'Slot updated');
+      const inv = getInv();
+      return inv && inv.assignQuickSlot ? wrapRes(inv.assignQuickSlot(slotIdx, uidOrBaseId), 'Slot updated') : { ok: false, msg: 'Unavailable' };
     },
     sortBag() {
       if (typeof ctx.sortBag === 'function') return wrapRes(ctx.sortBag(), 'Bag sorted');
@@ -1206,6 +1355,21 @@ export function createHost(ctx = {}) {
       if (typeof ctx.withdraw === 'function') return wrapRes(ctx.withdraw(uid), 'Withdrawn');
       const inv = getInv();
       return inv && inv.withdraw ? wrapRes(inv.withdraw(uid), 'Withdrawn') : { ok: false, msg: 'Unavailable' };
+    },
+    depositGold(amount) {
+      if (typeof ctx.depositGold === 'function') return wrapRes(ctx.depositGold(amount), 'Gold deposited');
+      const inv = getInv();
+      return inv && inv.depositGold ? wrapRes(inv.depositGold(amount), 'Gold deposited') : { ok: false, msg: 'Unavailable' };
+    },
+    withdrawGold(amount) {
+      if (typeof ctx.withdrawGold === 'function') return wrapRes(ctx.withdrawGold(amount), 'Gold withdrawn');
+      const inv = getInv();
+      return inv && inv.withdrawGold ? wrapRes(inv.withdrawGold(amount), 'Gold withdrawn') : { ok: false, msg: 'Unavailable' };
+    },
+    depositMaterials(filter = 'material') {
+      if (typeof ctx.depositMaterials === 'function') return wrapRes(ctx.depositMaterials(filter), 'Materials stored');
+      const inv = getInv();
+      return inv && inv.depositAllByFilter ? wrapRes(inv.depositAllByFilter(filter), 'Materials stored') : { ok: false, msg: 'Unavailable' };
     },
     compose(uids) {
       if (typeof ctx.compose === 'function') return wrapRes(ctx.compose(uids), 'Composed!');
@@ -1230,6 +1394,79 @@ export function createHost(ctx = {}) {
       const inv = getInv();
       if (inv && typeof inv.alchemy === 'function') return wrapRes(inv.alchemy(uid, opts), 'Enhanced!');
       return this.upgradeItem(uid, []);
+    },
+    getPets() {
+      if (typeof ctx.getPets === 'function') return ctx.getPets();
+      const g = getGame();
+      const ps = (g && g.pets) || (ctx && ctx.pets) || null;
+      if (!ps) return { sys: null, pets: [], activePet: null };
+      const pets = Array.isArray(ps.pets) ? ps.pets : [];
+      const activePet = typeof ps.getActivePet === 'function'
+        ? ps.getActivePet()
+        : pets.find((p) => p && p.active && p.summoned) || null;
+      return { sys: ps, pets, activePet };
+    },
+    buyPet(type, customName) {
+      if (typeof ctx.buyPet === 'function') return wrapRes(ctx.buyPet(type, customName), 'Pet purchased!');
+      const ps = this.getPets().sys;
+      if (!ps || typeof ps.buyPet !== 'function') return { ok: false, msg: 'Pet Merchant unavailable.' };
+      return wrapRes(ps.buyPet(type, customName), 'Pet purchased!');
+    },
+    fuseMagicStone(uid, stoneId) {
+      if (typeof ctx.fuseMagicStone === 'function') return wrapRes(ctx.fuseMagicStone(uid, stoneId), 'Stone fused!');
+      const inv = getInv();
+      if (inv && typeof inv.fuseMagicStone === 'function') return wrapRes(inv.fuseMagicStone(uid, stoneId), 'Stone fused!');
+      return { ok: false, msg: 'Magic stone fusion unavailable.' };
+    },
+    getTownHallView() {
+      if (typeof ctx.getTownHallView === 'function') return ctx.getTownHallView();
+      const g = getGame();
+      return g && typeof g.getTownHallView === 'function' ? g.getTownHallView() : null;
+    },
+    trainTownMastery(key) {
+      if (typeof ctx.trainTownMastery === 'function') return wrapRes(ctx.trainTownMastery(key), 'Mastery trained!');
+      const g = getGame();
+      return g && typeof g.trainTownMastery === 'function' ? wrapRes(g.trainTownMastery(key), 'Mastery trained!') : { ok: false, msg: 'Town training unavailable.' };
+    },
+    buyTownBlessing(key) {
+      if (typeof ctx.buyTownBlessing === 'function') return wrapRes(ctx.buyTownBlessing(key), 'Blessing active!');
+      const g = getGame();
+      return g && typeof g.buyTownBlessing === 'function' ? wrapRes(g.buyTownBlessing(key), 'Blessing active!') : { ok: false, msg: 'Town shrine unavailable.' };
+    },
+    expandBag() {
+      if (typeof ctx.expandBag === 'function') return wrapRes(ctx.expandBag(), 'Bag expanded!');
+      const inv = getInv();
+      return inv && typeof inv.expandBag === 'function' ? wrapRes(inv.expandBag(), 'Bag expanded!') : { ok: false, msg: 'Bag expansion unavailable.' };
+    },
+    expandStorage() {
+      if (typeof ctx.expandStorage === 'function') return wrapRes(ctx.expandStorage(), 'Storage expanded!');
+      const inv = getInv();
+      return inv && typeof inv.expandStorage === 'function' ? wrapRes(inv.expandStorage(), 'Storage expanded!') : { ok: false, msg: 'Storage expansion unavailable.' };
+    },
+    getSocketForgeCost(uid) {
+      if (typeof ctx.getSocketForgeCost === 'function') return ctx.getSocketForgeCost(uid);
+      const inv = getInv();
+      return inv && typeof inv.getSocketForgeCost === 'function' ? inv.getSocketForgeCost(uid) : 0;
+    },
+    forgeAddSocket(uid) {
+      if (typeof ctx.forgeAddSocket === 'function') return wrapRes(ctx.forgeAddSocket(uid), 'Socket added!');
+      const inv = getInv();
+      return inv && typeof inv.forgeAddSocket === 'function' ? wrapRes(inv.forgeAddSocket(uid), 'Socket added!') : { ok: false, msg: 'Masterwork forge unavailable.' };
+    },
+    getReforgeCost(uid) {
+      if (typeof ctx.getReforgeCost === 'function') return ctx.getReforgeCost(uid);
+      const inv = getInv();
+      return inv && typeof inv.getReforgeCost === 'function' ? inv.getReforgeCost(uid) : 0;
+    },
+    forgeReforgeAffixes(uid) {
+      if (typeof ctx.forgeReforgeAffixes === 'function') return wrapRes(ctx.forgeReforgeAffixes(uid), 'Reforged!');
+      const inv = getInv();
+      return inv && typeof inv.forgeReforgeAffixes === 'function' ? wrapRes(inv.forgeReforgeAffixes(uid), 'Reforged!') : { ok: false, msg: 'Masterwork forge unavailable.' };
+    },
+    trainActivePet(cost, expGain) {
+      if (typeof ctx.trainActivePet === 'function') return wrapRes(ctx.trainActivePet(cost, expGain), 'Pet trained!');
+      const ps = this.getPets().sys;
+      return ps && typeof ps.trainActivePetWithGold === 'function' ? wrapRes(ps.trainActivePetWithGold(cost, expGain), 'Pet trained!') : { ok: false, msg: 'Pet training unavailable.' };
     },
     levelSkill(id) {
       if (typeof ctx.levelSkill === 'function') return wrapRes(ctx.levelSkill(id), 'Skill learned');
@@ -1273,14 +1510,27 @@ export function createHost(ctx = {}) {
       if (/reset.*attr|respec/i.test(action) && g && g.resetAttributes) { g.resetAttributes(); return { ok: true, msg: 'Attributes reset!' }; }
       return { ok: true };
     },
+    getStoryChronicles() {
+      if (typeof ctx.getStoryChronicles === 'function') return ctx.getStoryChronicles();
+      const g = getGame();
+      return g && typeof g.getStoryChronicles === 'function' ? g.getStoryChronicles() : [];
+    },
     teleportToFloor(floorNum) {
       const f = Number(floorNum) || 0;
       if (f === 0 && typeof ctx.returnToVillage === 'function') {
         ctx.returnToVillage();
         return { ok: true, msg: 'Returned to Village' };
       }
+      const g = getGame();
+      const heroLv = Number(g?.hero?.level ?? ctx?.hero?.level ?? 0);
+      if (f > 0 && heroLv > 0 && heroLv < 10) {
+        return { ok: false, msg: `Zindanlara giriş için Seviye 10 gerekir! (Mevcut: Lv ${heroLv}/10)` };
+      }
       if (typeof ctx.enterFloor === 'function') {
-        ctx.enterFloor(f);
+        const entered = ctx.enterFloor(f);
+        if (entered === false) {
+          return { ok: false, msg: `Zindana giriş engellendi (Gereken: Lv 10)` };
+        }
         return { ok: true, msg: f === 0 ? 'Returned to Village' : `Entered Floor ${f}` };
       }
       if (typeof ctx.teleportToFloor === 'function') return wrapRes(ctx.teleportToFloor(f));

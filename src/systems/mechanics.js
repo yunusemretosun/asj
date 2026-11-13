@@ -16,7 +16,25 @@ export const ALCHEMY = {
   // Failure: item drops to +0 (it never breaks). With a Guardian Talisman it only loses 1.
   failResetTo: 0,
   // Stat scaling per + level on the item's scalable base stats (atkMin/atkMax/matk/def/hp/mp/atk).
-  perPlusPct: 8,
+  // Significantly increased from 8% to 15% per plus so enhancing is deeply rewarding!
+  perPlusPct: 15,
+  // Milestone bonuses at key enhancement thresholds (+3, +5, +7, +9, +10)
+  milestones: {
+    weapon: {
+      3: { critRate: 2, atk: 8, label: '+2% Crit, +8 Atk' },
+      5: { critRate: 4, attackSpeedPct: 7, atk: 22, label: '+4% Crit, +7% Atk Spd, +22 Atk' },
+      7: { critRate: 7, attackSpeedPct: 14, atk: 50, allAttrs: 6, label: '+7% Crit, +14% Atk Spd, +50 Atk, +6 All Stats' },
+      9: { critRate: 11, attackSpeedPct: 20, atk: 90, allAttrs: 14, label: '+11% Crit, +20% Atk Spd, +90 Atk, +14 All Stats' },
+      10: { critRate: 16, attackSpeedPct: 28, atk: 160, allAttrs: 28, label: '★ GODLIKE: +16% Crit, +28% Atk Spd, +160 Atk, +28 All Stats' },
+    },
+    armor: {
+      3: { hp: 50, def: 10, label: '+50 HP, +10 Def' },
+      5: { hp: 140, def: 24, damageAbsorbPct: 6, label: '+140 HP, +24 Def, +6% Absorb' },
+      7: { hp: 300, def: 52, damageAbsorbPct: 12, allAttrs: 6, label: '+300 HP, +52 Def, +12% Absorb, +6 All Stats' },
+      9: { hp: 550, def: 95, damageAbsorbPct: 18, allAttrs: 14, label: '+550 HP, +95 Def, +18% Absorb, +14 All Stats' },
+      10: { hp: 1000, def: 180, damageAbsorbPct: 28, allAttrs: 28, label: '★ GODLIKE: +1000 HP, +180 Def, +28% Absorb, +28 All Stats' },
+    }
+  },
   // Visual glow bands (engine): +1..+3 faint, +4..+6 strong, +7..+9 strong + glint trail, +10 aura.
   glowBands: [{ min: 1, level: 1 }, { min: 4, level: 2 }, { min: 7, level: 3 }, { min: 10, level: 4 }],
   announceAt: 7,             // toast "X enhanced Y to +N!" when reaching this or higher
@@ -50,16 +68,17 @@ export function glowLevel(plus) {
 // ----------------------------------------------------------------------------- RARITY SEALS
 // A seal is an extra quality layer on top of normal rarity (normal/magic/rare/epic/unique).
 // Seals only roll on set pieces and generic equipment from monsters/chests (never shops).
+// Rebalanced: Star is rare & prestigious, Moon is legendary, Sun is god-tier mythical.
 export const SEALS = {
-  star: { id: 'star', name: 'Seal of Star', short: '★', color: '#7dd3fc', statMult: 1.0, perPlusMult: 1.0, critRate: 1, priceMult: 1.5, dropPct: 2.5 },
-  moon: { id: 'moon', name: 'Seal of Moon', short: '☾', color: '#c4b5fd', statMult: 1.3, perPlusMult: 1.16, critRate: 2, priceMult: 2.2, dropPct: 0.8, minLevel: 10 },
-  sun: { id: 'sun', name: 'Seal of Sun', short: '☀', color: '#fbbf24', statMult: 1.6, perPlusMult: 1.35, critRate: 3, priceMult: 3.5, dropPct: 0.25, minLevel: 20 },
+  star: { id: 'star', name: 'Seal of Star', short: '★', color: '#7dd3fc', statMult: 1.0, perPlusMult: 1.0, critRate: 1, priceMult: 1.5, dropPct: 0.35 },
+  moon: { id: 'moon', name: 'Seal of Moon', short: '☾', color: '#c4b5fd', statMult: 1.3, perPlusMult: 1.16, critRate: 2, priceMult: 2.2, dropPct: 0.08, minLevel: 10 },
+  sun: { id: 'sun', name: 'Seal of Sun', short: '☀', color: '#fbbf24', statMult: 1.6, perPlusMult: 1.35, critRate: 3, priceMult: 3.5, dropPct: 0.02, minLevel: 20 },
 };
 export const SEAL_ORDER = ['sun', 'moon', 'star']; // rolled rarest first
 
-/** Roll a seal id or null. Boss/elite multiply chances. */
-export function rollSeal(level = 1, { isBoss = false, isElite = false, magicFind = 0 } = {}) {
-  const mult = (isBoss ? 15 : isElite ? 4 : 1) * (1 + Math.max(0, magicFind) / 200);
+/** Roll a seal id or null. Boss/giant/elite multiply chances. */
+export function rollSeal(level = 1, { isBoss = false, isGiant = false, isElite = false, magicFind = 0 } = {}) {
+  const mult = (isBoss ? 8.0 : isGiant ? 3.5 : isElite ? 1.8 : 1.0) * (1 + Math.max(0, magicFind) / 250);
   for (const id of SEAL_ORDER) {
     const s = SEALS[id];
     if (s.minLevel && level < s.minLevel) continue;
@@ -83,7 +102,7 @@ export const STATUS = {
 // ----------------------------------------------------------------------------- IMBUE
 // Imbue = instant self-buff (does not interrupt current action): for `duration` seconds every
 // basic attack / skill hit deals extra elemental damage (% of the hit) and may apply a status.
-export const IMBUE_DEFAULTS = { duration: 6, bonusPct: 20, statusChance: 25 };
+export const IMBUE_DEFAULTS = { duration: 120, bonusPct: 24, statusChance: 28 };
 
 // ----------------------------------------------------------------------------- SKILL TIMING
 // Phases (seconds) used by the engine to sequence skills:

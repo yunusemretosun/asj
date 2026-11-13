@@ -15,6 +15,7 @@ import { STATUS, BERSERK, berserkOrbs, NEMESIS, createNemesisTitle, HOT_SPRINGS 
 import { SkillSystem, applySkillData, BASIC_COMBO } from './skills.js';
 import { QuestSystem, applyQuestData } from './quests.js';
 import { CLASSES, DEFAULT_CLASS, getClass, isValidClass, sanitizeAppearance, canClassUse } from './classes.js';
+import { PetSystem } from './petSystem.js';
 
 export const SAVE_VERSION = 1;
 export const SAVE_PREFIX = 'asj-save-';
@@ -22,12 +23,110 @@ export const SAVE_PREFIX = 'asj-save-';
 export const ATTRIBUTES = ['str', 'dex', 'int', 'lck'];
 export const ATTRIBUTE_INFO = {
   str: { name: 'Strength', short: 'STR', desc: 'Raises physical attack, Max HP, defense and HP regeneration.' },
-  dex: { name: 'Dexterity', short: 'DEX', desc: 'Raises hit rate, dodge, attack speed, stamina and a little attack.' },
-  int: { name: 'Intelligence', short: 'INT', desc: 'Raises magic attack, Max SP (mana) and SP regeneration.' },
+  dex: { name: 'Dexterity', short: 'DEX', desc: 'Raises attack speed, hit rate, dodge, stamina and critical rate.' },
+  int: { name: 'Intelligence', short: 'INT', desc: 'Raises magic attack, Max MP, MP regeneration and magic/elemental defense.' },
   lck: { name: 'Luck', short: 'LCK', desc: 'Raises critical rate, critical damage, gold find and magic find.' },
 };
 
 export const ELEMENTS = ['fire', 'ice', 'lightning', 'poison'];
+
+/** Permanent Oakhaven Guild Academy training tracks (purchased with Gold). */
+export const TOWN_TRAINING_DEFS = {
+  might: {
+    id: 'might',
+    name: 'Martial Might Hall',
+    icon: '⚔️',
+    maxRank: 10,
+    baseCost: 2000,
+    costStep: 1800,
+    desc: '+15 ATK & +3% Physical Attack per rank',
+    perRank: { atk: 15, atkPct: 3 },
+  },
+  arcana: {
+    id: 'arcana',
+    name: 'Astral Conduit Hall',
+    icon: '🔮',
+    maxRank: 10,
+    baseCost: 2000,
+    costStep: 1800,
+    desc: '+18 MATK, +3% Magic Attack, +25 Max SP & +0.8 SP Regen/s per rank',
+    perRank: { matk: 18, matkPct: 3, mp: 25, mpRegen: 0.8 },
+  },
+  vitality: {
+    id: 'vitality',
+    name: 'Iron Bulwark Hall',
+    icon: '🛡️',
+    maxRank: 10,
+    baseCost: 1800,
+    costStep: 1600,
+    desc: '+90 Max HP, +14 DEF & +1.2 HP Regen/s per rank',
+    perRank: { hp: 90, def: 14, hpRegen: 1.2 },
+  },
+  agility: {
+    id: 'agility',
+    name: 'Wind Reflex Hall',
+    icon: '💨',
+    maxRank: 10,
+    baseCost: 2400,
+    costStep: 2000,
+    desc: '+2.5% Attack Speed, +1.5% Crit Rate & +1.5% Move Speed per rank',
+    perRank: { attackSpeedPct: 2.5, critRate: 1.5, moveSpeedPct: 1.5 },
+  },
+  fortune: {
+    id: 'fortune',
+    name: 'Silkroad Caravan Guild',
+    icon: '🪙',
+    maxRank: 10,
+    baseCost: 2200,
+    costStep: 1800,
+    desc: '+12% Gold Find, +12% Magic Find & +4% EXP Bonus per rank',
+    perRank: { goldFind: 12, magicFind: 12, expBonus: 4 },
+  },
+};
+
+/** 10-minute Town Sanctuary Blessings (purchased with Gold from Elder Aldric). */
+export const TOWN_BLESSINGS = {
+  war: {
+    id: 'blessing_war',
+    key: 'war',
+    name: 'Blessing of War',
+    icon: '⚔️',
+    cost: 1500,
+    duration: 600,
+    desc: '+20% ATK & MATK, +8% Crit Rate for 10 minutes',
+    mods: { atkPct: 20, matkPct: 20, critRate: 8 },
+  },
+  citadel: {
+    id: 'blessing_citadel',
+    key: 'citadel',
+    name: 'Blessing of Iron Citadel',
+    icon: '🏰',
+    cost: 1500,
+    duration: 600,
+    desc: '+25% DEF, +12% Max HP & +10% All Resistances for 10 minutes',
+    mods: { defPct: 25, hpPct: 12, allRes: 10 },
+  },
+  caravan: {
+    id: 'blessing_caravan',
+    key: 'caravan',
+    name: 'Blessing of Silkroad Caravan',
+    icon: '🐫',
+    cost: 2500,
+    duration: 600,
+    desc: '+40% EXP, +60% Gold Find, +45% Magic Find & +15% Move Speed for 10 minutes',
+    mods: { expBonus: 40, goldFind: 60, magicFind: 45, moveSpeedPct: 15 },
+  },
+  grand: {
+    id: 'blessing_grand',
+    key: 'grand',
+    name: 'Grand Oakhaven Benediction',
+    icon: '👑',
+    cost: 4500,
+    duration: 600,
+    desc: 'Activates War, Iron Citadel & Silkroad Caravan blessings simultaneously for 10 minutes!',
+    bundle: ['war', 'citadel', 'caravan'],
+  },
+};
 
 /** Progression constants (may be overridden by extracted data). */
 export const PROGRESSION = {
@@ -126,6 +225,112 @@ export function calcDamage(att = {}, def = {}, opts = {}) {
 }
 
 // =============================================================================
+// Story Chronicles (unlocked as floors are fully cleared)
+// =============================================================================
+export const STORY_CHRONICLES = {
+  0: {
+    floor: 0,
+    title: 'Prologue: Oakhaven Sınır Muhafızı',
+    summary: 'Oakhaven çevresindeki 4 açık av sahasında Seviye 10’a ulaşarak Donwhang Taş Mağarası mührünü kır.'
+  },
+  1: {
+    floor: 1,
+    title: 'Bölüm 1: Donwhang Kapıları Temizlendi (B1F)',
+    summary: 'Üst taş galerilerdeki Mangyang ve Gyo Weasel sürüleri bastırıldı; yeraltı izleri derinleşiyor.'
+  },
+  2: {
+    floor: 2,
+    title: 'Bölüm 2: Toprak Mahzenlerinin Yankısı (B2F)',
+    summary: 'Earth Ghost muhafızları düşürüldü; Tiger Girl’ün inine giden geçit artık savunmasız.'
+  },
+  3: {
+    floor: 3,
+    title: 'Bölüm 3: Tiger Girl’ün İninin Düşüşü (B3F)',
+    summary: 'Donwhang Mağarası tamamen temizlendi! Tiger Girl’ün bozgunu Karakorum yolundaki haydutları panikletti.'
+  },
+  4: {
+    floor: 4,
+    title: 'Bölüm 4: Vaha Akıncıları Püskürtüldü (B4F)',
+    summary: 'Black Robber öncü birliği çökertildi; Karakorum buz mağaralarının haritası ele geçirildi.'
+  },
+  5: {
+    floor: 5,
+    title: 'Bölüm 5: Buzul Tuzağının Kırılışı (B5F)',
+    summary: 'Ishade, Yeti ve Penon muhafızları donmuş galerilerde bozguna uğratıldı; kale kapıları göründü.'
+  },
+  6: {
+    floor: 6,
+    title: 'Bölüm 6: Uruchi’nin Kalesi Fetholundu (B6F)',
+    summary: 'Black Robber Citadel tamamen arındırıldı! Eski ipek kervanlarından Qin-Shi’nin mühürlü mezarına giden rota açıldı.'
+  },
+  7: {
+    floor: 7,
+    title: 'Bölüm 7: Terracotta Muhafızları Uyandı (B7F)',
+    summary: 'İmparator Qin-Shi’nin İlk Galerisi temizlendi; taş mezar mühürleri çözülmeye başladı.'
+  },
+  8: {
+    floor: 8,
+    title: 'Bölüm 8: Yılan Kanadının Çöküşü (B8F)',
+    summary: 'Snake Woman ve Black Snake lejyonları temizlendi; Merkez Tapınaktaki Isyutaru’nun mührü zayıfladı.'
+  },
+  9: {
+    floor: 9,
+    title: 'Bölüm 9: İmparatorluk Mezarı Arındırıldı (B9F)',
+    summary: 'Dört Muhafız ve Isyutaru alt edildi! Taklamakan’ın kavurucu sınırı Alev Dağı’na geçiş açıldı.'
+  },
+  10: {
+    floor: 10,
+    title: 'Bölüm 10: Kül Geçidinde Zafer (B10F)',
+    summary: 'Flame Witch ve Devil Bug akınları kırıldı; bazalt galeriler aşılmaya hazır.'
+  },
+  11: {
+    floor: 11,
+    title: 'Bölüm 11: Ölüm Kemikleri Nekropolü (B11F)',
+    summary: 'Bone Lord ve Hyeongcheon birlikleri yok edildi; Lord Yarkan’ın zirvesi yaklaştı.'
+  },
+  12: {
+    floor: 12,
+    title: 'Bölüm 12: Alev Dağının Efendisi Düştü (B12F)',
+    summary: 'Lord Yarkan ve Flame Giant ordusu tamamen temizlendi! Kutsal Su Tapınağı’nın efsanevi kapısı açıldı.'
+  },
+  13: {
+    floor: 13,
+    title: 'Bölüm 13: Firavunlar Tapınağı Mührü (B13F)',
+    summary: 'Kutsal Su Tapınağı’ndaki Anubis, Isis, Osiris ve Kaos Tanrısı Seth alt edildi; Jüpiter’e giden göksel köprü belirdi.'
+  },
+  14: {
+    floor: 14,
+    title: 'Bölüm 14: İbadet Salonunun Kurtuluşu (B14F)',
+    summary: 'Babilion, Yuno, The Earth ve Baal bozguna uğratıldı; Shambhala Uçurumu’nun son kilidi açıldı.'
+  },
+  15: {
+    floor: 15,
+    title: 'Bölüm 15: Koruyucunun Odası Temizlendi (B15F)',
+    summary: 'Demon Shaitan ve Shambhala iblisleri yok edildi! Roc Dağı Zirvesi’ndeki son karşılaşma başladı.'
+  },
+  16: {
+    floor: 16,
+    title: 'Final Bölümü: Gökyüzü Yuvasının Kurtarıcısı (B16F)',
+    summary: 'Roc ve gökyüzü ordusu tamamen temizlendi! Arkenveil ve İpek Yolu barışa kavuştu.'
+  },
+  101: {
+    floor: 101,
+    title: 'Unutulan Dünya: Togui Köyü Arındırıldı (S1F)',
+    summary: 'Lanetli bebek tapınağı ve Elder Togui Chieftain yok edildi.'
+  },
+  102: {
+    floor: 102,
+    title: 'Unutulan Dünya: Hayalet Kalyon Temizlendi (S2F)',
+    summary: 'Batık Kalyon’un hayalet tayfası ve Captain Kid Sereness sonsuza dek susturuldu.'
+  },
+  103: {
+    floor: 103,
+    title: 'Gizli Tapınak: Beyaz Yılan Medusa Düştü (S3F)',
+    summary: 'Qin-Shi B6F Tapınağı’ndaki Medusa ve kraliyet yılan muhafızları tamamen temizlendi.'
+  }
+};
+
+// =============================================================================
 // GameState
 // =============================================================================
 export class GameState extends Emitter {
@@ -144,6 +349,7 @@ export class GameState extends Emitter {
     this.inventory = new Inventory(this);
     this.skills = new SkillSystem(this);
     this.quests = new QuestSystem(this);
+    this.pets = new PetSystem(this);
     this.inventory.grantStarterKit(this.hero.classId);
     this.skills.grantStarterSkills(this.hero.classId);
     this.fullRestore();
@@ -173,16 +379,26 @@ export class GameState extends Emitter {
       restedExp: 0,
       isSoaking: false,
       nemesisKills: 0,
+      townTraining: { might: 0, arcana: 0, vitality: 0, agility: 0, fortune: 0 },
     };
     this.progress = {
       maxFloor: 0,          // deepest floor reached
       currentFloor: 0,      // 0 = village
       floorsCleared: [],
+      storyChronicles: [
+        {
+          floor: 0,
+          title: STORY_CHRONICLES[0].title,
+          summary: STORY_CHRONICLES[0].summary,
+          cleared: false
+        }
+      ],
       bossesDefeated: [],
       kills: 0,
       deaths: 0,
       playTime: 0,
       composes: 0,
+      storyCompleted: false,
     };
     this._comboTimer = 0;
     this._staminaDelay = 0;
@@ -237,8 +453,104 @@ export class GameState extends Emitter {
     addMods(mods, this.heroClass.statMods);
     addMods(mods, this.inventory ? this.inventory.getEquipStats() : null);
     addMods(mods, this.skills ? this.skills.getPassiveBonuses() : null);
+    if (this.pets) addMods(mods, this.pets.getPassiveMods());
+    const tt = this.hero?.townTraining || {};
+    for (const [k, def] of Object.entries(TOWN_TRAINING_DEFS)) {
+      const rank = Math.max(0, Math.min(def.maxRank, tt[k] | 0));
+      if (rank > 0) addMods(mods, def.perRank, rank);
+    }
     for (const b of this.hero.buffs) addMods(mods, b.mods, b.stacks || 1);
     return mods;
+  }
+
+  getTownTrainingCost(key) {
+    const def = TOWN_TRAINING_DEFS[key];
+    if (!def) return null;
+    const rank = Math.max(0, this.hero?.townTraining?.[key] | 0);
+    if (rank >= def.maxRank) return Infinity;
+    return def.baseCost + rank * def.costStep;
+  }
+
+  trainTownMastery(key) {
+    const def = TOWN_TRAINING_DEFS[key];
+    if (!def) return { ok: false, msg: 'Unknown Guild Training track.' };
+    this.hero.townTraining ||= { might: 0, arcana: 0, vitality: 0, agility: 0, fortune: 0 };
+    const rank = this.hero.townTraining[key] | 0;
+    if (rank >= def.maxRank) return { ok: false, msg: `${def.name} is already at Max Rank (${def.maxRank})!` };
+    const cost = this.getTownTrainingCost(key);
+    if ((this.hero.gold || 0) < cost) {
+      return { ok: false, msg: `Not enough Gold! Requires ${cost.toLocaleString()} G.` };
+    }
+    this.spendGold(cost);
+    this.hero.townTraining[key] = rank + 1;
+    this.markDirty();
+    this.clampVitals();
+    this.emit('change');
+    const msg = `${def.name} trained to Rank ${rank + 1}/${def.maxRank}!`;
+    this.emit('toast', msg, 'levelup');
+    return { ok: true, msg, key, rank: rank + 1, cost };
+  }
+
+  buyTownBlessing(key = 'grand') {
+    const cfg = TOWN_BLESSINGS[key];
+    if (!cfg) return { ok: false, msg: 'Unknown town blessing.' };
+    if ((this.hero.gold || 0) < cfg.cost) {
+      return { ok: false, msg: `Not enough Gold! Requires ${cfg.cost.toLocaleString()} G.` };
+    }
+    this.spendGold(cfg.cost);
+    const list = Array.isArray(cfg.bundle) ? cfg.bundle.map((k) => TOWN_BLESSINGS[k]).filter(Boolean) : [cfg];
+    for (const b of list) {
+      this.addBuff({
+        id: b.id,
+        name: b.name,
+        icon: b.icon,
+        duration: b.duration,
+        mods: { ...b.mods },
+        desc: b.desc,
+      });
+    }
+    this.fullRestore();
+    const msg = `${cfg.name} activated for 10 minutes!`;
+    this.emit('toast', msg, 'levelup');
+    return { ok: true, msg, key, cost: cfg.cost };
+  }
+
+  getTownHallView() {
+    const buffs = this.hero?.buffs || [];
+    const training = Object.values(TOWN_TRAINING_DEFS).map((def) => {
+      const rank = Math.max(0, this.hero?.townTraining?.[def.id] | 0);
+      return {
+        ...def,
+        rank,
+        cost: rank >= def.maxRank ? 0 : this.getTownTrainingCost(def.id),
+        maxed: rank >= def.maxRank,
+      };
+    });
+    const blessings = Object.values(TOWN_BLESSINGS).map((b) => {
+      const active = buffs.find((bf) => bf && bf.id === b.id);
+      return {
+        ...b,
+        activeRemaining: active ? Math.max(0, active.remaining || 0) : 0,
+      };
+    });
+    const inv = this.inventory;
+    return {
+      gold: this.hero.gold || 0,
+      training,
+      blessings,
+      bag: {
+        size: inv ? inv.bagSize : 36,
+        max: 60,
+        step: 6,
+        cost: inv && typeof inv.getBagExpandCost === 'function' ? inv.getBagExpandCost() : 0,
+      },
+      storage: {
+        size: inv ? inv.storageSize : 48,
+        max: 88,
+        step: 10,
+        cost: inv && typeof inv.getStorageExpandCost === 'function' ? inv.getStorageExpandCost() : 0,
+      },
+    };
   }
 
   getAttr(a) {
@@ -270,39 +582,44 @@ export class GameState extends Emitter {
     const dexPrimary = this.heroClass.primary === 'dex';
     const pMain = dexPrimary ? dex : str;
     const pSub = dexPrimary ? str : dex;
-    const atkMin = Math.round((wMin + pMain * 0.6 + pSub * 0.15 + L * 0.5 + num(m.atk)) * pct('atkPct'));
-    const atkMax = Math.max(atkMin, Math.round((wMax + pMain * 0.9 + pSub * 0.25 + L * 0.5 + num(m.atk)) * pct('atkPct')));
+    const atkMin = Math.round((wMin + pMain * 1.25 + pSub * 0.25 + L * 1.1 + num(m.atk)) * pct('atkPct'));
+    const atkMax = Math.max(atkMin, Math.round((wMax + pMain * 1.85 + pSub * 0.45 + L * 1.5 + num(m.atk)) * pct('atkPct')));
     const res = {};
-    for (const el of ELEMENTS) res[el] = clamp(Math.round(num(m[el + 'Res']) + num(m.allRes)), -100, 75);
+    for (const el of ELEMENTS) res[el] = clamp(Math.round(num(m[el + 'Res']) + num(m.allRes) + int * 0.2), -100, 75);
     const elemDmg = {};
     for (const el of ELEMENTS) elemDmg[el] = Math.round(num(m[el + 'Dmg']));
+
+    const baseAtkSpeed = 0.85;
+    const atkSpeedBonus = (dex * 0.75 + num(m.attackSpeedPct)) / 100;
+    const attackSpeed = Math.round(clamp(baseAtkSpeed + atkSpeedBonus, 0.5, 3.0) * 100) / 100;
 
     const s = {
       level: L,
       str, dex, int, lck,
-      maxHp: Math.round((60 + L * 10 + str * 5 + num(m.hp)) * pct('hpPct')),
-      maxMp: Math.round((20 + L * 3 + int * 4 + num(m.mp)) * pct('mpPct')),
-      maxStamina: Math.round(100 + dex * 0.5 + num(m.stamina)),
+      maxHp: Math.round((70 + L * 18 + str * 7.0 + num(m.hp)) * pct('hpPct')),
+      maxMp: Math.round((25 + L * 8 + int * 6.5 + num(m.mp)) * pct('mpPct')),
+      maxStamina: Math.round(100 + dex * 0.6 + num(m.stamina)),
       atkMin,
       atkMax,
       atk: Math.round((atkMin + atkMax) / 2),
-      // INT -> MATK is tuned to match STR -> ATK (avg 0.75/pt), so every class's main stat is worth the same
-      matk: Math.round((int * 0.8 + L * 0.5 + num(m.matk)) * pct('matkPct')),
-      def: Math.round((num(m.def) + str * 0.3 + dex * 0.2 + L * 0.5) * pct('defPct')),
-      critRate: Math.round(clamp(5 + lck * 0.25 + dex * 0.05 + num(m.critRate), 0, 75) * 10) / 10,
-      critDmg: Math.round(150 + lck * 0.6 + num(m.critDmg)),
-      dodge: Math.round(clamp(2 + dex * 0.2 + lck * 0.05 + num(m.dodge), 0, 60) * 10) / 10,
-      hit: Math.round((85 + dex * 0.3 + lck * 0.1 + num(m.hit)) * 10) / 10,
+      // INT -> MATK tuned with weapon scaling so Wizard elemental spells hit with authentic Silkroad power
+      matk: Math.round(((wMin + wMax) * 0.45 + int * 2.0 + L * 1.25 + num(m.matk) * 1.4) * pct('matkPct')),
+      def: Math.round((num(m.def) + str * 0.55 + dex * 0.25 + L * 0.85) * pct('defPct')),
+      critRate: Math.round(clamp(5 + lck * 0.3 + dex * 0.1 + num(m.critRate), 0, 75) * 10) / 10,
+      critDmg: Math.round(150 + lck * 0.75 + num(m.critDmg)),
+      dodge: Math.round(clamp(2 + dex * 0.25 + lck * 0.05 + num(m.dodge), 0, 60) * 10) / 10,
+      hit: Math.round((85 + dex * 0.45 + lck * 0.1 + num(m.hit)) * 10) / 10,
       block: Math.round(clamp(num(m.block), 0, 50) * 10) / 10,
-      attackSpeed: Math.round(clamp(1 + (dex * 0.3 + num(m.attackSpeedPct)) / 100, 0.5, 2.5) * 100) / 100,
+      damageAbsorbPct: Math.round(clamp(num(m.damageAbsorbPct), 0, 75) * 10) / 10,
+      attackSpeed,
       moveSpeed: Math.round(clamp(pct('moveSpeedPct'), 0.4, 2) * 100) / 100,
-      hpRegen: Math.round((0.5 + L * 0.05 + str * 0.03 + num(m.hpRegen)) * 10) / 10,
-      mpRegen: Math.round((0.8 + int * 0.06 + num(m.mpRegen)) * 10) / 10,
-      staminaRegen: Math.round(22 + dex * 0.1 + num(m.staminaRegen)),
+      hpRegen: Math.round((1.0 + L * 0.15 + str * 0.1 + num(m.hpRegen)) * 10) / 10,
+      mpRegen: Math.round((1.2 + L * 0.1 + int * 0.12 + num(m.mpRegen)) * 10) / 10,
+      staminaRegen: Math.round(22 + dex * 0.12 + num(m.staminaRegen)),
       lifeSteal: clamp(num(m.lifeSteal), 0, 30),
       manaSteal: clamp(num(m.manaSteal), 0, 20),
-      magicFind: Math.round(lck * 0.5 + num(m.magicFind)),
-      goldFind: Math.round(lck * 0.4 + num(m.goldFind)),
+      magicFind: Math.round(lck * 0.6 + num(m.magicFind)),
+      goldFind: Math.round(lck * 0.5 + num(m.goldFind)),
       expBonus: num(m.expBonus),
       cooldownReduction: clamp(num(m.cdr), 0, 40),
       thorns: num(m.thorns),
@@ -514,6 +831,9 @@ export class GameState extends Emitter {
       if (!opts.raw) damage *= 1 - s.def / (s.def + 40 + 8 * num(opts.attackerLevel, h.level));
       if (opts.element) damage *= 1 - num(s.res[opts.element]) / 100;
     }
+    if (s.damageAbsorbPct > 0) {
+      damage *= 1 - s.damageAbsorbPct / 100;
+    }
     let blocked = false;
     if (opts.canBlock !== false && s.block > 0 && Math.random() * 100 < s.block) { blocked = true; damage *= 0.3; }
     if (opts.blocking) { blocked = true; damage *= 0.4; } // active shield-block from the controller
@@ -541,8 +861,8 @@ export class GameState extends Emitter {
     this.emit('toast', 'You have fallen...', 'death');
   }
 
-  /** Revive in town. Loses a portion of gold (ASJ-style death penalty). */
-  revive({ penalty = true } = {}) {
+  /** Revive in town (or at a specified floor on Challenge return). */
+  revive({ penalty = true, targetFloor = 0 } = {}) {
     let lost = 0;
     if (penalty) {
       lost = Math.floor(this.hero.gold * PROGRESSION.deathGoldPenalty);
@@ -552,7 +872,7 @@ export class GameState extends Emitter {
     this.hero.dead = false;
     this.fullRestore();
     this.setInvulnerable(2);
-    this.progress.currentFloor = 0;
+    this.progress.currentFloor = targetFloor;
     this.emit('revive', lost);
     if (lost) this.emit('toast', `Revived in the village. Lost ${lost} gold.`, 'info');
     this.emit('change');
@@ -703,9 +1023,10 @@ export class GameState extends Emitter {
    */
   rollAttack(defStats = {}, opts = {}) {
     const s = this.getStats();
+    const critBonus = num(opts.critBonus, 0);
     const att = opts.magic
-      ? { atkMin: s.matk * 0.85, atkMax: s.matk * 1.15, critRate: s.critRate, critDmg: s.critDmg, hit: s.hit + 10, level: s.level }
-      : { atkMin: s.atkMin, atkMax: s.atkMax, critRate: s.critRate, critDmg: s.critDmg, hit: s.hit, level: s.level, elemDmg: s.elemDmg };
+      ? { atkMin: s.matk * 0.85, atkMax: s.matk * 1.15, critRate: s.critRate + critBonus, critDmg: s.critDmg, hit: s.hit + 10, level: s.level }
+      : { atkMin: s.atkMin, atkMax: s.atkMax, critRate: s.critRate + critBonus, critDmg: s.critDmg, hit: s.hit, level: s.level, elemDmg: s.elemDmg };
     const r = calcDamage(att, defStats, { ...opts, bonusPct: num(opts.bonusPct) + this.comboBonusPct });
     if (!r.miss) {
       const im = this.getActiveImbue();
@@ -754,6 +1075,7 @@ export class GameState extends Emitter {
       ...c,
       stage,
       attackSpeed: s.attackSpeed,
+      duration: Math.round((c.duration / Math.max(0.5, s.attackSpeed)) * 100) / 100,
       staminaCost: c.staminaCost || 0,
       rollDamage: (defStats) => this.rollBasicAttack(defStats, { mult: c.mult }),
     };
@@ -767,14 +1089,14 @@ export class GameState extends Emitter {
    */
   onMonsterKilled(monster = {}) {
     const level = num(monster.level, floorMonsterLevel(Math.max(1, this.progress.currentFloor || 1)));
-    const isBoss = !!monster.isBoss, isElite = !!monster.isElite;
+    const isBoss = !!monster.isBoss, isElite = !!monster.isElite, isGiant = !!monster.isGiant;
     const floor = num(monster.floor, this.progress.currentFloor);
     let exp = num(monster.exp, monsterExp(level, { isElite, isBoss }));
     // level difference scaling (no farming trivially weak monsters)
     const diff = level - this.hero.level;
     exp = Math.max(1, Math.round(exp * clamp(1 + diff * 0.1, 0.2, 1.5)));
     const s = this.getStats();
-    const loot = rollLoot(level, { isBoss, isElite, magicFind: s.magicFind, goldFind: s.goldFind, classId: this.classId });
+    const loot = rollLoot(level, { isBoss, isElite, isGiant, magicFind: s.magicFind, goldFind: s.goldFind, classId: this.classId });
     const gold = monster.gold != null ? Math.round(num(monster.gold) * (1 + s.goldFind / 100)) : loot.gold;
     const drops = loot.items;
     if (Array.isArray(monster.drops)) {
@@ -793,11 +1115,12 @@ export class GameState extends Emitter {
       const id = monster.type || monster.id || monster.name || `boss_f${floor}`;
       if (!this.progress.bossesDefeated.includes(id)) this.progress.bossesDefeated.push(id);
     }
-    this.addBerserkCharge(isBoss ? BERSERK.gainBoss : isElite ? BERSERK.gainElite : BERSERK.gainNormal);
+    this.addBerserkCharge(isBoss ? BERSERK.gainBoss : isGiant ? Math.round(BERSERK.gainElite * 1.5) : isElite ? BERSERK.gainElite : BERSERK.gainNormal);
     if (monster.isNemesis) {
       this.claimNemesisVengeance(monster);
     }
     this.addExp(exp);
+    if (this.pets) this.pets.addExp(Math.max(1, Math.round(exp * 0.35)));
     if (this.quests) this.quests.onKill(monster);
     this.emit('kill', monster, { exp, gold, drops });
     return { exp, gold, drops };
@@ -816,9 +1139,30 @@ export class GameState extends Emitter {
   }
   floorCleared(floor) {
     floor = num(floor, this.progress.currentFloor);
-    if (!this.progress.floorsCleared.includes(floor)) this.progress.floorsCleared.push(floor);
+    const firstClear = !this.progress.floorsCleared.includes(floor);
+    if (firstClear) this.progress.floorsCleared.push(floor);
+    const meta = STORY_CHRONICLES[floor];
+    if (meta) {
+      if (!Array.isArray(this.progress.storyChronicles)) this.progress.storyChronicles = [];
+      let entry = this.progress.storyChronicles.find((c) => c.floor === floor);
+      if (!entry) {
+        entry = { floor, title: meta.title, summary: meta.summary, cleared: true };
+        this.progress.storyChronicles.push(entry);
+      } else {
+        entry.cleared = true;
+      }
+      this.emit('chronicle', entry);
+      if (firstClear) {
+        this.emit('toast', `📖 Hikaye Güncellendi: ${meta.title}`, 'quest');
+      }
+    }
     if (this.quests) this.quests.onFloorCleared(floor);
     this.emit('floorCleared', floor);
+    this.emit('change');
+  }
+  getStoryChronicles() {
+    const list = Array.isArray(this.progress?.storyChronicles) ? [...this.progress.storyChronicles] : [];
+    return list.sort((a, b) => (a.floor || 0) - (b.floor || 0));
   }
   get unlockedMaxFloor() { return Math.max(1, this.progress.maxFloor + (this.progress.floorsCleared.includes(this.progress.maxFloor) ? 1 : 0)); }
 
@@ -936,6 +1280,7 @@ export class GameState extends Emitter {
       inventory: this.inventory.toJSON(),
       skills: this.skills.toJSON(),
       quests: this.quests.toJSON(),
+      pets: this.pets ? this.pets.toJSON() : null,
     };
   }
 
@@ -955,8 +1300,25 @@ export class GameState extends Emitter {
     this.hero.restedExp = Number(d.hero.restedExp) || 0;
     this.hero.isSoaking = false;
     this.hero.nemesisKills = Number(d.hero.nemesisKills) || 0;
+    this.hero.townTraining = { might: 0, arcana: 0, vitality: 0, agility: 0, fortune: 0, ...(d.hero.townTraining || {}) };
     this._nemesis = d.nemesis ? { ...d.nemesis } : null;
     Object.assign(this.progress, d.progress || {});
+    this.progress.storyCompleted = Boolean(this.progress.storyCompleted);
+    if (!Array.isArray(this.progress.floorsCleared)) this.progress.floorsCleared = [];
+    if (!Array.isArray(this.progress.storyChronicles) || this.progress.storyChronicles.length === 0) {
+      this.progress.storyChronicles = [
+        {
+          floor: 0,
+          title: STORY_CHRONICLES[0].title,
+          summary: STORY_CHRONICLES[0].summary,
+          cleared: this.progress.maxFloor >= 1
+        }
+      ];
+      for (const cf of this.progress.floorsCleared) {
+        const meta = STORY_CHRONICLES[cf];
+        if (meta) this.progress.storyChronicles.push({ floor: cf, title: meta.title, summary: meta.summary, cleared: true });
+      }
+    }
     this.inventory.classId = savedClass;
     this.inventory.fromJSON(d.inventory || {});
     this.inventory.classId = savedClass;
@@ -970,9 +1332,9 @@ export class GameState extends Emitter {
         eq.weapon = generateItem({ baseId: starter.weapon, rarity: 'normal', level: 1, classId: savedClass });
       }
     }
-    if ((savedClass === 'archer' || savedClass === 'wizard' || cls.twoHanded) && eq.shield) {
+    if ((savedClass === 'archer' || savedClass === 'wizard' || cls.twoHanded || !cls.shield) && eq.shield) {
       eq.shield = null;
-    } else if (savedClass === 'axeman' && (!eq.shield || eq.shield.baseId === 'shield_1')) {
+    } else if (savedClass === 'axeman' && (!eq.shield || eq.shield.baseId === 'shield_1' || String(eq.shield.subtype || eq.shield.subType || '').toLowerCase() !== 'axe')) {
       eq.shield = createOffhandAxe(0) || eq.shield;
     }
     // Older saves rendered staves as Chinese spears and offhand axes as glaives: refresh weapon visuals
@@ -986,6 +1348,7 @@ export class GameState extends Emitter {
 
     this.skills.fromJSON(d.skills || {});
     this.quests.fromJSON(d.quests || {});
+    if (d.pets && this.pets) this.pets.fromJSON(d.pets);
     this.markDirty();
     this.clampVitals();
     if (this.hero.hp <= 0) this.fullRestore();
@@ -1048,6 +1411,7 @@ export class GameState extends Emitter {
     this.inventory = new Inventory(this);
     this.skills = new SkillSystem(this);
     this.quests = new QuestSystem(this);
+    this.pets = new PetSystem(this);
     this.inventory.grantStarterKit(this.hero.classId);
     this.skills.grantStarterSkills(this.hero.classId);
     this.fullRestore();
@@ -1068,6 +1432,7 @@ export class GameState extends Emitter {
     this.inventory = new Inventory(this);
     this.skills = new SkillSystem(this);
     this.quests = new QuestSystem(this);
+    this.pets = new PetSystem(this);
     this.markDirty();
     this.inventory.grantStarterKit(cid);
     this.skills.grantStarterSkills(cid);
@@ -1076,6 +1441,26 @@ export class GameState extends Emitter {
     this.emit('equip');
     this.emit('change');
     return this;
+  }
+
+  /** Mark the main story as completed upon defeating the Final Unique (Roc on Floor 16). */
+  completeStory(boss = null) {
+    const firstTime = !this.progress.storyCompleted;
+    this.progress.storyCompleted = true;
+    const bossName = (boss && (boss.name || boss.id)) || 'Roc';
+    if (!this.progress.bossesDefeated.includes(bossName)) {
+      this.progress.bossesDefeated.push(bossName);
+    }
+    const bonusGold = firstTime ? 25000 : 0;
+    const bonusExp = firstTime ? 12000 : 0;
+    if (firstTime) {
+      this.addGold(bonusGold);
+      this.addExp(bonusExp);
+      this.markDirty();
+    }
+    this.emit('story:complete', { firstTime, bossName, bonusGold, bonusExp });
+    this.emit('change');
+    return { ok: true, firstTime, bossName, bonusGold, bonusExp };
   }
 }
 
@@ -1161,10 +1546,20 @@ export function createUIHost(game, extras = {}) {
     getNpcDialogue: (npcId) => game.quests.getNpcDialogue(npcId),
     getQuestDialogue: (questId) => game.quests.getQuestDialogue(questId),
     getRecipes: () => inv().getRecipes(),
+    getStoryChronicles: () => game.getStoryChronicles(),
     getFloors: () => {
       const max = game.unlockedMaxFloor;
       const out = [];
-      for (let f = 1; f <= Math.max(max, 1); f++) out.push({ floor: f, name: `Floor ${f}`, unlocked: f <= max, recommendedLevel: floorMonsterLevel(f) });
+      for (let f = 1; f <= Math.max(max, 1); f++) {
+        out.push({
+          floor: f,
+          name: `Floor ${f}`,
+          unlocked: f <= max,
+          cleared: (game.progress.floorsCleared || []).includes(f),
+          minDungeonLevel: 10,
+          recommendedLevel: floorMonsterLevel(f)
+        });
+      }
       return out;
     },
     getMinimap: () => null,
@@ -1184,6 +1579,9 @@ export function createUIHost(game, extras = {}) {
     sortBag: () => res(inv().sortBag(), 'Sorted'),
     deposit: (uid) => inv().deposit(uid),
     withdraw: (uid) => inv().withdraw(uid),
+    depositGold: (amt) => inv().depositGold(amt),
+    withdrawGold: (amt) => inv().withdrawGold(amt),
+    depositMaterials: (mode = 'material') => inv().depositAllByFilter(mode),
     levelSkill: (id) => game.skills.learn(id),
     assignSkill: (id, slotIdx) => game.skills.assign(slotIdx, id),
     castSkillSlot: (i) => game.skills.castSlot(i),
@@ -1197,6 +1595,16 @@ export function createUIHost(game, extras = {}) {
     getNemesis: () => game.nemesis,
     claimNemesisVengeance: (enemy) => game.claimNemesisVengeance(enemy),
     soakInHotSprings: (dt) => game.soakInHotSprings(dt),
+    getTownHallView: () => game.getTownHallView(),
+    trainTownMastery: (key) => game.trainTownMastery(key),
+    buyTownBlessing: (key) => game.buyTownBlessing(key),
+    expandBag: () => inv().expandBag(),
+    expandStorage: () => inv().expandStorage(),
+    getSocketForgeCost: (uid) => inv().getSocketForgeCost(uid),
+    forgeAddSocket: (uid) => inv().forgeAddSocket(uid),
+    getReforgeCost: (uid) => inv().getReforgeCost(uid),
+    forgeReforgeAffixes: (uid) => inv().forgeReforgeAffixes(uid),
+    trainActivePet: (cost, expGain) => game.pets.trainActivePetWithGold(cost, expGain),
     save: () => game.save(game.activeSlot),
     load: () => game.load(game.activeSlot),
     reset: () => { game.reset(); return { ok: true, msg: 'New game started' }; },

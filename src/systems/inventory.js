@@ -48,6 +48,16 @@ const newUid = () => `it${Date.now().toString(36)}${(_uidCounter++).toString(36)
 // =============================================================================
 // Item bases
 // =============================================================================
+export const MAGIC_STONES = {
+  stone_str: { id: 'stone_str', name: 'Magic Stone of Strength', stat: 'str', statName: 'STR', minVal: 2, maxVal: 5, icon: '/assets/sro/alchemy/alcm_effect_stuff.png', desc: 'SRO Alchemy: Fuses Strength (+2~5 STR) onto equipment as a Blue Stat.' },
+  stone_int: { id: 'stone_int', name: 'Magic Stone of Intelligence', stat: 'int', statName: 'INT', minVal: 2, maxVal: 5, icon: '/assets/sro/alchemy/alcm_effect_stuff.png', desc: 'SRO Alchemy: Fuses Intelligence (+2~5 INT) onto equipment as a Blue Stat.' },
+  stone_hp: { id: 'stone_hp', name: 'Magic Stone of Stamina', stat: 'hp', statName: 'Max HP', minVal: 60, maxVal: 220, icon: '/assets/sro/alchemy/alcm_effect_stuff.png', desc: 'SRO Alchemy: Fuses Maximum HP (+60~220 HP) onto equipment as a Blue Stat.' },
+  stone_agi: { id: 'stone_agi', name: 'Magic Stone of Agility', stat: 'attackSpeedPct', statName: 'Attack Speed %', minVal: 3, maxVal: 7, icon: '/assets/sro/alchemy/alcm_effect_stuff.png', desc: 'SRO Alchemy: Fuses Attack Speed (+3~7%) onto equipment as a Blue Stat.' },
+  stone_crit: { id: 'stone_crit', name: 'Magic Stone of Critical', stat: 'critRate', statName: 'Critical Rate %', minVal: 2, maxVal: 4, icon: '/assets/sro/alchemy/alcm_effect_stuff.png', desc: 'SRO Alchemy: Fuses Critical Rate (+2~4%) onto equipment as a Blue Stat.' },
+  stone_absorb: { id: 'stone_absorb', name: 'Magic Stone of Defense', stat: 'def', statName: 'Defense', minVal: 10, maxVal: 30, icon: '/assets/sro/alchemy/alcm_effect_stuff.png', desc: 'SRO Alchemy: Fuses Physical & Magical Defense (+10~30 DEF) onto equipment as a Blue Stat.' },
+  stone_astral: { id: 'stone_astral', name: 'Astral Stone', isAstral: true, icon: '/assets/sro/icons/etc/archemy_reinforce_prob_up_a.png', desc: 'SRO Alchemy: Imbues Astral Protection onto equipment. Prevents enhancement from dropping below +4 on failure!' }
+};
+
 export const TIER_LEVELS = [1, 5, 10, 16, 22, 30, 40, 50];
 export const TIER_MATERIALS = ['Crude', 'Iron', 'Steel', 'Knight', 'Mithril', 'Rune', 'Dragon', 'Arkenveil'];
 
@@ -213,13 +223,18 @@ function buildConsumables() {
   C('mp_potion_x', 'Grand SP Potion', '/assets/sro/icons/etc/mp_potion_04.png', 400, 32, { mana: 500 }, 'Restores 500 SP (mana).', { potion: true });
   C('elixir', 'Elixir of Life', '/assets/sro/icons/etc/all_potion_01.png', 600, 15, { healPct: 1, manaPct: 1, stamina: 999 }, 'Fully restores HP, SP and stamina.', { potion: true });
   C('antidote', 'Antidote Herb', '/assets/sro/icons/etc/cure_all_01.png', 15, 1, { cure: true }, 'Removes all negative effects.');
-  C('stamina_tonic', 'Stamina Tonic', '/assets/sro/icons/etc/all_potion_02.png', 45, 3, { stamina: 999, buff: { id: 'tonic', name: 'Second Wind', icon: '🍶', duration: 30, mods: { staminaRegen: 15 } } }, 'Restores stamina and boosts stamina regeneration for 30s.');
+  C('stamina_tonic', 'Stamina Tonic', '/assets/sro/icons/etc/all_potion_02.png', 90, 1, { stamina: 999, buff: { id: 'tonic', name: 'Second Wind', icon: '🍶', duration: 180, mods: { staminaRegen: 15 } } }, 'Restores stamina and boosts stamina regeneration for 3m.');
   C('scroll_return', 'Return Scroll', '/assets/sro/icons/etc/scroll_return_01.png', 40, 1, { townPortal: true }, 'Teleports you back to the village.');
-  C('scroll_might', 'Scroll of Might', '/assets/sro/icons/etc/scroll_return_02.png', 120, 5, { buff: { id: 'scroll_might', name: 'Might', icon: '⚔', duration: 60, mods: { atkPct: 25 } } }, '+25% attack for 60s.');
-  C('scroll_iron', 'Scroll of Iron Skin', '/assets/sro/icons/etc/scroll_return_02.png', 120, 5, { buff: { id: 'scroll_iron', name: 'Iron Skin', icon: '🛡', duration: 60, mods: { defPct: 35 } } }, '+35% defense for 60s.');
-  C('scroll_haste', 'Scroll of Haste', '/assets/sro/icons/etc/scroll_return_02.png', 150, 10, { buff: { id: 'scroll_haste', name: 'Haste', icon: '💨', duration: 45, mods: { moveSpeedPct: 20, attackSpeedPct: 15 } } }, '+20% move speed, +15% attack speed for 45s.');
-  C('scroll_fortune', 'Scroll of Fortune', '/assets/sro/icons/etc/scroll_return_02.png', 200, 10, { buff: { id: 'scroll_fortune', name: 'Fortune', icon: '🍀', duration: 120, mods: { magicFind: 50, goldFind: 50 } } }, '+50% magic find and gold find for 120s.');
-  C('scroll_reset', 'Scroll of Rebirth', '/assets/sro/icons/etc/scroll_return_02.png', 1500, 10, { resetAll: true }, 'Refunds all attribute and skill points.');
+  C('scroll_might', 'Scroll of Might', '/assets/sro/icons/etc/scroll_return_02.png', 250, 1, { buff: { id: 'scroll_might', name: 'Might', icon: '⚔', duration: 300, mods: { atkPct: 25 } } }, '+25% attack for 5m.');
+  C('scroll_iron', 'Scroll of Iron Skin', '/assets/sro/icons/etc/scroll_return_02.png', 250, 1, { buff: { id: 'scroll_iron', name: 'Iron Skin', icon: '🛡', duration: 300, mods: { defPct: 35 } } }, '+35% defense for 5m.');
+  C('scroll_haste', 'Scroll of Haste', '/assets/sro/icons/etc/scroll_return_02.png', 300, 1, { buff: { id: 'scroll_haste', name: 'Haste', icon: '💨', duration: 240, mods: { moveSpeedPct: 20, attackSpeedPct: 15 } } }, '+20% move speed, +15% attack speed for 4m.');
+  C('scroll_fortune', 'Scroll of Fortune', '/assets/sro/icons/etc/scroll_return_02.png', 400, 1, { buff: { id: 'scroll_fortune', name: 'Fortune', icon: '🍀', duration: 300, mods: { magicFind: 50, goldFind: 50 } } }, '+50% magic find and gold find for 5m.');
+  C('scroll_reset', 'Scroll of Rebirth', '/assets/sro/icons/etc/scroll_return_02.png', 1500, 1, { resetAll: true }, 'Refunds all attribute and skill points.');
+  C('scroll_berserk', 'Scroll of Zerk', '/assets/sro/icons/etc/scroll_return_thiefden_01.png', 3000, 1, { berserkCharge: 100 }, 'Instantly fills your Zerk gauge to 100%!');
+  C('scroll_exp', 'Scroll of Enlightenment', '/assets/sro/icons/etc/scroll_return_03.png', 2400, 1, { buff: { id: 'scroll_exp', name: 'Enlightenment', icon: '📜', duration: 600, mods: { expBonus: 50 } } }, '+50% EXP gain for 10m.');
+  C('elixir_hero', 'Heroic War Elixir', '/assets/sro/icons/etc/all_potion_03.png', 2000, 1, { buff: { id: 'elixir_hero', name: 'Heroic Fury', icon: '🍷', duration: 300, mods: { atkPct: 25, matkPct: 25, defPct: 25, attackSpeedPct: 15 } } }, '+25% ATK/MATK/DEF and +15% Attack Speed for 5m.');
+  C('box_gear', 'Mystery War Coffer', '/assets/sro/icons/etc/trade_ch_03.png', 4500, 1, { mysteryBox: { id: 'gear', epicChance: 0.34, uniqueChance: 0.06, isElite: true } }, 'Opens for guaranteed Rare, Epic, or Unique gear attuned to your class.');
+  C('box_relic', 'Imperial Relic Coffer', '/assets/sro/icons/etc/trade_ch_05.png', 16000, 1, { mysteryBox: { id: 'relic', minEpic: true, uniqueChance: 0.28, isBoss: true, sealChance: 0.35 } }, 'Opens for Epic or Unique relic gear with high Seal & Set odds.');
 
   for (const el of ELEMENTS) {
     for (let t = 1; t <= 5; t++) {
@@ -255,6 +270,23 @@ function buildConsumables() {
     desc: `Alchemy: raises the success chance of gear of grade ${i + 1} (tiers ${i * 2}-${i * 2 + 1}).` }));
   registerItemBase({ id: 'guardian_talisman', name: 'Guardian Talisman', icon: '/assets/sro/icons/etc/scroll_return_03.png', type: 'material', subtype: 'talisman', stackable: true, maxStack: 99, price: 6000, reqLevel: 1, color: '#a7f3d0', desc: 'Alchemy: on failure the item only loses 1 + instead of resetting to +0.' });
   registerItemBase({ id: 'lucky_charm', name: 'Lucky Charm', icon: ICONS.charm, type: 'material', subtype: 'charm', stackable: true, maxStack: 99, price: 500, reqLevel: 1, desc: 'Add when composing: +15% success and prevents upgrade level loss on failure.' });
+
+  // Silkroad Online Magic Stones for Blue Stats & Astral Protection
+  for (const [sId, sDef] of Object.entries(MAGIC_STONES)) {
+    registerItemBase({
+      id: sId,
+      name: sDef.name,
+      type: 'material',
+      subtype: 'stone',
+      stackable: true,
+      maxStack: 99,
+      price: sDef.isAstral ? 4500 : 1500,
+      reqLevel: 1,
+      color: sDef.isAstral ? '#38bdf8' : '#60a5fa',
+      icon: sDef.icon,
+      desc: sDef.desc
+    });
+  }
 }
 
 buildEquipmentBases();
@@ -646,11 +678,46 @@ export function recalcItem(item) {
   }
   if (seal && seal.critRate) stats.critRate = (stats.critRate || 0) + seal.critRate;
   const affixes = [];
+  if (item.astralCharges && item.astralCharges > 0) {
+    affixes.push(`✦ Astral Protection (Protected at +4 x${item.astralCharges})`);
+  }
   for (const m of item.mods || []) {
     stats[m.stat] = (stats[m.stat] || 0) + m.value;
     affixes.push(formatStat(m.stat, m.value));
   }
   const isWeapon = item.slot === 'weapon';
+
+  // Apply Alchemy (+N) Milestone Bonuses (+3, +5, +7, +9, +10)
+  const msGroup = ALCHEMY.milestones ? (isWeapon ? ALCHEMY.milestones.weapon : ALCHEMY.milestones.armor) : null;
+  if (msGroup && item.plus) {
+    let highestPlus = 0;
+    let activeMs = null;
+    for (const reqPlus of [3, 5, 7, 9, 10]) {
+      if (item.plus >= reqPlus && msGroup[reqPlus]) {
+        highestPlus = reqPlus;
+        activeMs = msGroup[reqPlus];
+      }
+    }
+    if (activeMs) {
+      for (const [st, val] of Object.entries(activeMs)) {
+        if (st === 'label') continue;
+        if (st === 'allAttrs') {
+          stats.str = (stats.str || 0) + val;
+          stats.dex = (stats.dex || 0) + val;
+          stats.int = (stats.int || 0) + val;
+          stats.lck = (stats.lck || 0) + val;
+        } else if (st === 'atk') {
+          stats.atk = (stats.atk || 0) + val;
+          if (stats.atkMin != null) stats.atkMin += val;
+          if (stats.atkMax != null) stats.atkMax += val;
+        } else {
+          stats[st] = (stats[st] || 0) + val;
+        }
+      }
+      item.alchemyMilestone = activeMs.label;
+      affixes.push(`✦ +${highestPlus} Bonus: ${activeMs.label}`);
+    }
+  }
   for (const g of item.gems || []) {
     const t = clamp(g.tier | 0, 1, 5) - 1;
     if (g.element === 'prism') {
@@ -883,7 +950,7 @@ export function generateItem(opts = {}) {
     tier: base.tier || 0, material: base.material, rarity, level, reqLevel: Math.max(base.reqLevel || 1, uniqueId ? (UNIQUES.find((u) => u.id === uniqueId)?.minLevel || 1) : 1),
     baseStats, mods, gems: [], sockets: r.sockets, plus: clamp(num(opts.plus) | 0, 0, 10), setId, uniqueId, lore,
     classOnly: base.classOnly || null, setName: base.setName || (setId && SETS[setId] ? SETS[setId].name : null),
-    seal: opts.seal && SEALS[opts.seal] ? opts.seal : (opts.noSeal || !opts.sealRoll ? null : rollSeal(level, { isBoss: opts.isBoss, isElite: opts.isElite, magicFind: opts.magicFind })), basePrice: base.price || 20, count: 1, stackable: false, desc: base.desc || '',
+    seal: opts.seal && SEALS[opts.seal] ? opts.seal : (opts.noSeal || !opts.sealRoll ? null : rollSeal(level, { isBoss: opts.isBoss, isGiant: opts.isGiant, isElite: opts.isElite, magicFind: opts.magicFind })), basePrice: base.price || 20, count: 1, stackable: false, desc: base.desc || '',
   };
   return recalcItem(item);
 }
@@ -892,25 +959,51 @@ export function generateItem(opts = {}) {
  * Loot roll for a slain monster / opened chest.
  * Returns { gold, items:[item] }.
  */
-export function rollLoot(level = 1, { isBoss = false, isElite = false, isChest = false, magicFind = 0, goldFind = 0, classId = null } = {}) {
+export function rollLoot(level = 1, { isBoss = false, isElite = false, isGiant = false, isChest = false, magicFind = 0, goldFind = 0, classId = null } = {}) {
   level = Math.max(1, level | 0);
   const items = [];
   const gf = 1 + Math.max(0, goldFind) / 100;
   let gold = 0;
-  const goldChance = isBoss || isElite || isChest ? 1 : 0.6;
-  if (Math.random() < goldChance) gold = Math.round((level * rand(1.5, 4) + 2) * (isBoss ? 15 : isElite ? 3 : isChest ? 5 : 1) * gf);
-  const equipRolls = isBoss ? 3 + (Math.random() < 0.5 ? 1 : 0) : isChest ? 1 + (Math.random() < 0.35 ? 1 : 0) : isElite ? (Math.random() < 0.45 ? 1 : 0) + (Math.random() < 0.2 ? 1 : 0) : (Math.random() < 0.1 ? 1 : 0);
-  // set-piece share of equipment drops: mobs 25%, elites 45%, chests 35%, bosses 70% (first boss drop always a set piece)
-  const setChance = isBoss ? 0.7 : isElite ? 0.45 : isChest ? 0.35 : 0.25;
+  const goldChance = isBoss || isGiant || isElite || isChest ? 1 : 0.6;
+  if (Math.random() < goldChance) gold = Math.round((level * rand(1.5, 4) + 2) * (isBoss ? 15 : isGiant ? 6 : isElite ? 3 : isChest ? 5 : 1) * gf);
+  const equipRolls = isBoss
+    ? 3 + (Math.random() < 0.5 ? 1 : 0)
+    : isChest
+    ? 1 + (Math.random() < 0.35 ? 1 : 0)
+    : isGiant
+    ? 1 + (Math.random() < 0.65 ? 1 : 0)
+    : isElite
+    ? (Math.random() < 0.45 ? 1 : 0) + (Math.random() < 0.2 ? 1 : 0)
+    : (Math.random() < 0.1 ? 1 : 0);
+  // set-piece share of equipment drops: mobs 25%, elites 45%, giants 55%, chests 35%, bosses 70% (first boss drop always a set piece)
+  const setChance = isBoss ? 0.7 : isGiant ? 0.55 : isElite ? 0.45 : isChest ? 0.35 : 0.25;
   for (let i = 0; i < equipRolls; i++) {
-    items.push(generateItem({ level, magicFind, isBoss, isElite, classId, setChance, sealRoll: true, setPiece: isBoss && i === 0 ? true : undefined, minRarity: isBoss ? (i === 0 ? 'rare' : 'magic') : 'normal' }));
+    items.push(generateItem({
+      level,
+      magicFind,
+      isBoss,
+      isGiant,
+      isElite,
+      classId,
+      setChance,
+      sealRoll: true,
+      setPiece: isBoss && i === 0 ? true : undefined,
+      minRarity: isBoss ? (i === 0 ? 'rare' : 'magic') : isGiant ? 'magic' : 'normal'
+    }));
   }
-  // Guarantee at least one SOS/SOM/SOSun sealed equipment drop on every Boss kill
+  // Rebalanced SOS drop chances: Bosses & Giants have balanced chance rather than guaranteed flood
   if (isBoss) {
     const eqItems = items.filter((it) => it && !it.stackable && it.slot);
-    if (eqItems.length && !eqItems.some((it) => Boolean(it.seal))) {
+    if (eqItems.length && !eqItems.some((it) => Boolean(it.seal)) && Math.random() < 0.28) {
       const chosen = eqItems[0];
-      chosen.seal = (level >= 20 && Math.random() < 0.22) ? 'sun' : (level >= 10 && Math.random() < 0.42) ? 'moon' : 'star';
+      chosen.seal = (level >= 20 && Math.random() < 0.08) ? 'sun' : (level >= 10 && Math.random() < 0.22) ? 'moon' : 'star';
+      recalcItem(chosen);
+    }
+  } else if (isGiant) {
+    const eqItems = items.filter((it) => it && !it.stackable && it.slot);
+    if (eqItems.length && !eqItems.some((it) => Boolean(it.seal)) && Math.random() < 0.10) {
+      const chosen = eqItems[0];
+      chosen.seal = (level >= 20 && Math.random() < 0.04) ? 'sun' : (level >= 10 && Math.random() < 0.12) ? 'moon' : 'star';
       recalcItem(chosen);
     }
   }
@@ -919,7 +1012,7 @@ export function rollLoot(level = 1, { isBoss = false, isElite = false, isChest =
     const t = level < 8 ? 's' : level < 18 ? 'm' : level < 32 ? 'l' : 'x';
     items.push(generateItem({ baseId: `${Math.random() < 0.6 ? 'hp' : 'mp'}_potion_${t}`, count: isBoss ? randi(2, 4) : 1 }));
   }
-  // Silkroad Alchemy materials (elixirs, powders, talismans) replacing old composing materials
+  // Silkroad Alchemy materials (elixirs, powders, talismans, magic stones)
   const elixirChance = isBoss ? 0.95 : isChest ? 0.4 : isElite ? 0.28 : 0.08;
   if (Math.random() < elixirChance) {
     items.push(generateItem({ baseId: `elixir_${weighted([['weapon', 3], ['armor', 3], ['shield', 1], ['accessory', 1]])}`, count: isBoss ? randi(1, 3) : 1 }));
@@ -928,6 +1021,12 @@ export function rollLoot(level = 1, { isBoss = false, isElite = false, isChest =
   if (Math.random() < powderChance) {
     items.push(generateItem({ baseId: `powder_${powderGradeForTier(tierForLevel(level))}`, count: isBoss ? randi(1, 2) : 1 }));
   }
+  // SRO Magic Stones for Blue Stats & Astral Protection
+  const stoneChance = isBoss ? 0.70 : isGiant ? 0.40 : isChest ? 0.30 : isElite ? 0.20 : 0.05;
+  if (Math.random() < stoneChance) {
+    const stoneKey = pick(Object.keys(MAGIC_STONES));
+    items.push(generateItem({ baseId: stoneKey, count: isBoss ? randi(1, 2) : 1 }));
+  }
   if (Math.random() < (isBoss ? 0.5 : isChest ? 0.1 : 0.01)) {
     items.push(generateItem({ baseId: pick(['scroll_return', 'scroll_might', 'scroll_iron', 'antidote', 'stamina_tonic', level >= 10 ? 'scroll_fortune' : 'scroll_return']) }));
   }
@@ -935,18 +1034,40 @@ export function rollLoot(level = 1, { isBoss = false, isElite = false, isChest =
   return { gold, items: items.filter(Boolean) };
 }
 
+export const SHARED_STORAGE_KEY = 'asj-shared-storage-v1';
+
 // =============================================================================
 // Shops
 // =============================================================================
 export const SHOP_DEFS = {
-  blacksmith: { id: 'blacksmith', name: 'Blacksmith', kind: 'equipment', size: 12 },
-  merchant: { id: 'merchant', name: 'Potion Merchant', kind: 'fixed', items: ['hp_potion_s', 'hp_potion_m', 'hp_potion_l', 'hp_potion_x', 'mp_potion_s', 'mp_potion_m', 'mp_potion_l', 'mp_potion_x', 'elixir', 'antidote', 'stamina_tonic', 'scroll_return', 'scroll_might', 'scroll_iron', 'scroll_haste', 'scroll_fortune'] },
+  blacksmith: { id: 'blacksmith', name: 'Blacksmith Gorn Forge', kind: 'equipment', size: 16 },
+  merchant: { id: 'merchant', name: 'Potion & Provisions Market', kind: 'fixed', items: ['hp_potion_s', 'hp_potion_m', 'hp_potion_l', 'hp_potion_x', 'mp_potion_s', 'mp_potion_m', 'mp_potion_l', 'mp_potion_x', 'elixir', 'antidote', 'stamina_tonic', 'scroll_return', 'scroll_might', 'scroll_iron', 'scroll_haste', 'scroll_fortune', 'scroll_exp', 'elixir_hero', 'scroll_berserk'] },
   composer: { id: 'composer', name: 'Alchemy Master', kind: 'fixed', items: ['elixir_weapon', 'elixir_shield', 'elixir_armor', 'elixir_accessory', 'powder_1', 'powder_2', 'powder_3', 'powder_4', 'guardian_talisman', 'scroll_reset'] },
+  curio: { id: 'curio', name: 'Relic Emporium', kind: 'fixed', items: ['box_gear', 'box_relic', 'stone_str', 'stone_int', 'stone_hp', 'stone_agi', 'stone_crit', 'stone_absorb', 'stone_astral', 'scroll_berserk', 'scroll_exp', 'elixir_hero'] },
+  accessory_trader: {
+    id: 'accessory_trader',
+    name: 'Jodaesan Silk & Jewelry',
+    kind: 'mixed',
+    equipmentSlots: ['ring', 'necklace', 'helmet', 'boots'],
+    equipmentCount: 8,
+    items: ['box_gear', 'box_relic', 'elixir_accessory', 'powder_1', 'powder_2', 'scroll_exp', 'scroll_fortune', 'stone_crit', 'stone_str', 'stone_int']
+  },
+  hunter_master: {
+    id: 'hunter_master',
+    name: 'Hunter Guild Armory',
+    kind: 'mixed',
+    equipmentSlots: ['weapon', 'armor', 'shield'],
+    equipmentCount: 6,
+    items: ['hp_potion_m', 'mp_potion_m', 'scroll_might', 'scroll_iron', 'scroll_haste', 'scroll_berserk', 'elixir_hero', 'stone_hp', 'stone_absorb']
+  },
 };
 const SHOP_ALIASES = [
-  ['blacksmith', ['smith', 'weapon', 'armor', 'armour', 'forge', 'equipment', 'gorn', 'fallon', 'gran', 'npc2']],
+  ['blacksmith', ['smith', 'weapon', 'armor', 'armour', 'forge', 'equipment', 'gorn', 'chulsan', 'fallon', 'gran', 'npc2']],
   ['merchant', ['potion', 'item', 'general', 'alchem', 'shop', 'store', 'merchant', 'trader', 'elara', 'joanna', 'npc3', 'npc6']],
-  ['composer', ['compos', 'crystal', 'synth', 'enchant', 'gem', 'jewel', 'lyra']],
+  ['composer', ['compos', 'crystal', 'synth', 'enchant', 'gem', 'lyra']],
+  ['curio', ['curio', 'relic', 'stone', 'mystery', 'coffer', 'box', 'emporium']],
+  ['accessory_trader', ['accessory', 'jewel', 'jodaesan', 'ring', 'necklace', 'silk']],
+  ['hunter_master', ['hunter', 'gwakwi', 'bounty', 'guild_armory']],
 ];
 export function resolveShopId(id) {
   const s = String(id || '').toLowerCase();
@@ -997,11 +1118,13 @@ export class Inventory {
     this.bag = new Array(bagSize).fill(null);
     this.storageSize = storageSize;
     this.storage = new Array(storageSize).fill(null);
+    this.sharedGold = 0;
     this.equipment = Object.fromEntries(SLOTS.map((s) => [s, null]));
     this.quickSlots = ['hp_potion_s', 'mp_potion_s', null, null];
     this.shops = {};
     this.potionCooldown = 0;
     this.potionCooldownMax = 0.8;
+    this._loadSharedStorage();
     this.restockShops(true);
   }
 
@@ -1042,7 +1165,25 @@ export class Inventory {
     return c ? { ...it, ...c } : it;
   }
 
-  _emit(...a) { if (this.game) this.game.emit(...a); }
+  on(event, fn) {
+    if (!this._listeners) this._listeners = new Map();
+    if (!this._listeners.has(event)) this._listeners.set(event, new Set());
+    this._listeners.get(event).add(fn);
+    return () => this.off(event, fn);
+  }
+  off(event, fn) {
+    if (this._listeners && this._listeners.has(event)) {
+      this._listeners.get(event).delete(fn);
+    }
+  }
+  _emit(event, ...args) {
+    if (this.game) this.game.emit(event, ...args);
+    if (this._listeners && this._listeners.has(event)) {
+      for (const fn of [...this._listeners.get(event)]) {
+        try { fn(...args); } catch (e) { console.error(e); }
+      }
+    }
+  }
   _changed(statsToo = false) {
     if (this.game) {
       if (statsToo) { this.game.markDirty(); this.game.clampVitals(); }
@@ -1397,11 +1538,43 @@ export class Inventory {
     const s = g.getStats();
     if (base.potion && !e.stamina && ((e.heal || e.healPct) && !(e.mana || e.manaPct)) && g.hero.hp >= s.maxHp) return { ok: false, msg: 'HP is already full' };
     if (base.potion && ((e.mana || e.manaPct) && !(e.heal || e.healPct)) && g.hero.mp >= s.maxMp) return { ok: false, msg: 'SP is already full' };
+    if (e.mysteryBox) {
+      if ((it.count || 1) > 1 && this.freeSlots() === 0) {
+        return { ok: false, msg: 'Need at least 1 free bag slot to open this coffer.' };
+      }
+      const mb = e.mysteryBox;
+      const lvl = Math.max(1, g.hero.level || 1);
+      const roll = Math.random();
+      let rarity = mb.minEpic ? 'epic' : 'rare';
+      if (roll < (mb.uniqueChance || 0)) rarity = 'unique';
+      else if (!mb.minEpic && roll < (mb.uniqueChance || 0) + (mb.epicChance || 0)) rarity = 'epic';
+      const reward = generateItem({
+        level: lvl,
+        rarity,
+        magicFind: (s.magicFind || 0) + (mb.isBoss ? 50 : 20),
+        sealRoll: true,
+        isBoss: !!mb.isBoss,
+        isElite: !!mb.isElite,
+        classId: g.classId,
+        classBias: 1,
+        setPiece: rarity !== 'unique' && Math.random() < (mb.isBoss ? 0.45 : 0.25),
+      });
+      if (!reward.seal && mb.sealChance && Math.random() < mb.sealChance) {
+        reward.seal = (lvl >= 18 && Math.random() < 0.25) ? 'moon' : 'star';
+        recalcItem(reward);
+      }
+      this.removeItem(uid, 1);
+      this.addItem(reward, { silent: true });
+      this._emit('item:used', it);
+      this._emit('toast', `Opened ${it.baseName || it.name}: obtained ${reward.name}!`, reward.seal || rarity === 'unique' ? 'levelup' : 'loot');
+      return { ok: true, msg: `Opened ${it.baseName || it.name}: obtained ${reward.name}!`, item: it, reward, effect: e };
+    }
     if (e.heal || e.mana) g.heal(e.heal || 0, e.mana || 0);
     if (e.healPct || e.manaPct) g.heal(s.maxHp * (e.healPct || 0), s.maxMp * (e.manaPct || 0));
     if (e.stamina) g.hero.stamina = Math.min(s.maxStamina, g.hero.stamina + e.stamina);
     if (e.cure) g.cleanseDebuffs();
     if (e.buff) g.addBuff({ ...e.buff });
+    if (e.berserkCharge && typeof g.addBerserkCharge === 'function') g.addBerserkCharge(e.berserkCharge);
     if (e.resetAll) { g.resetAttributes(); if (g.skills) g.skills.resetAll(); }
     if (e.townPortal) {
       g.emit('townPortal');
@@ -1415,18 +1588,26 @@ export class Inventory {
     return { ok: true, msg: `Used ${it.baseName || it.name}`, item: it, effect: e };
   }
 
-  /** Assign quick slot to a consumable (uid or baseId). */
+  /** Assign quick slot (0..3 -> keys 6..9) to any usable consumable (uid or baseId). */
   assignQuickSlot(i, uidOrBaseId) {
     if (i < 0 || i >= this.quickSlots.length) return { ok: false, msg: 'Invalid slot' };
-    if (uidOrBaseId == null) { this.quickSlots[i] = null; this._changed(); return { ok: true, msg: 'Slot cleared' }; }
+    if (uidOrBaseId == null) { this.quickSlots[i] = null; this._changed(); return { ok: true, msg: `Slot ${i + 6} cleared` }; }
     const it = this.getItem(uidOrBaseId);
     const baseId = it ? it.baseId : uidOrBaseId;
     const base = ITEM_BASES[baseId];
-    if (!base || base.type !== 'consumable') return { ok: false, msg: 'Only consumables can be assigned' };
+    const usable = Boolean(
+      (base && (base.type === 'consumable' || base.type === 'potion' || base.type === 'scroll' || base.effect)) ||
+      (it && (it.type === 'consumable' || it.type === 'potion' || it.type === 'scroll' || it.effect))
+    );
+    if (!usable || !baseId) return { ok: false, msg: 'Only usable consumables, potions, and scrolls can be assigned' };
     this.quickSlots = this.quickSlots.map((q) => (q === baseId ? null : q));
     this.quickSlots[i] = baseId;
+    if (this.game?.skills?.hotbar && this.game.skills.hotbar[5 + i] != null) {
+      this.game.skills.hotbar[5 + i] = null;
+      this.game.skills._changed?.();
+    }
     this._changed();
-    return { ok: true, msg: `${base.name} assigned to slot ${i + 1}` };
+    return { ok: true, msg: `${base?.name || it?.name || baseId} assigned to slot ${i + 6}` };
   }
 
   useQuickSlot(i) {
@@ -1450,14 +1631,48 @@ export class Inventory {
     });
   }
 
-  // ---- storage ---------------------------------------------------------------
+  // ---- storage (General Account-Wide Shared Storage) -------------------------
+  _getStorageAdapter() {
+    return this.game?.storage || null;
+  }
+  _loadSharedStorage() {
+    const adapter = this._getStorageAdapter();
+    if (!adapter || typeof adapter.getItem !== 'function') return;
+    try {
+      const raw = adapter.getItem(SHARED_STORAGE_KEY);
+      if (!raw) return;
+      const d = JSON.parse(raw);
+      if (!d || typeof d !== 'object') return;
+      const fix = (it) => (it && typeof it === 'object' ? recalcItem(it) : null);
+      if (Number(d.storageSize) > this.storageSize) this.storageSize = Math.min(120, Number(d.storageSize));
+      const arr = Array.isArray(d.items) ? d.items : [];
+      const targetLen = Math.max(this.storageSize, arr.length);
+      this.storageSize = targetLen;
+      this.storage = new Array(targetLen).fill(null).map((_, i) => fix(arr[i]));
+      this.sharedGold = Math.max(0, Math.floor(Number(d.sharedGold) || 0));
+    } catch { /* ignore malformed shared storage */ }
+  }
+  _saveSharedStorage() {
+    const adapter = this._getStorageAdapter();
+    if (!adapter || typeof adapter.setItem !== 'function') return;
+    try {
+      adapter.setItem(SHARED_STORAGE_KEY, JSON.stringify({
+        version: 1,
+        storageSize: this.storageSize,
+        sharedGold: Math.max(0, Math.floor(Number(this.sharedGold) || 0)),
+        items: this.storage,
+      }));
+    } catch { /* ignore storage quota errors */ }
+  }
   deposit(uid) {
     const f = this.findItem(uid);
     if (!f || f.container !== 'bag') return { ok: false, msg: 'Item not in bag' };
     if (!this.storage.includes(null) && !(f.item.stackable && this.storage.some((s) => s && s.baseId === f.item.baseId && s.count + f.item.count <= (s.maxStack || 99)))) return { ok: false, msg: 'Storage is full' };
     const it = this.removeItem(uid);
     this.addItem(it, { silent: true, container: 'storage' });
-    return { ok: true, msg: `Stored ${it.name}` };
+    this._saveSharedStorage();
+    this._changed();
+    return { ok: true, msg: `Stored ${it.name} in General Storage` };
   }
   withdraw(uid) {
     const f = this.findItem(uid);
@@ -1465,31 +1680,105 @@ export class Inventory {
     if (!this.canAdd(f.item)) return { ok: false, msg: 'Bag is full' };
     this.storage[f.index] = null;
     this.addItem(f.item, { silent: true });
-    return { ok: true, msg: `Withdrew ${f.item.name}` };
+    this._saveSharedStorage();
+    this._changed();
+    return { ok: true, msg: `Withdrew ${f.item.name} from General Storage` };
   }
-  getStorageView() { return { items: this.storage.map((it) => (it ? this._annotate(it) : it)), size: this.storageSize }; }
+  depositGold(amount) {
+    if (!this.game) return { ok: false, msg: 'Gold transfer unavailable' };
+    const amt = Math.floor(Number(amount) || 0);
+    if (amt <= 0) return { ok: false, msg: 'Enter a valid gold amount.' };
+    if (!this.game.spendGold(amt)) return { ok: false, msg: 'Not enough gold in purse.' };
+    this.sharedGold = Math.max(0, (this.sharedGold || 0) + amt);
+    this._saveSharedStorage();
+    this._changed();
+    this._emit('toast', `🏦 Deposited ${amt.toLocaleString()} G into General Storage.`, 'info');
+    return { ok: true, msg: `Deposited ${amt.toLocaleString()} G into General Storage.`, sharedGold: this.sharedGold };
+  }
+  withdrawGold(amount) {
+    if (!this.game) return { ok: false, msg: 'Gold transfer unavailable' };
+    const amt = Math.floor(Number(amount) || 0);
+    if (amt <= 0) return { ok: false, msg: 'Enter a valid gold amount.' };
+    if ((this.sharedGold || 0) < amt) return { ok: false, msg: 'Not enough gold in General Storage.' };
+    this.sharedGold -= amt;
+    this.game.addGold(amt);
+    this._saveSharedStorage();
+    this._changed();
+    this._emit('toast', `💰 Withdrew ${amt.toLocaleString()} G from General Storage.`, 'loot');
+    return { ok: true, msg: `Withdrew ${amt.toLocaleString()} G from General Storage.`, sharedGold: this.sharedGold };
+  }
+  depositAllByFilter(mode = 'material') {
+    let moved = 0;
+    for (let i = 0; i < this.bag.length; i++) {
+      const it = this.bag[i];
+      if (!it || it.questItem) continue;
+      const isMat = it.type === 'material' || it.subtype === 'stone' || it.subtype === 'elixir' || it.subtype === 'powder' || it.subtype === 'talisman' || it.subtype === 'crystal' || String(it.baseId || '').startsWith('elixir_') || String(it.baseId || '').startsWith('powder_') || String(it.baseId || '').startsWith('stone_');
+      if (mode === 'material' && !isMat) continue;
+      if (mode === 'consumable' && it.type !== 'consumable') continue;
+      if (!this.storage.includes(null) && !(it.stackable && this.storage.some((s) => s && s.baseId === it.baseId && s.count + it.count <= (s.maxStack || 99)))) continue;
+      const removed = this.removeItem(it.uid);
+      if (removed) {
+        this.addItem(removed, { silent: true, container: 'storage' });
+        moved++;
+      }
+    }
+    if (moved > 0) {
+      this._saveSharedStorage();
+      this._changed();
+    }
+    return moved > 0
+      ? { ok: true, msg: `Deposited ${moved} stack${moved > 1 ? 's' : ''} to General Storage.`, count: moved }
+      : { ok: false, msg: 'No matching items or General Storage is full.' };
+  }
+  getStorageView() {
+    const used = this.storage.filter(Boolean).length;
+    return {
+      items: this.storage.map((it) => (it ? this._annotate(it) : it)),
+      size: this.storageSize,
+      used,
+      sharedGold: Math.max(0, Math.floor(Number(this.sharedGold) || 0)),
+      expandCost: this.getStorageExpandCost(),
+    };
+  }
 
   // ---- shops -----------------------------------------------------------------
   restockShops(force = false) {
     const lvl = this._level();
+    const maxGrade = powderGradeForTier(tierForLevel(lvl));
+    const genEquipItem = (slot) => {
+      const rarity = weighted([['normal', 52], ['magic', 34], ['rare', lvl >= 3 ? 12 : 4], ['epic', lvl >= 12 ? 2 : 0]]);
+      const sl = Math.max(1, lvl + randi(-1, 2));
+      const setTry = ['weapon', 'helmet', 'armor', 'boots', 'shield'].includes(slot) && Math.random() < 0.35;
+      return (setTry && generateItem({ slot, level: sl, tier: tierForLevel(lvl), rarity, noSeal: true, classId: this.game?.classId, setPiece: true, classBias: 1 }))
+        || generateItem({ slot, level: sl, rarity, noSeal: true, classId: this.game?.classId, setPiece: false });
+    };
     for (const id in SHOP_DEFS) {
       const def = SHOP_DEFS[id];
       if (def.kind === 'equipment') {
         if (!force && this.shops[id] && this.shops[id].level === lvl) continue;
         const stock = [];
         for (let i = 0; i < def.size; i++) {
-          const slot = SLOTS[i % SLOTS.length];
-          const rarity = weighted([['normal', 60], ['magic', 30], ['rare', lvl >= 5 ? 9 : 0], ['epic', lvl >= 15 ? 1 : 0]]);
-          const sl = Math.max(1, lvl + randi(-1, 2));
-          // generic stock, plus an occasional class set piece of the hero's current tier (hero's class only)
-          const setTry = ['weapon', 'helmet', 'armor', 'boots', 'shield'].includes(slot) && Math.random() < 0.3;
-          const it = (setTry && generateItem({ slot, level: sl, tier: tierForLevel(lvl), rarity, noSeal: true, classId: this.game?.classId, setPiece: true, classBias: 1 }))
-            || generateItem({ slot, level: sl, rarity, noSeal: true, classId: this.game?.classId, setPiece: false });
+          const it = genEquipItem(SLOTS[i % SLOTS.length]);
           if (it) stock.push(it);
         }
         this.shops[id] = { level: lvl, stock };
+      } else if (def.kind === 'mixed') {
+        if (!force && this.shops[id] && this.shops[id].level === lvl) continue;
+        const stock = [];
+        const slots = def.equipmentSlots || SLOTS;
+        const eqCount = def.equipmentCount || 6;
+        for (let i = 0; i < eqCount; i++) {
+          const it = genEquipItem(slots[i % slots.length]);
+          if (it) stock.push(it);
+        }
+        for (const b of def.items || []) {
+          if (ITEM_BASES[b] && !(ITEM_BASES[b].powderGrade > maxGrade)) {
+            const it = generateItem({ baseId: b });
+            if (it) stock.push(it);
+          }
+        }
+        this.shops[id] = { level: lvl, stock };
       } else {
-        const maxGrade = powderGradeForTier(tierForLevel(lvl));
         this.shops[id] = { level: lvl, stock: def.items.filter((b) => ITEM_BASES[b] && !(ITEM_BASES[b].powderGrade > maxGrade)).map((b) => generateItem({ baseId: b })) };
       }
     }
@@ -1514,11 +1803,12 @@ export class Inventory {
     if (!tpl.stackable) qty = 1;
     const cost = tpl.price * qty;
     if (!this.game || this.game.hero.gold < cost) return { ok: false, msg: 'Not enough gold' };
-    const item = tpl.stackable ? { ...tpl, uid: newUid(), count: qty } : (def.kind === 'fixed' ? { ...tpl, uid: newUid() } : tpl);
+    const isEquipSlot = !tpl.stackable && tpl.slot && (def.kind === 'equipment' || def.kind === 'mixed');
+    const item = tpl.stackable ? { ...tpl, uid: newUid(), count: qty } : ((def.kind === 'fixed' || !isEquipSlot) ? { ...tpl, uid: newUid() } : tpl);
     delete item.idx; delete item.buyPrice; delete item.locked; delete item.unlimited;
     if (!this.canAdd(item)) return { ok: false, msg: 'Bag is full' };
     this.game.spendGold(cost);
-    if (def.kind === 'equipment') shop.stock.splice(idx, 1);
+    if (isEquipSlot) shop.stock.splice(idx, 1);
     this.addItem(item, { silent: true });
     this._emit('toast', `Bought ${item.name}${qty > 1 ? ' x' + qty : ''} for ${cost}g`, 'loot');
     this._emit('shop:buy', item, cost);
@@ -1535,6 +1825,55 @@ export class Inventory {
     if (this.game) this.game.addGold(gold);
     this._emit('shop:sell', it, gold);
     return { ok: true, msg: `Sold ${it.name}${n > 1 ? ' x' + n : ''} for ${gold}g`, gold };
+  }
+
+  /**
+   * Quick Sell Trash: Sells all unequipped normal and magic gear in bag.
+   * Protects seals, rare/epic/unique items, consumables (potions/scrolls), materials, crystals, elixirs, powders, talismans, and quest items.
+   */
+  quickSellTrash() {
+    let soldCount = 0;
+    let totalGold = 0;
+    const soldItems = [];
+    for (let i = 0; i < this.bag.length; i++) {
+      const it = this.bag[i];
+      if (!it) continue;
+      if (it.questItem) continue;
+      if (it.seal) continue;
+      if (it.plus && it.plus > 0) continue;
+      if (['rare', 'epic', 'unique'].includes(String(it.rarity || '').toLowerCase())) continue;
+      // Do not sell consumables (potions, scrolls), materials, or stackable goods
+      if (it.stackable) continue;
+      const type = String(it.type || '').toLowerCase();
+      if (['consumable', 'potion', 'scroll', 'material', 'elixir', 'crystal', 'gem', 'stone', 'quest'].includes(type)) continue;
+      if (it.baseId && (it.baseId.startsWith('elixir_') || it.baseId.startsWith('powder_') || it.baseId === 'guardian_talisman' || it.baseId.startsWith('gem_') || it.baseId.startsWith('crystal_') || it.baseId.startsWith('hp_potion') || it.baseId.startsWith('mp_potion') || it.baseId.startsWith('scroll_'))) continue;
+      // Only sell equipment (weapons, armor, shield, accessories)
+      const isEquip = Boolean(it.slot || ['weapon', 'armor', 'shield', 'accessory', 'helmet', 'necklace', 'ring', 'boots'].includes(type));
+      if (!isEquip) continue;
+      if ((it.value || 0) <= 0) continue;
+
+      const n = 1;
+      const gold = (it.value || 0) * n;
+      totalGold += gold;
+      soldCount += n;
+      soldItems.push(it);
+      this.bag[i] = null;
+    }
+
+    if (soldCount === 0) {
+      return { ok: false, msg: 'No trash items found in bag.' };
+    }
+
+    if (this.game) this.game.addGold(totalGold);
+    this._changed();
+    this._emit('shop:sell', soldItems[0], totalGold);
+    return {
+      ok: true,
+      msg: `Sold ${soldCount} junk item${soldCount > 1 ? 's' : ''} for ${totalGold.toLocaleString()} Gold!`,
+      count: soldCount,
+      gold: totalGold,
+      items: soldItems
+    };
   }
 
   // ---- composing -------------------------------------------------------------
@@ -1814,14 +2153,22 @@ export class Inventory {
       const b = item.stats[k] || 0, a2 = after.stats[k] || 0;
       if (b !== a2) statPreview[k] = [b, a2];
     }
+    const isWpn = item.slot === 'weapon';
+    const msGroup = ALCHEMY.milestones ? (isWpn ? ALCHEMY.milestones.weapon : ALCHEMY.milestones.armor) : null;
+    const milestoneUnlock = msGroup && msGroup[targetPlus] ? msGroup[targetPlus].label : null;
     let reason = null;
     if (haveElixir < 1) reason = `Requires ${ITEM_BASES[elixirId]?.name}.`;
     else if (this.gold < cost) reason = 'Not enough gold';
     return {
       ok: !reason, reason, item, targetPlus, chance, cost, elixirId, haveElixir, powderId, havePowder, talismanId, haveTalisman,
       usePowder, useTalisman, rarityBonus,
-      failText: useTalisman ? `On failure: drops to +${failTo}.` : `On failure: resets to +${ALCHEMY.failResetTo}.`,
+      failText: useTalisman
+        ? `On failure: drops to +${failTo}.`
+        : (item.astralCharges && item.astralCharges > 0 && plus >= 4)
+        ? `On failure: Astral Stone protects at +4 (${item.astralCharges} charge left).`
+        : `On failure: resets to +${ALCHEMY.failResetTo}.`,
       statPreview,
+      milestoneUnlock,
     };
   }
 
@@ -1844,6 +2191,10 @@ export class Inventory {
       this.consume(p.talismanId, 1);
       item.plus = Math.max(0, prevPlus - 1);
       msg = `Enhancement failed. The talisman shielded ${item.baseName}: now +${item.plus}.`;
+    } else if (item.astralCharges && item.astralCharges > 0 && prevPlus >= 4) {
+      item.astralCharges -= 1;
+      item.plus = 4;
+      msg = `Enhancement failed! Astral Stone shattered to protect ${item.baseName}: safely kept at +4!`;
     } else {
       item.plus = ALCHEMY.failResetTo;
       msg = prevPlus > 0 ? `Enhancement failed... ${item.baseName} reset to +${item.plus}.` : 'Enhancement failed.';
@@ -1854,6 +2205,56 @@ export class Inventory {
     this._emit('alchemy', { success, item, plus: item.plus, prevPlus, chance: p.chance });
     this._emit('toast', msg, success ? (item.plus >= ALCHEMY.announceAt ? 'levelup' : 'loot') : 'warning');
     return { ok: true, success, msg, item, plus: item.plus, prevPlus, chance: p.chance };
+  }
+
+  /**
+   * Fuse an SRO Magic Stone onto equipment for Blue Stats or Astral Protection.
+   */
+  fuseMagicStone(itemUid, stoneUidOrId) {
+    const item = this.getItem(itemUid);
+    if (!item) return { ok: false, msg: 'Target equipment not found.' };
+    if (item.stackable || !item.slot) return { ok: false, msg: 'Only equipment can be fused with Magic Stones.' };
+
+    const stone = typeof stoneUidOrId === 'object' && stoneUidOrId
+      ? stoneUidOrId
+      : (this.getItem(stoneUidOrId) || this.bag.find(it => it && (it.uid === stoneUidOrId || it.baseId === stoneUidOrId)));
+    if (!stone) return { ok: false, msg: 'Magic Stone not found in inventory.' };
+
+    const def = MAGIC_STONES[stone.baseId];
+    if (!def) return { ok: false, msg: 'Invalid Magic Stone.' };
+
+    this.consume(stone.baseId, 1);
+
+    if (def.isAstral) {
+      item.astralCharges = (item.astralCharges || 0) + 1;
+      recalcItem(item);
+      this._changed(true);
+      this._emit('alchemy:stone', { type: 'astral', item, charges: item.astralCharges });
+      this._emit('toast', `✦ Astral Protection imbued onto ${item.name}! (Protected at +4)`, 'levelup');
+      return { ok: true, msg: `✦ Astral Protection imbued onto ${item.name}! (Charges: ${item.astralCharges})`, item, charges: item.astralCharges };
+    }
+
+    const val = randi(def.minVal, def.maxVal);
+    item.mods = item.mods || [];
+    const existing = item.mods.find(m => m.kind === 'magic_stone' && m.stat === def.stat);
+    if (existing) {
+      existing.value = Math.max(existing.value, val);
+      existing.name = `${def.statName} +${existing.value}`;
+    } else {
+      item.mods.push({
+        id: `blue_${def.stat}_${Date.now()}`,
+        kind: 'magic_stone',
+        stat: def.stat,
+        value: val,
+        name: `${def.statName} +${val}`
+      });
+    }
+
+    recalcItem(item);
+    this._changed(true);
+    this._emit('alchemy:stone', { type: 'stat', item, stat: def.stat, value: val });
+    this._emit('toast', `✨ Fused Blue Stat: ${def.statName} +${val} onto ${item.name}!`, 'loot');
+    return { ok: true, msg: `Fused ${def.statName} +${val} onto ${item.name}!`, item, stat: def.stat, value: val };
   }
 
   previewUpgrade(itemUid, matUids = []) {
@@ -1868,12 +2269,96 @@ export class Inventory {
     return this.alchemy(itemUid, { powder: true });
   }
 
+  // ---- Oakhaven gold-sink services (bag/storage expansion & blacksmith masterwork forge) ----
+  getBagExpandCost() {
+    if (this.bagSize >= 60) return 0;
+    const tiers = Math.max(0, Math.floor((this.bagSize - 36) / 6));
+    return 2500 * Math.pow(2, tiers);
+  }
+  expandBag() {
+    if (this.bagSize >= 60) return { ok: false, msg: 'Bag capacity is already at maximum (60 slots).' };
+    const cost = this.getBagExpandCost();
+    if (!this.game || !this.game.spendGold(cost)) return { ok: false, msg: `Need ${cost.toLocaleString()} G to expand bag.` };
+    const add = Math.min(6, 60 - this.bagSize);
+    for (let i = 0; i < add; i++) this.bag.push(null);
+    this.bagSize = this.bag.length;
+    this._changed(true);
+    this._emit('toast', `🎒 Bag expanded to ${this.bagSize} slots!`, 'loot');
+    return { ok: true, msg: `Bag expanded to ${this.bagSize} slots! (-${cost.toLocaleString()} G)`, bagSize: this.bagSize, cost };
+  }
+
+  getStorageExpandCost() {
+    if (this.storageSize >= 88) return 0;
+    const tiers = Math.max(0, Math.floor((this.storageSize - 48) / 10));
+    return 2000 * Math.pow(2, tiers);
+  }
+  expandStorage() {
+    if (this.storageSize >= 88) return { ok: false, msg: 'Storage Vault is already at maximum (88 slots).' };
+    const cost = this.getStorageExpandCost();
+    if (!this.game || !this.game.spendGold(cost)) return { ok: false, msg: `Need ${cost.toLocaleString()} G to expand Storage Vault.` };
+    const add = Math.min(10, 88 - this.storageSize);
+    for (let i = 0; i < add; i++) this.storage.push(null);
+    this.storageSize = this.storage.length;
+    this._saveSharedStorage();
+    this._changed(true);
+    this._emit('toast', `🏦 General Storage expanded to ${this.storageSize} slots!`, 'loot');
+    return { ok: true, msg: `General Storage expanded to ${this.storageSize} slots! (-${cost.toLocaleString()} G)`, storageSize: this.storageSize, cost };
+  }
+
+  getSocketForgeCost(item) {
+    const it = typeof item === 'object' ? item : this.getItem(item);
+    if (!it || it.stackable || !it.slot) return 0;
+    const cur = it.sockets || 1;
+    if (cur >= 4) return 0;
+    return Math.round(1500 * Math.pow(2, cur) + (it.level || 1) * 180);
+  }
+  forgeAddSocket(uid) {
+    const item = this.getItem(uid);
+    if (!item || item.stackable || !item.slot) return { ok: false, msg: 'Select equipment to add a Crystal Socket.' };
+    const cur = item.sockets || 1;
+    if (cur >= 4) return { ok: false, msg: `${item.name} already has maximum sockets (4/4).` };
+    const cost = this.getSocketForgeCost(item);
+    if (!this.game || !this.game.spendGold(cost)) return { ok: false, msg: `Need ${cost.toLocaleString()} G to punch a socket.` };
+    item.sockets = cur + 1;
+    recalcItem(item);
+    this._changed(true);
+    this._emit('toast', `🔩 Punched Crystal Socket #${item.sockets} into ${item.name}!`, 'levelup');
+    return { ok: true, msg: `Added socket to ${item.name} (${item.sockets}/4 sockets)! (-${cost.toLocaleString()} G)`, item, sockets: item.sockets, cost };
+  }
+
+  getReforgeCost(item) {
+    const it = typeof item === 'object' ? item : this.getItem(item);
+    if (!it || it.stackable || !it.slot || (it.rarity || 'normal') === 'normal') return 0;
+    const ri = Math.max(1, RARITY_ORDER.indexOf(it.rarity || 'magic'));
+    return Math.round(800 * ri + (it.level || 1) * 140 + (it.plus || 0) * 150);
+  }
+  forgeReforgeAffixes(uid) {
+    const item = this.getItem(uid);
+    if (!item || item.stackable || !item.slot) return { ok: false, msg: 'Select equipment to reforge affixes.' };
+    if ((item.rarity || 'normal') === 'normal') return { ok: false, msg: 'Normal gear has no magic affixes to reforge. Bring Magic or higher quality gear!' };
+    const cost = this.getReforgeCost(item);
+    if (!this.game || !this.game.spendGold(cost)) return { ok: false, msg: `Need ${cost.toLocaleString()} G to reforge affixes.` };
+    const stoneMods = (item.mods || []).filter((m) => m && m.kind === 'magic_stone');
+    const prevAffixes = (item.mods || []).filter((m) => m && m.kind !== 'magic_stone');
+    const r = RARITY[item.rarity] || RARITY.magic;
+    const count = Math.max(r.affixes[0], prevAffixes.length, randi(r.affixes[0], r.affixes[1]));
+    const rolled = rollAffixes(item.slot, item.rarity, Math.max(1, item.level || 1), count);
+    item.mods = [...rolled, ...stoneMods];
+    recalcItem(item);
+    this._changed(true);
+    this._emit('toast', `🔨 Reforged affixes on ${item.name}!`, 'loot');
+    return { ok: true, msg: `Reforged ${rolled.length} affixes on ${item.name} (Blue Stats & +${item.plus || 0} preserved)! (-${cost.toLocaleString()} G)`, item, affixes: rolled, cost };
+  }
+
   // ---- views -----------------------------------------------------------------
   getView() {
     return {
       gold: this.gold,
       bag: this.bag.map((it) => (it ? this._annotate(it) : it)),
       bagSize: this.bagSize,
+      storageSize: this.storageSize,
+      bagExpandCost: this.getBagExpandCost(),
+      storageExpandCost: this.getStorageExpandCost(),
       equipment: { ...this.equipment, offhand: this.equipment.shield },
       quickSlots: this.getQuickSlotView(),
       setBonuses: this.getActiveSetBonuses(),
@@ -1921,15 +2406,25 @@ export class Inventory {
   // ---- persistence -----------------------------------------------------------
   toJSON() {
     return {
-      bag: this.bag, equipment: this.equipment, storage: this.storage, quickSlots: this.quickSlots, shops: this.shops, bagSize: this.bagSize, storageSize: this.storageSize,
+      bag: this.bag, equipment: this.equipment, storage: this.storage, sharedGold: this.sharedGold, quickSlots: this.quickSlots, shops: this.shops, bagSize: this.bagSize, storageSize: this.storageSize,
     };
   }
   fromJSON(d = {}) {
     const fix = (it) => (it && typeof it === 'object' ? recalcItem(it) : null);
     if (d.bagSize) this.bagSize = d.bagSize;
-    if (d.storageSize) this.storageSize = d.storageSize;
     this.bag = new Array(this.bagSize).fill(null).map((_, i) => fix((d.bag || [])[i]));
-    this.storage = new Array(this.storageSize).fill(null).map((_, i) => fix((d.storage || [])[i]));
+    this._loadSharedStorage();
+    const hasShared = this.storage.some(Boolean) || (this.sharedGold || 0) > 0;
+    if (!hasShared && Array.isArray(d.storage) && d.storage.some(Boolean)) {
+      if (d.storageSize) this.storageSize = Math.max(this.storageSize, d.storageSize);
+      this.storage = new Array(this.storageSize).fill(null).map((_, i) => fix((d.storage || [])[i]));
+      this.sharedGold = Math.max(0, Math.floor(Number(d.sharedGold) || 0));
+      this._saveSharedStorage();
+    } else if (!this._getStorageAdapter() && Array.isArray(d.storage)) {
+      if (d.storageSize) this.storageSize = d.storageSize;
+      this.storage = new Array(this.storageSize).fill(null).map((_, i) => fix((d.storage || [])[i]));
+      this.sharedGold = Math.max(0, Math.floor(Number(d.sharedGold) || 0));
+    }
     this.equipment = Object.fromEntries(SLOTS.map((s) => [s, fix((d.equipment || {})[s] || (s === 'shield' ? (d.equipment || {}).offhand : null))]));
     if (Array.isArray(d.quickSlots)) this.quickSlots = d.quickSlots.slice(0, 4).concat([null, null, null, null]).slice(0, 4);
     if (d.shops && typeof d.shops === 'object') this.shops = d.shops; else this.restockShops(true);

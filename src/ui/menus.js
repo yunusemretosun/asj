@@ -11,6 +11,8 @@
 // ============================================================================
 import { h, esc, createHost, renderIconHTML } from './hud.js';
 import { ALCHEMY, SEALS, STATUS, elixirKindForSlot, powderGradeForTier, alchemyChance } from '../systems/mechanics.js';
+import { MAGIC_STONES } from '../systems/inventory.js';
+import { PET_TYPES } from '../systems/petSystem.js';
 
 const SLOT_ORDER = ['helmet', 'necklace', 'weapon', 'armor', 'shield', 'ring', 'boots'];
 const SLOT_LABEL = { weapon: 'Weapon', shield: 'Shield', helmet: 'Helm', armor: 'Armor', boots: 'Boots', necklace: 'Amulet', ring: 'Ring' };
@@ -22,10 +24,11 @@ const STAT_LABEL = {
   mp: 'Max SP', maxMp: 'Max SP', sp: 'Max SP', maxSp: 'Max SP', str: 'STR', dex: 'DEX', int: 'INT', lck: 'LCK',
   critRate: 'Crit Rate', critDmg: 'Crit Damage', dodge: 'Dodge', hit: 'Hit', attackSpeed: 'Attack Speed', moveSpeed: 'Move Speed',
   hpRegen: 'HP Regen', mpRegen: 'SP Regen', magicFind: 'Magic Find', goldFind: 'Gold Find',
+  damageAbsorbPct: 'Damage Absorption', allAttrs: 'All Attributes',
 };
 const PCT_KEYS = /(rate|crit|dodge|find|speed|chance|pct|percent|res)/i;
 const MATERIAL_RE = /gem|crystal|stone|material|rune|jewel|ore|essence/i;
-const HOTKEY_MENU = { c: 'character', b: 'inventory', i: 'inventory', k: 'skills', o: 'compose', q: 'quests', m: 'map' };
+const HOTKEY_MENU = { c: 'character', b: 'inventory', i: 'inventory', k: 'skills', o: 'compose', q: 'quests', m: 'map', p: 'pet' };
 const ALIASES = {
   hero: 'character', char: 'character', character: 'character', stats: 'character',
   bag: 'inventory', inv: 'inventory', inventory: 'inventory', equipment: 'inventory',
@@ -35,10 +38,14 @@ const ALIASES = {
   map: 'map', floors: 'map', floor: 'map', floorselect: 'map', teleport: 'map', portal: 'map',
   storage: 'storage', stash: 'storage', vault: 'storage',
   dialogue: 'dialogue', dialog: 'dialogue', talk: 'dialogue', shop: 'shop', store: 'shop',
+  pet: 'pet', pets: 'pet', companion: 'pet',
+  petshop: 'petshop', petmerchant: 'petshop',
+  townhall: 'townhall', academy: 'townhall', blessings: 'townhall', town: 'townhall', hall: 'townhall',
+  storyending: 'storyending',
 };
-const TITLES = { character: 'Hero', inventory: 'Inventory & Equipment', skills: 'Skill Tree', compose: 'Alchemy Workshop', quests: 'Quest Log', map: 'Dungeon Floors', shop: 'Shop', storage: 'Storage Vault', dialogue: '' };
+const TITLES = { character: 'Hero', inventory: 'Inventory & Equipment', skills: 'Skill Tree', compose: 'Alchemy Workshop', quests: 'Quest Log', map: 'Dungeon Floors', shop: 'Shop', storage: 'General Shared Storage Vault', dialogue: '', pet: 'Companion Pets', petshop: 'Beast Tamer Zara — Pet Stable', townhall: 'Oakhaven Guild & Services', storyending: 'Celestial Triumph — Story Complete' };
 const KIND_NAME = { weapon: 'Weapon', shield: 'Shield', armor: 'Armor', accessory: 'Accessory' };
-const HOTKEY_TXT = { character: 'C', inventory: 'B / I', skills: 'K', compose: 'O', quests: 'Q', map: 'M' };
+const HOTKEY_TXT = { character: 'C', inventory: 'B / I', skills: 'K', compose: 'O', quests: 'Q', map: 'M', pet: 'P' };
 
 export const itemIcon = (it) => (it && (it.icon || SLOT_ICON[it.slot] || TYPE_ICON[String(it.type || '').toLowerCase()] || (MATERIAL_RE.test(it.type || '') ? '💎' : '📦'))) || '';
 const rarityOf = (it) => String((it && it.rarity) || 'normal').toLowerCase();
@@ -50,6 +57,9 @@ function sealOf(it) {
 }
 const isMaterial = (it) => !!it && !SLOT_LABEL[it.slot] && MATERIAL_RE.test(String(it.type || '') + ' ' + String(it.name || ''));
 const isEquipItem = (it) => !!it && !!SLOT_LABEL[it.slot];
+const isQuickUsable = (it) => !!it && !isEquipItem(it) && (
+  it.type === 'consumable' || it.type === 'potion' || it.type === 'scroll' || !!it.effect
+);
 const labelOf = (k) => STAT_LABEL[k] || String(k).replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase());
 function fmtStat(k, v) {
   if (typeof v !== 'number') return String(v);
@@ -84,6 +94,21 @@ export class MenuManager {
     this.overlay = h('div', 'arc-overlay arc-ui');
     this.overlay.style.pointerEvents = 'auto';
     this.overlay.addEventListener('mousedown', (e) => { if (e.target === this.overlay && this.current !== 'dialogue') this.closeAll(); });
+    this.overlay.addEventListener('dragover', (e) => { e.preventDefault(); });
+    this.overlay.addEventListener('drop', (e) => {
+      if (this._drag && this._drag.it) {
+        e.preventDefault();
+        const { it, from } = this._drag;
+        this._drag = null;
+        const inv = this.host.getInventory() || {};
+        const eqSlot = from === 'equip' ? Object.keys(inv.equipment || {}).find((k) => inv.equipment[k] && String(inv.equipment[k].uid) === String(it.uid)) : null;
+        if (from === 'equip') {
+          this._do(() => this.host.unequip(eqSlot || it.slot));
+        } else {
+          this._do(() => this.host.dropItem(it.uid));
+        }
+      }
+    });
     this.modal = h('div', 'arc-modal arc-frame');
     this.overlay.appendChild(this.modal);
     this.tip = h('div', 'arc-tooltip pair arc-ui');
@@ -154,6 +179,9 @@ export class MenuManager {
     if (n === 'compose' && data && typeof data === 'object') {
       if (data.tab) this.state.tab = data.tab;
       if (data.uid != null) { this.state.alchUid = String(data.uid); this.state.tab = 'alchemy'; }
+    }
+    if (n === 'townhall' && data && typeof data === 'object' && data.tab) {
+      this.state.tab = data.tab;
     }
     this._render();
     this.overlay.classList.add('open');
@@ -260,6 +288,10 @@ export class MenuManager {
         case 'dialogue': this._rDialogue(); break;
         case 'shop': this._rShop(); break;
         case 'storage': this._rStorage(); break;
+        case 'pet': this._rPet(); break;
+        case 'petshop': this._rPetShop(); break;
+        case 'townhall': this._rTownHall(); break;
+        case 'storyending': this._rStoryEnding(); break;
         default: this._frame(this.current, h('div', 'arc-empty', 'Unknown menu: ' + esc(this.current)));
       }
     } catch (err) {
@@ -305,7 +337,12 @@ export class MenuManager {
       stats += `<div class="tip-stat"><span>${esc(labelOf(k))}</span><span>${v >= 0 ? '+' : ''}${esc(fmtStat(k, v))}${diff}</span></div>`;
     }
     if (!stats && it.lines && it.lines.length) stats = it.lines.map((l) => `<div class="tip-affix">${esc(l)}</div>`).join('');
-    const affixes = (it.affixes || []).map((a) => `<div class="tip-affix">✦ ${esc(a)}</div>`).join('');
+    const affixes = (it.affixes || []).map((a) => {
+      const isMilestone = a.includes('Milestone') || a.includes('Bonus');
+      const cls = isMilestone ? 'tip-affix milestone-glow' : 'tip-affix';
+      const prefix = (/^[✦◆★]/.test(a)) ? '' : '✦ ';
+      return `<div class="${cls}" style="${isMilestone ? 'color:#fde047;font-weight:600' : ''}">${prefix}${esc(a)}</div>`;
+    }).join('');
     const clsBad = it.classOk === false || it.meetsClass === false;
     const reqBad = p && it.reqLevel && p.level < it.reqLevel;
     const typeTxt = [RARITY_NAME[r] || r, SLOT_LABEL[it.slot] || it.type].filter(Boolean).join(' · ');
@@ -354,7 +391,19 @@ export class MenuManager {
     const a = e.target.closest('[data-act]');
     if (a && !a.disabled) { this._act(a.dataset.act, a.dataset, e); return; }
     const s = e.target.closest('[data-uid]');
-    if (s && this.modal.contains(s)) this._itemClick(s.dataset.uid, e);
+    if (s && this.modal.contains(s)) {
+      if ((e.altKey || (e.shiftKey && this.current === 'shop')) && !String(s.dataset.uid).startsWith('shop')) {
+        const it = this._items.get(s.dataset.uid);
+        if (it && !it.questItem && (it.value || 0) > 0) {
+          e.preventDefault();
+          e.stopPropagation();
+          this._hideTip();
+          this._do(() => this.host.sellItem(it.uid));
+          return;
+        }
+      }
+      this._itemClick(s.dataset.uid, e);
+    }
   }
   _onDbl(e) {
     const s = e.target.closest('[data-uid]');
@@ -372,7 +421,17 @@ export class MenuManager {
   }
   _onCtx(e) {
     const s = e.target.closest('[data-uid]');
-    if (!s || this.current !== 'inventory') return;
+    if (!s) return;
+    if (this.current === 'shop' && !String(s.dataset.uid).startsWith('shop')) {
+      e.preventDefault();
+      const it = this._items.get(s.dataset.uid);
+      if (it && !it.questItem && (it.value || 0) > 0) {
+        this._hideTip();
+        this._do(() => this.host.sellItem(it.uid));
+        return;
+      }
+    }
+    if (this.current !== 'inventory') return;
     e.preventDefault();
     const it = this._items.get(s.dataset.uid); if (!it) return;
     const inv = this.host.getInventory();
@@ -382,6 +441,15 @@ export class MenuManager {
     else {
       if (isEquipItem(it)) rows.push(['Equip', () => this._do(() => this.host.equip(it.uid))]);
       else rows.push(['Use', () => this._do(() => this.host.useItem(it.uid))]);
+      if (isQuickUsable(it) && this.host.assignPotion) {
+        const qSlots = this.host.getPotionSlots ? this.host.getPotionSlots() : [];
+        const bar = this.host.getSkillBar ? this.host.getSkillBar() : [];
+        for (let qi = 0; qi < 4; qi++) {
+          const curItem = !bar[5 + qi] && qSlots[qi] && qSlots[qi].item;
+          const isCur = !!(curItem && ((it.baseId && curItem.baseId === it.baseId) || String(curItem.uid) === String(it.uid)));
+          rows.push([isCur ? `Unbind Slot ${qi + 6}` : `Assign Slot ${qi + 6}`, () => this._do(() => this.host.assignPotion(qi, isCur ? null : it.uid))]);
+        }
+      }
       if (isEquipItem(it)) rows.push(['Alchemy', () => this.openAlchemy(it.uid)]);
       rows.push(['Sell (' + (it.value || 0) + ' G)', () => this._do(() => this.host.sellItem(it.uid))]);
       rows.push(['Drop', () => this._do(() => this.host.dropItem(it.uid))]);
@@ -434,6 +502,7 @@ export class MenuManager {
       case 'compose': if (isEquipItem(it)) this._alchSelect(it.uid); else this._say('Only equipment can be enhanced.', false); break;
       case 'shop': this._shopClick(it, e); break;
       case 'storage': this._storageClick(it); break;
+      case 'townhall': S.forgeUid = String(uid); this._render(); break;
       default: break;
     }
   }
@@ -451,11 +520,27 @@ export class MenuManager {
       case 'use': this._do(() => host.useItem(ds.uid)); break;
       case 'sell': this._do(() => host.sellItem(ds.uid)); break;
       case 'drop': this._do(() => host.dropItem(ds.uid)); break;
+      case 'quicksell': if (host.quickSellJunk) this._do(() => host.quickSellJunk()); break;
       case 'sortbag': if (host.sortBag) this._do(() => host.sortBag()); break;
       // skills
       case 'skillsel': S.skill = ds.id; this._render(); break;
       case 'skilllearn': this._do(() => host.levelSkill(ds.id)); break;
-      case 'skillslot': this._do(() => host.assignSkill(ds.id, +ds.slot)); break;
+      case 'skillslot': {
+        const slotIdx = +ds.slot;
+        const bar = host.getSkillBar ? host.getSkillBar() : [];
+        const isCur = !!(bar[slotIdx] && bar[slotIdx].skillId === ds.id);
+        this._do(() => host.assignSkill(isCur ? null : ds.id, slotIdx));
+        break;
+      }
+      case 'quickassign': {
+        const qi = +ds.slot;
+        const qSlots = host.getPotionSlots ? host.getPotionSlots() : [];
+        const bar = host.getSkillBar ? host.getSkillBar() : [];
+        const curItem = !bar[5 + qi] && qSlots[qi] && qSlots[qi].item;
+        const isCur = !!(curItem && ((ds.baseId && curItem.baseId === ds.baseId) || String(curItem.uid) === String(ds.uid)));
+        if (host.assignPotion) this._do(() => host.assignPotion(qi, isCur ? null : (ds.uid || ds.baseId)));
+        break;
+      }
       // quests
       case 'questsel': S.quest = ds.id; this._render(); break;
       case 'questaccept': this._do(() => host.acceptQuest(ds.id)); break;
@@ -484,6 +569,145 @@ export class MenuManager {
       }
       case 'dlgopt': this._dlgOption(+ds.i); break;
       case 'dlgnext': this._dlgAdvance(); break;
+      // pet
+      case 'petsummon': {
+        const petsSys = this.host.getPets?.()?.sys || this.host?.game?.pets || this.ctx?.gameState?.pets;
+        if (petsSys) {
+          const res = petsSys.summon(ds.id);
+          this._toast(res.msg, res.ok ? 'info' : 'warn');
+          this._render();
+        }
+        break;
+      }
+      case 'petdismiss': {
+        const petsSys = this.host.getPets?.()?.sys || this.host?.game?.pets || this.ctx?.gameState?.pets;
+        if (petsSys) {
+          const res = petsSys.dismiss();
+          this._toast(res.msg, res.ok ? 'info' : 'warn');
+          this._render();
+        }
+        break;
+      }
+      case 'petrename': {
+        const petsSys = this.host.getPets?.()?.sys || this.host?.game?.pets || this.ctx?.gameState?.pets;
+        if (petsSys && ds.id) {
+          const pet = petsSys.pets.find(p => p.id === ds.id);
+          const name = prompt('Enter a new name for your companion:', pet?.name || '');
+          if (name) {
+            const res = petsSys.rename(ds.id, name);
+            this._toast(res.msg, res.ok ? 'info' : 'warn');
+            this._render();
+          }
+        }
+        break;
+      }
+      case 'alchmode': {
+        S.alchMode = ds.mode === 'stones' ? 'stones' : 'plus';
+        this._render();
+        break;
+      }
+      case 'stonefuse': {
+        if (ds.uid && ds.stone) {
+          const res = typeof this.host.fuseMagicStone === 'function'
+            ? this.host.fuseMagicStone(ds.uid, ds.stone)
+            : (this.host?.inventory || this.ctx?.gameState?.inventory)?.fuseMagicStone?.(ds.uid, ds.stone);
+          if (res) {
+            this._toast(res.msg, res.ok ? 'loot' : 'warn');
+            this._render();
+          }
+        }
+        break;
+      }
+      case 'petbuy': {
+        if (ds.type) {
+          const petsSys = this.host.getPets?.()?.sys || this.host?.game?.pets || this.ctx?.gameState?.pets;
+          const res = typeof this.host.buyPet === 'function'
+            ? this.host.buyPet(ds.type)
+            : (petsSys && typeof petsSys.buyPet === 'function' ? petsSys.buyPet(ds.type) : { ok: false, msg: 'Pet merchant unavailable.' });
+          if (res) {
+            this._toast(res.msg, res.ok ? 'loot' : 'warn');
+            this._render();
+          }
+        }
+        break;
+      }
+      case 'storyreturn': {
+        this.close();
+        if (typeof this.host.teleportToFloor === 'function') this.host.teleportToFloor(0);
+        break;
+      }
+      case 'storycontinue': {
+        this.close();
+        break;
+      }
+      case 'openmenu': {
+        if (ds.menu) this.openMenu(ds.menu, ds.tab ? { tab: ds.tab } : null);
+        break;
+      }
+      case 'openshop': {
+        if (ds.shop) this.openShop({ npcId: ds.shop, shopId: ds.shop });
+        break;
+      }
+      case 'townbless': {
+        if (ds.key && host.buyTownBlessing) this._do(() => host.buyTownBlessing(ds.key));
+        break;
+      }
+      case 'towntrain': {
+        if (ds.key && host.trainTownMastery) this._do(() => host.trainTownMastery(ds.key));
+        break;
+      }
+      case 'townexpandbag': {
+        if (host.expandBag) this._do(() => host.expandBag());
+        break;
+      }
+      case 'townexpandstorage': {
+        if (host.expandStorage) this._do(() => host.expandStorage());
+        break;
+      }
+      case 'storage_filter': {
+        this.state.storageFilter = ds.filter || 'all';
+        this._render();
+        break;
+      }
+      case 'storage_dep_gold': {
+        const inv = host.getInventory?.() || {};
+        const amt = ds.amt === 'all' ? Math.floor(inv.gold || 0) : Number(ds.amt || 0);
+        if (host.depositGold) this._do(() => host.depositGold(amt));
+        break;
+      }
+      case 'storage_wdr_gold': {
+        const st = host.getStorage?.() || {};
+        const amt = ds.amt === 'all' ? Math.floor(st.sharedGold || 0) : Number(ds.amt || 0);
+        if (host.withdrawGold) this._do(() => host.withdrawGold(amt));
+        break;
+      }
+      case 'storage_dep_mats': {
+        if (host.depositMaterials) this._do(() => host.depositMaterials('material'));
+        break;
+      }
+      case 'storage_expand': {
+        if (host.expandStorage) this._do(() => host.expandStorage());
+        break;
+      }
+      case 'forgesocket': {
+        if (ds.uid && host.forgeAddSocket) this._do(() => host.forgeAddSocket(ds.uid));
+        break;
+      }
+      case 'forgereforge': {
+        if (ds.uid && host.forgeReforgeAffixes) this._do(() => host.forgeReforgeAffixes(ds.uid));
+        break;
+      }
+      case 'petfeed': {
+        const res = typeof host.trainActivePet === 'function'
+          ? host.trainActivePet(2500, 500)
+          : (host.getPets?.()?.sys || host?.game?.pets || this.ctx?.gameState?.pets)?.trainActivePetWithGold?.(2500, 500);
+        if (res) {
+          this._toast(res.msg, res.ok ? 'loot' : 'warn');
+          this._render();
+          if (res.msg) this._say(res.msg, res.ok !== false);
+        }
+        break;
+      }
       default: break;
     }
   }
@@ -558,11 +782,20 @@ export class MenuManager {
     }).join('');
     let bagHTML = '';
     for (let i = 0; i < size; i++) { const it = inv.bag[i]; bagHTML += this._slotHTML(it, { drag: true, drop: 'bag', selected: sel && it && String(it.uid) === S.sel }); }
+    const qSlots = this.host.getPotionSlots ? this.host.getPotionSlots() : [];
+    const skillBar = this.host.getSkillBar ? this.host.getSkillBar() : [];
+    const quickBtns = (sel && !isEq && isQuickUsable(sel)) ? `<div class="inv-quickbar"><span>Slot 6-9:</span>${[0, 1, 2, 3].map((qi) => {
+      const q = qSlots[qi];
+      const occupiedBySkill = !!(skillBar[5 + qi]);
+      const isCur = !occupiedBySkill && q && q.item && ((sel.baseId && q.item.baseId === sel.baseId) || String(q.item.uid) === String(sel.uid));
+      const tip = occupiedBySkill ? `Slot ${qi + 6}: ${skillBar[5 + qi].name} (click to replace)` : (isCur ? `Unbind from Slot ${qi + 6}` : `Assign to key ${qi + 6}`);
+      return `<button class="hk-btn ${isCur ? 'cur' : ''}" data-act="quickassign" data-slot="${qi}" data-uid="${esc(sel.uid)}" data-base-id="${esc(sel.baseId || '')}" title="${esc(tip)}">${qi + 6}</button>`;
+    }).join('')}</div>` : '';
     const infoBtns = sel ? `<div class="inv-actions">
         ${isEq ? `<button class="arc-btn small" data-act="unequip" data-slot="${esc(eqSlotOfSel)}">Unequip</button>`
         : `${isEquipItem(sel) ? `<button class="arc-btn small good" data-act="equip" data-uid="${esc(sel.uid)}">Equip</button>` : `<button class="arc-btn small good" data-act="use" data-uid="${esc(sel.uid)}">Use</button>`}
            <button class="arc-btn small" data-act="sell" data-uid="${esc(sel.uid)}">Sell ${sel.value || 0} G</button>
-           <button class="arc-btn small danger" data-act="drop" data-uid="${esc(sel.uid)}">Drop</button>`}</div>` : '';
+           <button class="arc-btn small danger" data-act="drop" data-uid="${esc(sel.uid)}">Drop</button>`}${quickBtns}</div>` : '';
     const el = h('div');
     el.innerHTML = `<div class="inv-layout">
       <div>
@@ -576,7 +809,9 @@ export class MenuManager {
           <span class="arc-gold" style="margin-left:12px">${Math.floor(inv.gold || 0).toLocaleString()} G</span></div>
         <div class="inv-grid">${bagHTML}</div>
         <div class="inv-actions"><div class="item-slot big" data-drop="trash" style="border-style:dashed;font-size:11px;width:auto;padding:0 14px;color:var(--arc-text-mute)">🗑 Drop here</div>
-          ${this.host.sortBag ? '<button class="arc-btn small" data-act="sortbag">Sort</button>' : ''}</div>
+          ${this.host.quickSellJunk ? '<button class="arc-btn small warning" data-act="quicksell" title="Tüm normal ve sihirli çöp eşyaları hızlıca sat">Hızlı Sat</button>' : ''}
+          ${this.host.sortBag ? '<button class="arc-btn small" data-act="sortbag">Sort</button>' : ''}
+          ${this.host.expandBag ? '<button class="arc-btn small" data-act="openmenu" data-menu="townhall" data-tab="expand" title="Çanta ve Depo kapasitesini altınla genişlet">🎒+ Expand</button>' : ''}</div>
         <div class="arc-msg"></div>
       </div></div>`;
     const b = this._frame('inventory', el);
@@ -652,9 +887,13 @@ export class MenuManager {
     S.skill = sel.id;
     const tabs = trees.length > 1 ? `<div class="arc-tabs">${trees.map((t) => `<div class="arc-tab ${t === S.tab ? 'active' : ''}" data-act="tab" data-tab="${esc(t)}">${esc(t)}</div>`).join('')}</div>` : '';
     const sl = slotOf(sel.id);
+    const qSlots = this.host.getPotionSlots ? this.host.getPotionSlots() : [];
     const slotsHTML = sel.type === 'passive' ? '<div style="color:var(--arc-text-mute);font-size:12px">Passive skills are always active.</div>' :
-      `<div style="font-size:11px;color:var(--arc-text-mute)">Assign to hotkey slot:</div><div class="hotkey-row">${[0, 1, 2, 3, 4].map((i) =>
-        `<button class="hk-btn ${sl === i ? 'cur' : ''} ${sel.level > 0 ? '' : 'dis'}" data-act="skillslot" data-id="${esc(sel.id)}" data-slot="${i}" ${sel.level > 0 ? '' : 'disabled'}>${esc((bar[i] && bar[i].key) || i + 1)}</button>`).join('')}</div>`;
+      `<div style="font-size:11px;color:var(--arc-text-mute)">Assign to hotkey slot (1-9, click active to unbind):</div><div class="hotkey-row">${[0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => {
+        const qItem = i >= 5 && !bar[i] && qSlots[i - 5] && qSlots[i - 5].item;
+        const tip = sl === i ? `Unbind from key ${i + 1}` : (qItem ? `Key ${i + 1} holds ${qItem.name} (click to replace)` : `Assign to key ${i + 1}`);
+        return `<button class="hk-btn ${sl === i ? 'cur' : ''} ${sel.level > 0 ? '' : 'dis'}" data-act="skillslot" data-id="${esc(sel.id)}" data-slot="${i}" title="${esc(tip)}" ${sel.level > 0 ? '' : 'disabled'}>${esc((bar[i] && bar[i].key) || i + 1)}</button>`;
+      }).join('')}</div>`;
     const maxed = sel.level >= sel.maxLevel;
     el.innerHTML = `<div class="skill-head"><div>${tabs}</div>
         <div>Skill Points: <b class="arc-gold">${p.skillPoints | 0}</b> &nbsp; SP: <b style="color:var(--arc-sp-hi)">${Math.floor(p.sp || 0)}/${p.maxSp || 0}</b></div></div>
@@ -820,6 +1059,129 @@ export class MenuManager {
     const frac = fusing ? Math.min(1, (performance.now() - this._fuse.t0) / this._fuse.dur) : 0;
 
     const el = h('div', 'alcm-workshop');
+    const mode = S.alchMode === 'stones' ? 'stones' : 'plus';
+    const tabsHTML = `
+      <div class="alcm-mode-tabs">
+        <button class="alcm-mode-tab ${mode === 'plus' ? 'active' : ''}" data-act="alchmode" data-mode="plus">⚗️ +N Enhancement</button>
+        <button class="alcm-mode-tab ${mode === 'stones' ? 'active' : ''}" data-act="alchmode" data-mode="stones">💎 Magic Stones (Blue Stats)</button>
+      </div>`;
+
+    let mainInnerHTML = '';
+    if (mode === 'stones') {
+      const stoneCount = (stoneId) => (inv.bag || [])
+        .filter((x) => x && (x.baseId === stoneId || x.id === stoneId))
+        .reduce((sum, x) => sum + (x.count || 1), 0);
+      const blueMods = it ? (it.mods || []).filter((m) => m && m.kind === 'magic_stone') : [];
+      const blueTagsHTML = it ? [
+        ...(it.astralCharges > 0 ? [`<span class="alcm-astral-tag">✦ Astral +4 Guard (${it.astralCharges})</span>`] : []),
+        ...blueMods.map((m) => `<span class="alcm-blue-tag">🔹 ${esc(m.name || `${labelOf(m.stat)} +${m.value}`)}</span>`),
+      ].join('') : '';
+      const stoneRowsHTML = Object.values(MAGIC_STONES).map((st) => {
+        const cnt = stoneCount(st.id);
+        const canFuse = !!it && cnt > 0;
+        const rangeTxt = st.isAstral
+          ? 'Protects gear from dropping below +4 on failure'
+          : `Blue Stat: +${st.minVal}~${st.maxVal} ${esc(st.statName)}`;
+        return `
+          <div class="alcm-stone-row ${cnt > 0 ? 'has' : 'empty'}">
+            <div class="alcm-stone-left">
+              <span class="alcm-stone-icon">${renderIconHTML(st.icon, st.isAstral ? '✦' : '💎')}</span>
+              <div>
+                <div style="font-size:12px;font-weight:700;color:${st.isAstral ? '#e9d5ff' : '#bae6fd'}">${esc(st.name)} <small style="color:#94a3b8">(x${cnt})</small></div>
+                <div style="font-size:11px;color:#cbd5e1">${rangeTxt}</div>
+              </div>
+            </div>
+            <button class="arc-btn small" data-act="stonefuse" data-uid="${it ? esc(it.uid) : ''}" data-stone="${esc(st.id)}" ${canFuse ? '' : 'disabled'}>${it ? 'Fuse' : 'Select Gear'}</button>
+          </div>`;
+      }).join('');
+
+      mainInnerHTML = `
+        ${tabsHTML}
+        <div class="alcm-stones-panel">
+          <div class="alcm-stone-item-card">
+            ${it ? this._slotHTML(it, { big: true }) : '<div class="item-slot big alcm-ph"><span class="slot-ph">Gear</span></div>'}
+            <div style="flex:1;min-width:0">
+              <div style="font-size:14px;font-weight:700;color:#fef3c7">${it ? `${esc(it.name)}${it.plus ? ` +${it.plus}` : ''}` : 'Select equipment from the left'}</div>
+              <div style="font-size:11px;color:#94a3b8;margin-top:2px">${it ? 'Infuse Magic Stones to roll Blue Stats or imbue Astral +4 protection.' : 'Magic Stones drop from monsters, Giant minibosses, bosses & chests.'}</div>
+              <div class="alcm-blue-tags">${blueTagsHTML || (it ? '<span style="font-size:11px;color:#64748b">No Blue Stats infused yet</span>' : '')}</div>
+            </div>
+          </div>
+          <div class="alcm-stone-grid arc-scroll">${stoneRowsHTML}</div>
+          <div class="arc-msg"></div>
+        </div>`;
+    } else {
+      mainInnerHTML = `
+        ${tabsHTML}
+        <div class="alcm-info">
+          <div class="alcm-info-lines">
+            <div class="alcm-title">Equipment Reinforcement (+N Enhancement)</div>
+            <div class="alcm-target ${it && it.plus ? 'plus' : ''}">
+              ${it ? `${esc(it.name)} ${it.plus ? `+${it.plus}` : '+0'} → <b class="alcm-plus-next">+${target}</b>` : '<span style="color:#78350f">Select equipment from left to enhance</span>'}
+            </div>
+            <div class="alcm-chance-line">
+              ${it ? (maxed ? '<span style="color:#b45309">Maximum +10 enhancement reached</span>' : `Success Chance: <b class="alcm-chance-val ${chCls}">${chance != null ? Math.round(chance) + '%' : '—'}</b>${pv && pv.cost != null ? ` · Cost: <b class="arc-gold">${pv.cost} G</b>` : ''}`) : 'Place equipment and Elixir in chamber to preview'}
+            </div>
+            ${pv && pv.milestoneUnlock ? `<div class="alcm-milestone-banner" style="background:rgba(245,158,11,0.18);border:1px solid #f59e0b;border-radius:4px;padding:5px 8px;margin-top:6px;color:#fde047;font-size:12px;font-weight:600">🌟 +${target} Milestone Unlock: ${esc(pv.milestoneUnlock)}</div>` : ''}
+            ${it && !maxed && pv && pv.ok === false && pv.reason ? `<div class="alcm-warn alcm-reason">${esc(pv.reason)}</div>` : `<div class="alcm-warn">${failTxt}</div>`}
+          </div>
+        </div>
+
+        <div class="alcm-stage">
+          <div class="alcm-panel">
+            <!-- Animated 4x4 Sprite Sheet Overlay over rune circle -->
+            ${fusing ? '<div class="alcm-sprite-fx prepare"></div>' :
+              S.flash === 'success' ? '<div class="alcm-sprite-fx success"></div>' :
+              S.flash === 'fail' ? '<div class="alcm-sprite-fx fail"></div>' : ''}
+
+            <!-- Equipment Rune Circle Slot -->
+            <div class="alcm-slot alcm-slot-item" data-drop="alchemy" title="${it ? esc(it.name) : 'Rune Circle: Place Equipment Here'}">
+              ${it ? this._slotHTML(it, { big: true }) : '<div class="item-slot big alcm-ph"><span class="slot-ph">Gear</span></div>'}
+            </div>
+
+            <!-- Elixir Slot -->
+            <div class="alcm-slot alcm-slot-elixir ${nElix > 0 ? '' : 'empty'}" title="${esc(KIND_NAME[kind] || 'Weapon')} Elixir (x${nElix})">
+              <div class="item-slot has">
+                <span>${renderIconHTML(elixirIcon, '⚗️')}</span>
+                <span class="cnt">x${nElix}</span>
+              </div>
+            </div>
+
+            <!-- Luck Powder Slot (toggleable) -->
+            <div class="alcm-slot alcm-slot-powder ${S.alchPowder ? 'active' : ''} ${nPow > 0 ? '' : 'empty'}" data-act="alchpowder" title="Luck Powder Grade ${grade} (+${powderBonus}%) [Click to toggle]">
+              <div class="item-slot has ${S.alchPowder ? 'selected' : ''}">
+                <span>${renderIconHTML(powderIcon, '✨')}</span>
+                <span class="cnt">x${nPow}</span>
+                ${S.alchPowder ? '<span class="alcm-badge-on">ON</span>' : ''}
+              </div>
+            </div>
+
+            <!-- Guardian Talisman Slot (toggleable) -->
+            <div class="alcm-slot alcm-slot-talisman ${S.alchTalisman ? 'active' : ''} ${nTal > 0 ? '' : 'empty'}" data-act="alchtalisman" title="Guardian Talisman (Protects from reset to +0) [Click to toggle]">
+              <div class="item-slot has ${S.alchTalisman ? 'selected' : ''}">
+                <span>${renderIconHTML(talismanIcon, '🧿')}</span>
+                <span class="cnt">x${nTal}</span>
+                ${S.alchTalisman ? '<span class="alcm-badge-on">ON</span>' : ''}
+              </div>
+            </div>
+
+            <!-- Closed Frame Slot (4th material slot) -->
+            <div class="alcm-slot alcm-slot-closed" title="Closed Slot">
+              <img src="/assets/sro/alchemy/alcm_slot_closed.png" alt="" draggable="false"/>
+            </div>
+
+            <!-- Fuse / Cancel Button -->
+            <button class="alcm-fuse-btn ${fusing ? 'fusing' : ''}" data-act="${fusing ? 'alchcancel' : 'alchgo'}" ${okp && !fusing ? '' : fusing ? '' : 'disabled'} title="${fusing ? 'Cancel Enhancement' : 'Fuse Materials'}">
+              <span>${fusing ? 'Cancel' : 'Fuse'}</span>
+            </button>
+          </div>
+        </div>
+
+        ${fusing ? `<div class="alc-fuse"><div class="alc-fuse-bar"><div class="alc-fuse-fill" id="alc-fill" style="width:${(frac * 100).toFixed(1)}%"></div></div><span id="alc-fuse-t">${((1 - frac) * ALCHEMY.fuseSeconds).toFixed(1)}s</span></div>` : ''}
+        ${resHTML}
+        ${statHTML ? `<div class="alc-stats">${statHTML}</div>` : ''}
+        <div class="arc-msg"></div>`;
+    }
+
     el.innerHTML = `
       <div class="alchemy-layout">
         <div class="alcm-sidebar">
@@ -829,73 +1191,7 @@ export class MenuManager {
           <ul class="alc-hist arc-scroll">${hist}</ul>
         </div>
         <div class="alcm-main-area">
-          <div class="alcm-info">
-            <div class="alcm-info-lines">
-              <div class="alcm-title">Equipment Reinforcement (+N Enhancement)</div>
-              <div class="alcm-target ${it && it.plus ? 'plus' : ''}">
-                ${it ? `${esc(it.name)} ${it.plus ? `+${it.plus}` : '+0'} → <b class="alcm-plus-next">+${target}</b>` : '<span style="color:#78350f">Select equipment from left to enhance</span>'}
-              </div>
-              <div class="alcm-chance-line">
-                ${it ? (maxed ? '<span style="color:#b45309">Maximum +10 enhancement reached</span>' : `Success Chance: <b class="alcm-chance-val ${chCls}">${chance != null ? Math.round(chance) + '%' : '—'}</b>${pv && pv.cost != null ? ` · Cost: <b class="arc-gold">${pv.cost} G</b>` : ''}`) : 'Place equipment and Elixir in chamber to preview'}
-              </div>
-              ${it && !maxed && pv && pv.ok === false && pv.reason ? `<div class="alcm-warn alcm-reason">${esc(pv.reason)}</div>` : `<div class="alcm-warn">${failTxt}</div>`}
-            </div>
-          </div>
-
-          <div class="alcm-stage">
-            <div class="alcm-panel">
-              <!-- Animated 4x4 Sprite Sheet Overlay over rune circle -->
-              ${fusing ? '<div class="alcm-sprite-fx prepare"></div>' :
-                S.flash === 'success' ? '<div class="alcm-sprite-fx success"></div>' :
-                S.flash === 'fail' ? '<div class="alcm-sprite-fx fail"></div>' : ''}
-
-              <!-- Equipment Rune Circle Slot -->
-              <div class="alcm-slot alcm-slot-item" data-drop="alchemy" title="${it ? esc(it.name) : 'Rune Circle: Place Equipment Here'}">
-                ${it ? this._slotHTML(it, { big: true }) : '<div class="item-slot big alcm-ph"><span class="slot-ph">Gear</span></div>'}
-              </div>
-
-              <!-- Elixir Slot -->
-              <div class="alcm-slot alcm-slot-elixir ${nElix > 0 ? '' : 'empty'}" title="${esc(KIND_NAME[kind] || 'Weapon')} Elixir (x${nElix})">
-                <div class="item-slot has">
-                  <span>${renderIconHTML(elixirIcon, '⚗️')}</span>
-                  <span class="cnt">x${nElix}</span>
-                </div>
-              </div>
-
-              <!-- Luck Powder Slot (toggleable) -->
-              <div class="alcm-slot alcm-slot-powder ${S.alchPowder ? 'active' : ''} ${nPow > 0 ? '' : 'empty'}" data-act="alchpowder" title="Luck Powder Grade ${grade} (+${powderBonus}%) [Click to toggle]">
-                <div class="item-slot has ${S.alchPowder ? 'selected' : ''}">
-                  <span>${renderIconHTML(powderIcon, '✨')}</span>
-                  <span class="cnt">x${nPow}</span>
-                  ${S.alchPowder ? '<span class="alcm-badge-on">ON</span>' : ''}
-                </div>
-              </div>
-
-              <!-- Guardian Talisman Slot (toggleable) -->
-              <div class="alcm-slot alcm-slot-talisman ${S.alchTalisman ? 'active' : ''} ${nTal > 0 ? '' : 'empty'}" data-act="alchtalisman" title="Guardian Talisman (Protects from reset to +0) [Click to toggle]">
-                <div class="item-slot has ${S.alchTalisman ? 'selected' : ''}">
-                  <span>${renderIconHTML(talismanIcon, '🧿')}</span>
-                  <span class="cnt">x${nTal}</span>
-                  ${S.alchTalisman ? '<span class="alcm-badge-on">ON</span>' : ''}
-                </div>
-              </div>
-
-              <!-- Closed Frame Slot (4th material slot) -->
-              <div class="alcm-slot alcm-slot-closed" title="Closed Slot">
-                <img src="/assets/sro/alchemy/alcm_slot_closed.png" alt="" draggable="false"/>
-              </div>
-
-              <!-- Fuse / Cancel Button -->
-              <button class="alcm-fuse-btn ${fusing ? 'fusing' : ''}" data-act="${fusing ? 'alchcancel' : 'alchgo'}" ${okp && !fusing ? '' : fusing ? '' : 'disabled'} title="${fusing ? 'Cancel Enhancement' : 'Fuse Materials'}">
-                <span>${fusing ? 'Cancel' : 'Fuse'}</span>
-              </button>
-            </div>
-          </div>
-
-          ${fusing ? `<div class="alc-fuse"><div class="alc-fuse-bar"><div class="alc-fuse-fill" id="alc-fill" style="width:${(frac * 100).toFixed(1)}%"></div></div><span id="alc-fuse-t">${((1 - frac) * ALCHEMY.fuseSeconds).toFixed(1)}s</span></div>` : ''}
-          ${resHTML}
-          ${statHTML ? `<div class="alc-stats">${statHTML}</div>` : ''}
-          <div class="arc-msg"></div>
+          ${mainInnerHTML}
         </div>
       </div>`;
 
@@ -929,7 +1225,19 @@ export class MenuManager {
           ${sel._st === 'active' && this.host.abandonQuest ? `<button class="arc-btn danger small" data-act="questabandon" data-id="${esc(sel.id)}">Abandon</button>` : ''}
         </div></div>`;
     }
-    el.innerHTML = `<div class="quest-layout"><div class="quest-list arc-scroll">${list || '<div class="arc-empty">—</div>'}</div>${detail}</div><div class="arc-msg"></div>`;
+    const chronicles = (this.host.getStoryChronicles ? this.host.getStoryChronicles() : (this.host?.ctx?.gameState?.getStoryChronicles?.() || [])) || [];
+    const chronHtml = chronicles.length
+      ? `<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--arc-line)">
+          <div class="arc-section-title">📖 Hikaye Günlüğü (Story Chronicles · ${chronicles.filter((c) => c.cleared).length} Kat Temizlendi)</div>
+          <div class="arc-scroll" style="max-height:118px;display:flex;flex-direction:column;gap:6px">
+            ${chronicles.slice().reverse().map((c) => `<div style="font-size:12px;padding:6px 8px;background:rgba(15,23,42,.55);border-left:3px solid ${c.cleared ? '#34d399' : '#38bdf8'};border-radius:4px">
+              <div style="font-weight:700;color:${c.cleared ? '#6ee7b7' : '#93c5fd'}">${c.cleared ? '✓ ' : ''}${esc(c.title)}</div>
+              <div style="color:var(--arc-text-dim);font-size:11px;margin-top:2px">${esc(c.summary)}</div>
+            </div>`).join('')}
+          </div>
+        </div>`
+      : '';
+    el.innerHTML = `<div class="quest-layout"><div class="quest-list arc-scroll">${list || '<div class="arc-empty">—</div>'}</div>${detail}</div>${chronHtml}<div class="arc-msg"></div>`;
     this._frame('quests', el);
   }
 
@@ -937,12 +1245,21 @@ export class MenuManager {
   _rFloors() {
     const fl = this.host.getFloors ? this.host.getFloors() : [];
     const p = this.host.getPlayer() || {};
+    const heroLv = Number(p.level || 1);
     const el = h('div');
-    el.innerHTML = `<div style="margin-bottom:8px;color:var(--arc-text-dim)">Choose a dungeon floor. Cleared floors unlock deeper ones.</div>
-      <div class="floor-grid arc-scroll">${fl.map((f) => `<div class="floor-card ${f.unlocked ? '' : 'locked'} ${f.current ? 'current' : ''}" ${f.unlocked ? `data-act="floor" data-floor="${f.floor}"` : ''}>
+    const gateNote = heroLv < 10
+      ? `<div style="margin-bottom:8px;padding:6px 10px;border-radius:6px;background:rgba(245,158,11,.14);border:1px solid rgba(245,158,11,.45);color:#fde68a;font-size:12px">⚠️ Zindan kapıları <b>Seviye 10</b> gerektirir (Mevcut: <b>Lv ${heroLv}/10</b>). Şehrin 4 açık kapısından dışarıdaki kamplarda kasıl!</div>`
+      : '<div style="margin-bottom:8px;color:var(--arc-text-dim)">Bir katı tamamen temizlediğinde bir sonraki geçit ve hikaye bölümü açılır.</div>';
+    el.innerHTML = `${gateNote}
+      <div class="floor-grid arc-scroll">${fl.map((f) => {
+        const minLv = f.floor === 0 ? 1 : (f.minDungeonLevel || 10);
+        const levelOk = f.floor === 0 || heroLv >= minLv;
+        const canEnter = Boolean(f.unlocked && levelOk);
+        return `<div class="floor-card ${canEnter ? '' : 'locked'} ${f.current ? 'current' : ''}" ${canEnter ? `data-act="floor" data-floor="${f.floor}"` : ''}>
         <div class="fnum">${f.floor === 0 ? '🏠' : f.floor}</div><div class="fname">${esc(f.name || 'Floor ' + f.floor)}</div>
-        <div class="frec" style="${p.level < f.recommendedLevel ? 'color:var(--arc-bad)' : ''}">${f.recommendedLevel ? 'Rec. Lv ' + f.recommendedLevel : ''}</div>
-        ${f.bossName ? `<div class="frec">☠ ${esc(f.bossName)}</div>` : ''}</div>`).join('') || '<div class="arc-empty">No floors available.</div>'}</div><div class="arc-msg"></div>`;
+        <div class="frec" style="${heroLv < f.recommendedLevel ? 'color:var(--arc-bad)' : ''}">${f.recommendedLevel ? 'Rec. Lv ' + f.recommendedLevel : ''}${f.cleared ? ' · ✓ Temizlendi' : ''}${!levelOk ? ` · 🔒 Lv ${minLv}` : ''}</div>
+        ${f.bossName ? `<div class="frec">☠ ${esc(f.bossName)}</div>` : ''}</div>`;
+      }).join('') || '<div class="arc-empty">No floors available.</div>'}</div><div class="arc-msg"></div>`;
     this._frame('map', el);
   }
 
@@ -1000,6 +1317,12 @@ export class MenuManager {
     if (fn) { const r = fn(o); if (r && r.lines) { this.state.dlg = null; this.data = { ...r, npcId: npc }; this._render(); } else if (r !== false && !this.current) return; else if (r === 'keep') return; else this.closeAll(); return; }
     const a = String(act).toLowerCase();
     if (/^(close|leave|bye|exit|goodbye)/.test(a) || !a) { this.closeAll(); return; }
+    if (a.startsWith('open_menu:')) {
+      const [, menu, tab] = String(act).split(':');
+      this.state = {};
+      this.openMenu(menu, { tab: tab || null });
+      return;
+    }
     if (/shop|buy|sell|store/.test(a)) { this.state = {}; this.openShop({ npcId: npc, shopId: o.shopId || a.split(':')[1] || npc }); return; }
     if (/compose|synth|forge/.test(a)) { this.state = {}; this.openMenu('compose'); return; }
     if (/quest/.test(a) && !/:/.test(a)) { this.state = {}; this.openMenu('quests'); return; }
@@ -1024,19 +1347,64 @@ export class MenuManager {
 
   // --------------------------------------------------------------- STORAGE
   _rStorage() {
-    const st = (this.host.getStorage && this.host.getStorage()) || { items: [], size: 40 };
+    const st = (this.host.getStorage && this.host.getStorage()) || { items: [], size: 48, sharedGold: 0, expandCost: 0 };
     const inv = this.host.getInventory() || { bag: [], bagSize: 40, gold: 0 };
-    const stItems = (st.items || []).filter(Boolean);
-    const stSize = Math.max(st.size || st.capacity || 40, stItems.length);
+    const stItemsAll = (st.items || []).filter(Boolean);
+    const bagItemsAll = (inv.bag || []).filter(Boolean);
+    const stSize = Math.max(st.size || st.capacity || 48, stItemsAll.length);
+    const sharedGold = Math.floor(st.sharedGold || 0);
+    const bagGold = Math.floor(inv.gold || 0);
+    const expandCost = Math.floor(st.expandCost || 0);
+    const filter = this.state.storageFilter || 'all';
+
+    const matchFilter = (it) => {
+      if (!it || filter === 'all') return true;
+      const t = String(it.type || '').toLowerCase();
+      const b = String(it.baseId || '').toLowerCase();
+      if (filter === 'gear') return Boolean(it.slot) || /weapon|armor|shield|helmet|boots|ring|necklace/.test(t);
+      if (filter === 'consumable') return t === 'consumable' || /potion|scroll|tonic|coffer|box/.test(b);
+      if (filter === 'material') return MATERIAL_RE.test(t) || /^(elixir|powder|stone|guardian)/.test(b) || t === 'elixir' || t === 'stone' || t === 'material';
+      return true;
+    };
+
+    const stItems = stItemsAll.filter(matchFilter);
+    const bagItems = bagItemsAll.filter(matchFilter);
     let vaultHTML = '';
-    for (let i = 0; i < stSize; i++) vaultHTML += this._slotHTML(stItems[i]);
+    const slotCount = filter === 'all' ? stSize : Math.max(20, stItems.length);
+    for (let i = 0; i < slotCount; i++) vaultHTML += this._slotHTML(stItems[i]);
+
+    const filterTabs = [
+      ['all', 'All'],
+      ['gear', 'Gear'],
+      ['consumable', 'Consumables'],
+      ['material', 'Materials']
+    ].map(([id, label]) => `<button class="arc-btn small ${filter === id ? 'primary' : ''}" data-act="storage_filter" data-filter="${id}">${label}</button>`).join('');
+
     const el = h('div');
-    el.innerHTML = `<div class="inv-layout">
-      <div><div class="arc-section-title">Storage Vault (${stItems.length}/${stSize}) — click to withdraw</div>
-        <div class="inv-grid" style="grid-template-columns:repeat(5,48px)">${vaultHTML}</div></div>
-      <div><div class="arc-section-title">Your Bag (${inv.bag.length}/${inv.bagSize || 40}) — click to deposit</div>
-        <div class="inv-grid">${inv.bag.map((it) => this._slotHTML(it)).join('') || '<div class="arc-empty" style="grid-column:1/-1">Bag is empty</div>'}</div></div>
-    </div><div class="arc-msg"></div>`;
+    el.innerHTML = `<div class="arc-panel-bar" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;margin-bottom:10px;padding:8px 10px;background:rgba(15,23,42,.7);border:1px solid rgba(250,204,21,.28);border-radius:8px;">
+        <div><b>🏦 Account-Wide Shared Gold Vault:</b> <span class="arc-gold">${sharedGold.toLocaleString()} G</span> · <span style="opacity:.85">Bag: ${bagGold.toLocaleString()} G</span></div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;">
+          <button class="arc-btn small" data-act="storage_dep_gold" data-amt="1000" ${bagGold < 1 ? 'disabled' : ''}>+1,000 G Deposit</button>
+          <button class="arc-btn small" data-act="storage_dep_gold" data-amt="5000" ${bagGold < 1 ? 'disabled' : ''}>+5,000 G</button>
+          <button class="arc-btn small primary" data-act="storage_dep_gold" data-amt="all" ${bagGold < 1 ? 'disabled' : ''}>Deposit All G</button>
+          <button class="arc-btn small" data-act="storage_wdr_gold" data-amt="1000" ${sharedGold < 1 ? 'disabled' : ''}>-1,000 G Withdraw</button>
+          <button class="arc-btn small" data-act="storage_wdr_gold" data-amt="5000" ${sharedGold < 1 ? 'disabled' : ''}>-5,000 G</button>
+          <button class="arc-btn small warning" data-act="storage_wdr_gold" data-amt="all" ${sharedGold < 1 ? 'disabled' : ''}>Withdraw All G</button>
+        </div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <div style="display:flex;gap:4px;">${filterTabs}</div>
+        <div style="display:flex;gap:6px;">
+          <button class="arc-btn small" data-act="storage_dep_mats">Store All Materials</button>
+          <button class="arc-btn small ${expandCost > 0 && bagGold >= expandCost ? 'primary' : ''}" data-act="storage_expand" ${expandCost <= 0 || bagGold < expandCost ? 'disabled' : ''}>${expandCost > 0 ? `Expand +10 (${expandCost.toLocaleString()} G)` : 'Vault Maxed'}</button>
+        </div>
+      </div>
+      <div class="inv-layout">
+        <div><div class="arc-section-title">General Shared Vault (${stItemsAll.length}/${stSize}) — click to withdraw</div>
+          <div class="inv-grid" style="grid-template-columns:repeat(6,48px)">${vaultHTML}</div></div>
+        <div><div class="arc-section-title">Character Bag (${bagItemsAll.length}/${inv.bagSize || 40}) — click to deposit</div>
+          <div class="inv-grid">${bagItems.map((it) => this._slotHTML(it)).join('') || '<div class="arc-empty" style="grid-column:1/-1">No matching items</div>'}</div></div>
+      </div><div class="arc-msg"></div>`;
     this._frame('storage', el);
   }
   _storageClick(it) {
@@ -1059,12 +1427,443 @@ export class MenuManager {
     el.innerHTML = `<div class="shop-layout"><div><div class="arc-section-title">For Sale</div><div class="shop-grid arc-scroll">${rows}</div></div>
       <div><div class="arc-section-title">Your Bag — click to sell</div>
         <div class="inv-grid" style="grid-template-columns:repeat(4,48px)">${inv.bag.map((it) => this._slotHTML(it)).join('') || '<div class="arc-empty" style="grid-column:1/-1">Empty</div>'}</div>
-        <div style="margin-top:8px">Gold: <b class="arc-gold">${Math.floor(inv.gold || 0).toLocaleString()} G</b></div></div></div><div class="arc-msg"></div>`;
+        <div class="inv-actions" style="margin-top:8px;display:flex;align-items:center;justify-content:space-between">
+          ${this.host.quickSellJunk ? '<button class="arc-btn small warning" data-act="quicksell" title="Tüm normal ve sihirli çöp eşyaları hızlıca sat">Hızlı Sat (Çöp)</button>' : ''}
+          <div style="margin-left:auto">Gold: <b class="arc-gold">${Math.floor(inv.gold || 0).toLocaleString()} G</b></div>
+        </div></div></div><div class="arc-msg"></div>`;
     this._frame('shop', el);
   }
   _shopClick(it, e) {
     if (String(it.uid).startsWith('shop')) return;
     this._do(() => this.host.sellItem(it.uid));
+  }
+
+  // ------------------------------------------------------------------ PET COMPANION
+  _rPet() {
+    const petsSys = this.host.getPets?.()?.sys || this.host?.game?.pets || this.ctx?.gameState?.pets || null;
+    const pets = petsSys ? petsSys.pets : [];
+    const activePet = petsSys ? petsSys.getActivePet() : null;
+
+    const el = h('div', 'pet-menu-layout');
+
+    // Left column: Active Companion Detail Card
+    let leftHTML = '';
+    if (activePet) {
+      const isSummoned = activePet.summoned;
+      const expPct = Math.min(100, Math.max(0, (activePet.exp / (activePet.maxExp || 100)) * 100)).toFixed(1);
+      const passives = activePet.passives || {};
+      const passiveLines = [];
+      if (passives.description) {
+        passiveLines.push(`<div style="color:#e2e8f0;font-size:12px;line-height:1.4;margin-bottom:8px">${esc(passives.description)}</div>`);
+      }
+      if (passives.goldFind) passiveLines.push(`<div style="color:#facc15">💰 +${passives.goldFind}% Gold Find</div>`);
+      if (passives.magicFind) passiveLines.push(`<div style="color:#a78bfa">✨ +${passives.magicFind}% Magic Find (Rare/Sealed items)</div>`);
+      if (passives.atkPct) passiveLines.push(`<div style="color:#ef4444">⚔️ +${passives.atkPct}% Physical & Magical Attack</div>`);
+      if (passives.critRate) passiveLines.push(`<div style="color:#f43f5e">🎯 +${passives.critRate}% Critical Hit Rate</div>`);
+      if (passives.attackSpeedPct) passiveLines.push(`<div style="color:#38bdf8">⚡ +${passives.attackSpeedPct}% Attack Speed</div>`);
+      if (passives.moveSpeedPct) passiveLines.push(`<div style="color:#34d399">💨 +${passives.moveSpeedPct}% Movement Speed</div>`);
+
+      leftHTML = `
+        <div class="pet-card-active">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span class="pet-status-badge ${isSummoned ? 'summoned' : 'dismissed'}">
+              <span class="pet-dot"></span> ${isSummoned ? 'Active & Following' : 'Dismissed'}
+            </span>
+            <button class="arc-btn small" data-act="petrename" data-id="${esc(activePet.id)}">✏️ Rename</button>
+          </div>
+
+          <div class="pet-avatar-large">${activePet.icon || '🐾'}</div>
+          
+          <div style="text-align:center">
+            <h3 style="margin:0 0 4px 0;font-size:18px;color:#f8fafc">${esc(activePet.name)}</h3>
+            <div style="font-size:12px;color:#94a3b8">${esc(activePet.title || 'Faithful Companion')}</div>
+          </div>
+
+          <div style="background:rgba(0,0,0,0.3);border-radius:6px;padding:8px 10px">
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+              <span style="color:#cbd5e1">Level <b>${activePet.level}</b></span>
+              <span style="color:#94a3b8">${activePet.exp} / ${activePet.maxExp} EXP (${expPct}%)</span>
+            </div>
+            <div class="arc-bar" style="height:6px;background:rgba(255,255,255,0.1);border-radius:3px;overflow:hidden">
+              <div style="width:${expPct}%;height:100%;background:#38bdf8;border-radius:3px;transition:width .2s"></div>
+            </div>
+          </div>
+
+          <div style="background:rgba(0,0,0,0.25);border-radius:6px;padding:10px;display:flex;flex-direction:column;gap:4px">
+            <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px">Active Passives & Role</div>
+            ${passiveLines.join('')}
+          </div>
+
+          <div style="margin-top:auto;display:flex;gap:8px;flex-wrap:wrap">
+            ${isSummoned
+              ? `<button class="arc-btn primary" style="flex:1" data-act="petfeed" title="Feed active companion a Royal Feast for +500 Pet EXP">🍖 Royal Feast (2,500 G)</button>
+                 <button class="arc-btn" style="flex:1;background:#ef4444;border-color:#dc2626" data-act="petdismiss">Dismiss Companion</button>`
+              : `<button class="arc-btn" style="flex:1;background:#22c55e;border-color:#16a34a" data-act="petsummon" data-id="${esc(activePet.id)}">Summon Companion</button>`
+            }
+          </div>
+        </div>
+      `;
+    } else {
+      leftHTML = pets.length === 0
+        ? `<div class="arc-empty" style="padding:36px 20px">
+            <div style="font-size:28px;margin-bottom:8px">🐾</div>
+            <div style="font-weight:700;color:#f8fafc;margin-bottom:6px">No Companions Owned Yet</div>
+            <div style="font-size:12px;color:#94a3b8;line-height:1.5">Visit <b>Beast Tamer Zara</b> in Oakhaven Town Center to purchase Silkroad Grab &amp; Combat Companions with Gold.</div>
+          </div>`
+        : `<div class="arc-empty" style="padding:40px 20px">No companion currently active. Choose a companion from your roster!</div>`;
+    }
+
+    // Right column: Companion Roster
+    let rightHTML = `
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div class="arc-section-title" style="margin:0">Owned Companions (${pets.length})</div>
+          <span style="font-size:12px;color:var(--arc-text-mute)">Silkroad Online Grab & Combat Pets</span>
+        </div>
+        <div class="pet-roster-grid">
+    `;
+
+    if (pets.length === 0) {
+      rightHTML += `<div class="arc-empty" style="grid-column:1/-1;padding:28px 16px">Your stable is empty. Earn Gold in the dungeons and speak with Beast Tamer Zara in Oakhaven!</div>`;
+    }
+
+    for (const p of pets) {
+      const isCur = activePet && p.id === activePet.id;
+      rightHTML += `
+        <div class="pet-roster-item ${isCur ? 'active' : ''}" data-act="petsummon" data-id="${esc(p.id)}">
+          <div class="pet-roster-icon">${p.icon || '🐾'}</div>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <b style="color:${isCur ? '#facc15' : '#f8fafc'};font-size:13px">${esc(p.name)}</b>
+              <span style="font-size:11px;color:#94a3b8">Lv ${p.level}</span>
+            </div>
+            <div style="font-size:11px;color:#67e8f9;margin:2px 0">${p.role === 'loot' ? '🎒 Grab Pet (Auto-Loot)' : p.role === 'combat' ? '⚔️ Combat Companion' : '🐾 Hybrid Companion'}</div>
+            <div style="font-size:10px;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.passives?.description || '')}</div>
+          </div>
+        </div>
+      `;
+    }
+
+    rightHTML += `
+        </div>
+      </div>
+    `;
+
+    el.innerHTML = leftHTML + rightHTML;
+    this._frame('pet', el);
+  }
+
+  _rPetShop() {
+    const p = this.host.getPlayer?.() || {};
+    const gold = Math.floor(Number(p.gold ?? 0));
+    const petsSys = this.host.getPets?.()?.sys || this.host?.game?.pets || this.ctx?.gameState?.pets || null;
+    const owned = new Set((petsSys?.pets || []).map((pt) => pt.type));
+
+    const cards = Object.values(PET_TYPES).map((def) => {
+      const price = Number(def.price) || 10000;
+      const isOwned = owned.has(def.type);
+      const canAfford = gold >= price;
+      const roleLabel = def.role === 'loot' ? '🎒 Grab Pet' : def.role === 'combat' ? '⚔️ Combat Pet' : '🐾 Hybrid Pet';
+      const ps = def.passives || {};
+      const stats = [];
+      if (ps.goldFind) stats.push(`+${ps.goldFind}% Gold`);
+      if (ps.magicFind) stats.push(`+${ps.magicFind}% Magic Find`);
+      if (ps.atkPct) stats.push(`+${ps.atkPct}% Attack`);
+      if (ps.critRate) stats.push(`+${ps.critRate}% Crit`);
+      if (ps.attackSpeedPct) stats.push(`+${ps.attackSpeedPct}% Atk Spd`);
+      if (ps.moveSpeedPct) stats.push(`+${ps.moveSpeedPct}% Move Spd`);
+
+      return `
+        <div class="petshop-card ${isOwned ? 'owned' : ''}">
+          <div class="petshop-card-top">
+            <div class="petshop-icon">${def.icon || '🐾'}</div>
+            <div style="flex:1;min-width:0">
+              <div class="petshop-name">${esc(def.name)}</div>
+              <div class="petshop-title">${esc(def.title || '')}</div>
+              <span class="petshop-role">${roleLabel}</span>
+            </div>
+          </div>
+          <div class="petshop-desc">${esc(ps.description || '')}</div>
+          <div class="petshop-stats">${stats.map((s) => `<span>${esc(s)}</span>`).join('')}</div>
+          <div class="petshop-foot">
+            <span class="petshop-price ${canAfford ? '' : 'poor'}">🪙 ${price.toLocaleString()} G</span>
+            ${isOwned
+              ? `<span class="petshop-owned-badge">✓ Owned</span>`
+              : `<button class="arc-btn ${canAfford ? 'primary' : ''}" data-act="petbuy" data-type="${esc(def.type)}" ${canAfford ? '' : 'disabled'}>Buy Companion</button>`
+            }
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    const el = h('div', 'petshop-wrap');
+    el.innerHTML = `
+      <div class="petshop-banner">
+        <div>
+          <div style="font-weight:700;color:#fde68a;font-size:14px">Oakhaven Exotic Menagerie</div>
+          <div style="font-size:12px;color:#cbd5e1">Imported Silkroad companions — bind one to automatically loot treasure or fight beside you.</div>
+        </div>
+        <div class="petshop-gold">Your Gold: <b>🪙 ${gold.toLocaleString()} G</b></div>
+      </div>
+      <div class="petshop-grid">${cards}</div>
+    `;
+    this._frame('petshop', el);
+  }
+
+  showStoryEnding(summary = {}) {
+    this.openMenu('storyending', summary);
+  }
+
+  _rStoryEnding() {
+    const summary = this.data || {};
+    const p = this.host?.getPlayer?.() || {};
+    const heroName = esc(summary.heroName || p.name || 'Hero');
+    const level = summary.level || p.level || 1;
+    const kills = summary.kills ?? 0;
+    const deaths = summary.deaths ?? 0;
+    const bossName = esc(summary.bossName || 'Roc');
+    const bonusGold = summary.bonusGold ?? 0;
+    const bonusExp = summary.bonusExp ?? 0;
+
+    const el = h('div', 'story-ending-modal');
+    el.innerHTML = `
+      <div class="story-ending-crest">👑</div>
+      <h2 class="story-ending-title">THE SKY SOVEREIGN HAS FALLEN</h2>
+      <p class="story-ending-sub">${bossName}, Sovereign of Mountain Roc Peak, lies vanquished by <b>${heroName}</b>.</p>
+      <div class="story-ending-lore">
+        With the final thunderous roar fading across the Mountain Roc Peak sky nest, the rift sealing Arkenveil's sixteen abyssal floors dissolves into golden dawn.
+        Word of your triumph echoes from Oakhaven's stone plaza to the farthest Silkroad caravans — the realm is saved, and your legend is eternal.
+      </div>
+      <div class="story-ending-stats">
+        <div><span>Champion</span><b>${heroName} (Lv.${level})</b></div>
+        <div><span>Final Floor</span><b>Floor 16 — Mountain Roc Peak — Sky Nest</b></div>
+        <div><span>Monsters Slain</span><b>${kills}</b></div>
+        <div><span>Falls in Battle</span><b>${deaths}</b></div>
+      </div>
+      ${(bonusGold || bonusExp) ? `<div class="story-ending-reward">Story Victory Reward: +${bonusGold.toLocaleString()} Gold &amp; +${bonusExp.toLocaleString()} EXP</div>` : ''}
+      <div class="story-ending-actions">
+        <button class="arc-btn primary" data-act="storyreturn">Return to Oakhaven (Free Play)</button>
+        <button class="arc-btn" data-act="storycontinue">Stay in Sanctum</button>
+      </div>
+    `;
+    this._frame('storyending', el);
+  }
+
+  // ------------------------------------------------------------------ OAKHAVEN TOWN SERVICES
+  _rTownHall() {
+    const S = this.state;
+    const host = this.host;
+    const tab = S.tab || (this.data && this.data.tab) || 'blessings';
+    S.tab = tab;
+    const view = (host.getTownHallView ? host.getTownHallView() : host?.game?.getTownHallView?.()) || {
+      gold: 0, training: [], blessings: [],
+      bag: { size: 36, max: 60, step: 6, cost: 2500 },
+      storage: { size: 48, max: 88, step: 10, cost: 2000 },
+    };
+    const p = host.getPlayer ? (host.getPlayer() || {}) : {};
+    const gold = Math.floor(Number(p.gold ?? view.gold ?? 0));
+
+    const tabs = [
+      { id: 'blessings', label: '🏛 Town Blessings' },
+      { id: 'training', label: '⚔ Guild Mastery' },
+      { id: 'forge', label: '🔨 Masterwork Forge' },
+      { id: 'expand', label: '🎒 Bag, Vault & Curios' },
+    ];
+    const tabsHTML = `<div class="arc-tabs">${tabs.map((t) =>
+      `<div class="arc-tab ${t.id === tab ? 'active' : ''}" data-act="tab" data-tab="${t.id}">${t.label}</div>`
+    ).join('')}</div>`;
+
+    let bodyHTML = '';
+    if (tab === 'blessings') {
+      const cards = (view.blessings || []).map((b) => {
+        const rem = Math.max(0, Math.floor(b.activeRemaining || 0));
+        const remStr = rem > 0 ? `${Math.floor(rem / 60)}m ${String(rem % 60).padStart(2, '0')}s` : '';
+        const canAfford = gold >= b.cost;
+        return `
+          <div class="townhall-card ${rem > 0 ? 'active' : ''}">
+            <div class="townhall-card-top">
+              <div class="townhall-icon">${b.icon || '🏛'}</div>
+              <div style="flex:1;min-width:0">
+                <div class="townhall-title">${esc(b.name)}</div>
+                <div class="townhall-sub">${rem > 0 ? `<span class="townhall-badge">Active · ${remStr}</span>` : 'Duration: 10 minutes + Instant Heal'}</div>
+              </div>
+            </div>
+            <div class="townhall-desc">${esc(b.desc)}</div>
+            <div class="townhall-foot">
+              <span class="townhall-cost ${canAfford ? '' : 'poor'}">🪙 ${Number(b.cost).toLocaleString()} G</span>
+              <button class="arc-btn ${canAfford ? 'primary' : ''}" data-act="townbless" data-key="${esc(b.key)}" ${canAfford ? '' : 'disabled'}>
+                ${rem > 0 ? 'Renew Blessing' : 'Activate Blessing'}
+              </button>
+            </div>
+          </div>`;
+      }).join('');
+      bodyHTML = `
+        <div class="townhall-hint">Receive long-lasting 10-minute Shrine Benedictions and instantly restore full HP, SP & Stamina before entering the dungeon.</div>
+        <div class="townhall-grid">${cards}</div>`;
+    } else if (tab === 'training') {
+      const cards = (view.training || []).map((tr) => {
+        const pct = Math.min(100, Math.round(((tr.rank || 0) / (tr.maxRank || 10)) * 100));
+        const canAfford = !tr.maxed && gold >= tr.cost;
+        return `
+          <div class="townhall-card ${tr.maxed ? 'active' : ''}">
+            <div class="townhall-card-top">
+              <div class="townhall-icon">${tr.icon || '⚔'}</div>
+              <div style="flex:1;min-width:0">
+                <div class="townhall-title">${esc(tr.name)}</div>
+                <div class="townhall-sub">Rank <b>${tr.rank}</b> / ${tr.maxRank}</div>
+              </div>
+            </div>
+            <div class="townhall-desc">${esc(tr.desc)}</div>
+            <div class="townhall-bar"><div style="width:${pct}%"></div></div>
+            <div class="townhall-foot">
+              <span class="townhall-cost ${tr.maxed || canAfford ? '' : 'poor'}">${tr.maxed ? '✓ Mastered' : `🪙 ${Number(tr.cost).toLocaleString()} G`}</span>
+              <button class="arc-btn ${canAfford ? 'primary' : ''}" data-act="towntrain" data-key="${esc(tr.id)}" ${canAfford ? '' : 'disabled'}>
+                ${tr.maxed ? 'Max Rank' : 'Train +1 Rank'}
+              </button>
+            </div>
+          </div>`;
+      }).join('');
+      bodyHTML = `
+        <div class="townhall-hint">Permanent Oakhaven Guild training passively strengthens your hero forever and carries cleanly into your save file.</div>
+        <div class="townhall-grid">${cards}</div>`;
+    } else if (tab === 'forge') {
+      const inv = host.getInventory ? (host.getInventory() || {}) : {};
+      const gear = [...Object.values(inv.equipment || {}).filter(Boolean), ...(inv.bag || []).filter(isEquipItem)];
+      const sel = gear.find((g) => String(g.uid) === String(S.forgeUid)) || gear[0] || null;
+      if (sel) S.forgeUid = String(sel.uid);
+      const gridHTML = gear.length
+        ? gear.map((it) => this._slotHTML(it, { selected: sel && String(it.uid) === String(sel.uid) })).join('')
+        : '<div class="arc-empty" style="grid-column:1/-1">No equipment found.</div>';
+
+      let detailHTML = '<div class="arc-empty">Select a piece of equipment to reforge or socket.</div>';
+      if (sel) {
+        const curSockets = sel.sockets || 1;
+        const gemsCount = (sel.gems || []).length;
+        const sockCost = host.getSocketForgeCost ? host.getSocketForgeCost(sel) : 0;
+        const refCost = host.getReforgeCost ? host.getReforgeCost(sel) : 0;
+        const canSocket = curSockets < 4 && sockCost > 0 && gold >= sockCost;
+        const canReforge = refCost > 0 && gold >= refCost;
+        const affHTML = (sel.affixes || []).length
+          ? sel.affixes.map((a) => `<div class="townhall-affix">${esc(a)}</div>`).join('')
+          : '<div class="townhall-affix mute">No affixes yet (Normal quality)</div>';
+        detailHTML = `
+          <div class="townhall-forge-card">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+              ${this._slotHTML(sel, { big: true })}
+              <div style="flex:1;min-width:0">
+                <div class="townhall-title" style="color:${esc(sel.color || '#f8fafc')}">${esc(sel.name)}</div>
+                <div class="townhall-sub">${esc(sel.rarityName || 'Normal')} · Crystal Sockets: <b>${gemsCount} / ${curSockets}</b> (Max 4)</div>
+              </div>
+            </div>
+            <div class="townhall-affixes">${affHTML}</div>
+            <div class="townhall-forge-actions">
+              <div class="townhall-forge-row">
+                <div>
+                  <div style="font-weight:700;color:#e2e8f0">🔩 Punch Crystal Socket (+1 Slot)</div>
+                  <div style="font-size:11px;color:#94a3b8">Expands equipment socket capacity up to 4 crystals.</div>
+                </div>
+                <button class="arc-btn ${canSocket ? 'primary' : ''}" data-act="forgesocket" data-uid="${esc(sel.uid)}" ${canSocket ? '' : 'disabled'}>
+                  ${curSockets >= 4 ? 'Max 4/4' : `Socket (${Number(sockCost).toLocaleString()} G)`}
+                </button>
+              </div>
+              <div class="townhall-forge-row">
+                <div>
+                  <div style="font-weight:700;color:#e2e8f0">🔨 Reforge Magic Affixes</div>
+                  <div style="font-size:11px;color:#94a3b8">Re-rolls random affixes cleanly while keeping Blue Stone stats, Seal &amp; +${sel.plus || 0}!</div>
+                </div>
+                <button class="arc-btn ${canReforge ? 'primary' : ''}" data-act="forgereforge" data-uid="${esc(sel.uid)}" ${canReforge ? '' : 'disabled'}>
+                  ${refCost <= 0 ? 'Needs Magic+' : `Reforge (${Number(refCost).toLocaleString()} G)`}
+                </button>
+              </div>
+            </div>
+          </div>`;
+      }
+      bodyHTML = `
+        <div class="townhall-forge-layout">
+          <div>
+            <div class="arc-section-title">Select Equipment (${gear.length})</div>
+            <div class="inv-grid">${gridHTML}</div>
+          </div>
+          <div>
+            <div class="arc-section-title">Blacksmith Gorn's Masterwork Anvil</div>
+            ${detailHTML}
+          </div>
+        </div>`;
+    } else {
+      const bagPct = Math.min(100, Math.round((view.bag.size / view.bag.max) * 100));
+      const stPct = Math.min(100, Math.round((view.storage.size / view.storage.max) * 100));
+      const canBag = view.bag.cost > 0 && gold >= view.bag.cost;
+      const canSt = view.storage.cost > 0 && gold >= view.storage.cost;
+      const activePet = (host.getPets?.()?.sys || host?.game?.pets || this.ctx?.gameState?.pets)?.getActivePet?.() || null;
+      const canFeed = !!activePet && gold >= 2500;
+      bodyHTML = `
+        <div class="townhall-grid">
+          <div class="townhall-card ${view.bag.cost === 0 ? 'active' : ''}">
+            <div class="townhall-card-top">
+              <div class="townhall-icon">🎒</div>
+              <div style="flex:1"><div class="townhall-title">Adventurer's Satchel</div><div class="townhall-sub">Capacity: <b>${view.bag.size}</b> / ${view.bag.max} slots</div></div>
+            </div>
+            <div class="townhall-desc">Adds +${view.bag.step} permanent inventory slots so you can carry more loot, crystals, and potions.</div>
+            <div class="townhall-bar"><div style="width:${bagPct}%"></div></div>
+            <div class="townhall-foot">
+              <span class="townhall-cost ${!view.bag.cost || canBag ? '' : 'poor'}">${view.bag.cost ? `🪙 ${Number(view.bag.cost).toLocaleString()} G` : '✓ Maxed'}</span>
+              <button class="arc-btn ${canBag ? 'primary' : ''}" data-act="townexpandbag" ${canBag ? '' : 'disabled'}>
+                ${view.bag.cost ? `Expand +${view.bag.step} Slots` : 'Max 60 Slots'}
+              </button>
+            </div>
+          </div>
+          <div class="townhall-card ${view.storage.cost === 0 ? 'active' : ''}">
+            <div class="townhall-card-top">
+              <div class="townhall-icon">🏦</div>
+              <div style="flex:1"><div class="townhall-title">Oakhaven Storage Vault</div><div class="townhall-sub">Capacity: <b>${view.storage.size}</b> / ${view.storage.max} slots</div></div>
+            </div>
+            <div class="townhall-desc">Adds +${view.storage.step} permanent vault slots for set pieces, seals, and alchemy stones.</div>
+            <div class="townhall-bar"><div style="width:${stPct}%"></div></div>
+            <div class="townhall-foot">
+              <span class="townhall-cost ${!view.storage.cost || canSt ? '' : 'poor'}">${view.storage.cost ? `🪙 ${Number(view.storage.cost).toLocaleString()} G` : '✓ Maxed'}</span>
+              <button class="arc-btn ${canSt ? 'primary' : ''}" data-act="townexpandstorage" ${canSt ? '' : 'disabled'}>
+                ${view.storage.cost ? `Expand +${view.storage.step} Vault` : 'Max 88 Vault'}
+              </button>
+            </div>
+          </div>
+          <div class="townhall-card">
+            <div class="townhall-card-top">
+              <div class="townhall-icon">💎</div>
+              <div style="flex:1"><div class="townhall-title">Relic Emporium</div><div class="townhall-sub">High-Tier Coffers, Magic Stones &amp; Zerk Scrolls</div></div>
+            </div>
+            <div class="townhall-desc">Spend excess Gold on Mystery War Coffers (4,500 G), Imperial Relic Coffers (16,000 G), SRO Blue Stones, Astral Stones, and Zerk/EXP Scrolls.</div>
+            <div class="townhall-foot" style="justify-content:flex-end">
+              <button class="arc-btn primary" data-act="openshop" data-shop="curio">Browse Relic Emporium</button>
+            </div>
+          </div>
+          <div class="townhall-card">
+            <div class="townhall-card-top">
+              <div class="townhall-icon">${activePet ? (activePet.icon || '🐾') : '🐾'}</div>
+              <div style="flex:1"><div class="townhall-title">Companion Royal Feast</div><div class="townhall-sub">${activePet ? `${esc(activePet.name)} · Lv.${activePet.level}` : 'No summoned companion'}</div></div>
+            </div>
+            <div class="townhall-desc">Treat your active Silkroad companion to a Royal Feast for +500 Pet EXP to level up its passive &amp; combat power faster.</div>
+            <div class="townhall-foot">
+              <span class="townhall-cost ${canFeed ? '' : 'poor'}">🪙 2,500 G</span>
+              <button class="arc-btn ${canFeed ? 'primary' : ''}" data-act="petfeed" ${canFeed ? '' : 'disabled'}>🍖 Feed Royal Feast</button>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    const el = h('div', 'townhall-wrap');
+    el.innerHTML = `
+      <div class="townhall-banner">
+        <div>
+          <div style="font-weight:700;color:#fde68a;font-size:14px">Oakhaven Guild &amp; Town Treasury Services</div>
+          <div style="font-size:12px;color:#cbd5e1">Invest your hard-earned dungeon Gold into lasting power, extended shrines, masterwork gear &amp; carrying space.</div>
+        </div>
+        <div class="townhall-gold">Gold: <b>🪙 ${gold.toLocaleString()} G</b></div>
+      </div>
+      ${tabsHTML}
+      ${bodyHTML}
+      <div class="arc-msg"></div>
+    `;
+    this._frame('townhall', el);
   }
 
   dispose() {

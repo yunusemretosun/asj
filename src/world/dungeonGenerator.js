@@ -10,7 +10,8 @@ import {
   createTorchMesh,
   createTrapMesh,
   createSwitchMesh,
-  createStairsMesh
+  createStairsMesh,
+  disposeObject3D
 } from '../engine/models3d.js';
 import { buildVillage } from './villageBuilder.js';
 import {
@@ -34,6 +35,7 @@ import {
 } from './dungeonDecor.js';
 
 const LIGHT_POOL_SIZE = 8;
+export const MIN_DUNGEON_LEVEL = 10;
 
 // Tile constants for grid collision and minimap
 export const TILE = {
@@ -47,13 +49,26 @@ export const TILE = {
   WATER: 7
 };
 
-const SPECIAL_ROOM_CYCLE = ['vault', 'shrine', 'processional', 'trap_gallery'];
+export const SPECIAL_ROOM_CYCLE = ['vault', 'shrine', 'processional', 'trap_gallery', 'celestial_spring'];
 
 export const DUNGEON_THEMES = {
   village: {
     id: 'village',
     name: 'Oakhaven Village',
     subtitle: 'Safe Haven & Adventurer Hub',
+    decor: 'village',
+    atmosphere: {
+      fogColor: 0x1e293b,
+      fogNear: 75,
+      fogFar: 210,
+      ambientColor: 0xe2e8f0,
+      ambientIntensity: 1.25,
+      keyLightColor: 0xfffbeb,
+      keyLightIntensity: 1.45,
+      dust: false,
+      weather: 'petals',
+      weatherColor: 0xfbcfe8
+    },
     floorColor: 0x5c7a52,
     pathColor: 0x8b9bb0,
     wallColor: 0x73849a,
@@ -61,131 +76,503 @@ export const DUNGEON_THEMES = {
     torchColor: 0xffbb55,
     portalColor: 0x38bdf8,
     ambientColor: 0xdbeafe,
-    fogColor: 0x334155,
+    fogColor: 0x1e293b,
     element: 'physical',
     breakableTypes: ['barrel', 'crate']
   },
   cave: {
     id: 'cave',
-    name: 'Mine Outskirts',
-    subtitle: 'Timbered Galleries & Glittering Ore',
+    name: 'Donwhang Stone Cave',
+    subtitle: 'Donwhang Taş Mağarası — Webbed Galleries & Stone Relics',
     decor: 'cave',
-    atmosphere: { fogColor: 0x1d1810, fogNear: 24, fogFar: 70, ambientColor: 0xd9b98a, ambientIntensity: 0.95, keyLightColor: 0xffd9a0, keyLightIntensity: 1.25, dust: true, weather: 'spores', weatherColor: 0xfde68a },
-    floorColor: 0x7c6f5e,
-    altFloorColor: 0x6e6150,
-    wallColor: 0x94836d,
-    trimColor: 0xb5a186,
+    atmosphere: {
+      fogColor: 0x161c18,
+      fogNear: 24,
+      fogFar: 70,
+      ambientColor: 0xdcfce7,
+      ambientIntensity: 0.96,
+      keyLightColor: 0xfef08a,
+      keyLightIntensity: 1.25,
+      dust: true,
+      weather: 'spores',
+      weatherColor: 0x86efac
+    },
+    floorColor: 0x8a7965,
+    altFloorColor: 0x766754,
+    floorTexture: '/assets/sro/dun/tex/donhwang_floor.png',
+    wallTexture: '/assets/sro/dun/tex/donhwang_wall.png',
+    wallColor: 0x9c8870,
+    trimColor: 0xbba488,
     torchColor: 0xffaa44,
     portalColor: 0x38bdf8,
-    ambientColor: 0xfde68a,
+    ambientColor: 0xdcfce7,
+    fogColor: 0x161c18,
     element: 'physical',
     trapTypes: ['spikes', 'poison'],
-    breakableTypes: ['barrel', 'crate', 'crystal']
+    breakableTypes: ['barrel', 'crate']
   },
   crypt: {
     id: 'crypt',
-    name: 'Sealed Catacombs',
-    subtitle: 'Sarcophagi, Bone Niches & Candlelight',
+    name: 'Black Robber Stronghold',
+    subtitle: 'Karakoram & Black Robber Mağarası — Bandit Catacombs',
     decor: 'crypt',
-    atmosphere: { fogColor: 0x141a2a, fogNear: 22, fogFar: 64, ambientColor: 0x9fb4d8, ambientIntensity: 0.9, keyLightColor: 0xa9c4ff, keyLightIntensity: 1.1, dust: true, weather: 'snow', weatherColor: 0xbae6fd },
-    floorColor: 0x5a657d,
-    altFloorColor: 0x4d576e,
-    wallColor: 0x707d99,
-    trimColor: 0x94a3b8,
-    torchColor: 0x67e8f9,
-    portalColor: 0xc084fc,
-    ambientColor: 0xbae6fd,
+    atmosphere: {
+      fogColor: 0x101829,
+      fogNear: 21,
+      fogFar: 64,
+      ambientColor: 0xa5b4fc,
+      ambientIntensity: 0.92,
+      keyLightColor: 0x38bdf8,
+      keyLightIntensity: 1.18,
+      dust: true,
+      weather: 'mist',
+      weatherColor: 0x94a3b8
+    },
+    floorColor: 0x5c6b7e,
+    altFloorColor: 0x455263,
+    floorTexture: '/assets/sro/dun/tex/karakoram_floor.png',
+    wallTexture: '/assets/sro/dun/tex/karakoram_wall.png',
+    wallColor: 0x718196,
+    trimColor: 0x9db0c7,
+    torchColor: 0x38bdf8,
+    portalColor: 0x818cf8,
+    ambientColor: 0xa5b4fc,
+    fogColor: 0x101829,
     element: 'poison',
     trapTypes: ['spikes', 'poison', 'ice'],
-    breakableTypes: ['urn', 'barrel', 'crystal']
+    breakableTypes: ['urn', 'barrel', 'crate']
   },
   ruins: {
     id: 'ruins',
-    name: 'Sunken Temple',
-    subtitle: 'Broken Pillars & Creeping Vines',
+    name: "Qin-Shi Emperor's Tomb",
+    subtitle: 'Qin-Shi İmparatoru Mezarlığı — Terracotta & Jade Chambers',
     decor: 'ruins',
-    atmosphere: { fogColor: 0x10201c, fogNear: 26, fogFar: 74, ambientColor: 0xa8dcc4, ambientIntensity: 1.0, keyLightColor: 0xcfffe8, keyLightIntensity: 1.3, dust: true, weather: 'rain', weatherColor: 0x6ee7b7 },
-    floorColor: 0x56756c,
-    altFloorColor: 0x49665d,
-    wallColor: 0x6d9186,
-    trimColor: 0x99bfb3,
-    torchColor: 0x6ee7b7,
+    atmosphere: {
+      fogColor: 0x1a1a16,
+      fogNear: 24,
+      fogFar: 72,
+      ambientColor: 0xfef08a,
+      ambientIntensity: 1.05,
+      keyLightColor: 0xfde047,
+      keyLightIntensity: 1.30,
+      dust: true,
+      weather: 'incense',
+      weatherColor: 0xfde047
+    },
+    floorColor: 0x617d72,
+    altFloorColor: 0x4f695f,
+    floorTexture: '/assets/sro/dun/tex/qinshi_floor.png',
+    wallTexture: '/assets/sro/dun/tex/qinshi_wall.png',
+    wallColor: 0x78968a,
+    trimColor: 0xb8a369,
+    torchColor: 0xfde047,
     portalColor: 0x22d3ee,
-    ambientColor: 0xa7f3d0,
+    ambientColor: 0xfef08a,
+    fogColor: 0x1a1a16,
     element: 'lightning',
     trapTypes: ['spikes', 'lightning', 'ice'],
-    breakableTypes: ['urn', 'crate', 'crystal']
+    breakableTypes: ['urn', 'barrel', 'crate']
   },
   lava: {
     id: 'lava',
-    name: 'Ember Forge',
-    subtitle: 'Magma Cracks, Anvils & Hanging Chains',
+    name: 'Flame Mountain',
+    subtitle: 'Alev Dağı İçinde — Volcanic Basalt & Caldera Vaults',
     decor: 'lava',
-    atmosphere: { fogColor: 0x240d08, fogNear: 22, fogFar: 62, ambientColor: 0xffb487, ambientIntensity: 0.95, keyLightColor: 0xff9a5a, keyLightIntensity: 1.3, dust: false, weather: 'embers', weatherColor: 0xf97316 },
-    floorColor: 0x7a4942,
-    altFloorColor: 0x693d37,
-    wallColor: 0x96564d,
-    trimColor: 0xc26d61,
-    torchColor: 0xff7733,
+    atmosphere: {
+      fogColor: 0x261409,
+      fogNear: 22,
+      fogFar: 65,
+      ambientColor: 0xfed7aa,
+      ambientIntensity: 0.96,
+      keyLightColor: 0xfb923c,
+      keyLightIntensity: 1.30,
+      dust: true,
+      weather: 'sand',
+      weatherColor: 0xd97706
+    },
+    floorColor: 0x844b40,
+    altFloorColor: 0x6f3e35,
+    floorTexture: '/assets/sro/dun/tex/flame_floor.png',
+    wallTexture: '/assets/sro/dun/tex/flame_wall.png',
+    wallColor: 0x9b5a4d,
+    trimColor: 0xc97362,
+    torchColor: 0xf59e0b,
     portalColor: 0xfb923c,
     ambientColor: 0xfed7aa,
+    fogColor: 0x261409,
     element: 'fire',
     trapTypes: ['fire', 'spikes'],
-    breakableTypes: ['urn', 'barrel', 'crystal']
+    breakableTypes: ['urn', 'barrel', 'crate']
   },
   boss: {
     id: 'boss',
-    name: "Emperor's Tomb",
-    subtitle: 'Terracotta Legions & Quicksilver Rivers',
+    name: 'Jupiter & Shambhala Sanctum',
+    subtitle: 'Kutsal Su, Jupiter Tapınağı & Roc Dağı Zirvesi',
     decor: 'abyss',
-    atmosphere: { fogColor: 0x0f0e1c, fogNear: 22, fogFar: 66, ambientColor: 0xa6a0d8, ambientIntensity: 0.9, keyLightColor: 0x9ff0cf, keyLightIntensity: 1.15, dust: true, weather: 'spores', weatherColor: 0xd8b4fe },
-    floorColor: 0x634b82,
-    altFloorColor: 0x553f73,
-    wallColor: 0x7c5fa3,
-    trimColor: 0xa78bfa,
-    torchColor: 0xd8b4fe,
+    atmosphere: {
+      fogColor: 0x1c0d14,
+      fogNear: 21,
+      fogFar: 66,
+      ambientColor: 0xfecaca,
+      ambientIntensity: 0.98,
+      keyLightColor: 0xef4444,
+      keyLightIntensity: 1.28,
+      dust: true,
+      weather: 'embers',
+      weatherColor: 0xef4444
+    },
+    floorColor: 0x6d5687,
+    altFloorColor: 0x594570,
+    floorTexture: '/assets/sro/dun/tex/jupiter_floor.png',
+    wallTexture: '/assets/sro/dun/tex/jupiter_wall.png',
+    wallColor: 0x846aa1,
+    trimColor: 0xd4af37,
+    torchColor: 0xef4444,
     portalColor: 0xf87171,
-    ambientColor: 0xe9d5ff,
+    ambientColor: 0xfecaca,
+    fogColor: 0x1c0d14,
     element: 'dark',
     trapTypes: ['lightning', 'fire', 'spikes'],
-    breakableTypes: ['urn', 'crystal']
+    breakableTypes: ['urn', 'barrel']
   }
 };
 
 export const FLOOR_DEFINITIONS = [
   // recommendedLevel mirrors floorMonsterLevel(floor) in src/systems/inventory.js (monster level & loot tier)
-  { floor: 1, name: 'Bifrost Valley B1F', theme: 'cave', recommendedLevel: 1, isBossFloor: false, monsterTypes: ['mangyang', 'gyo_weasel', 'bigeye_ghost', 'slime'] },
-  { floor: 2, name: 'Jangan Outskirts B2F', theme: 'cave', recommendedLevel: 3, isBossFloor: false, monsterTypes: ['mangyang', 'gyo_weasel', 'tiger', 'goblin'] },
-  { floor: 3, name: 'Tiger Lair B3F', theme: 'cave', recommendedLevel: 5, isBossFloor: true, bossId: 'tiger_girl', bossName: 'Tiger Girl (Unique Boss)', monsterTypes: ['gyo_weasel', 'tiger', 'white_tiger', 'bigeye_ghost'] },
-  { floor: 4, name: 'Black Tiger Fortress B4F', theme: 'crypt', recommendedLevel: 9, isBossFloor: false, monsterTypes: ['bandit', 'bandit_archer', 'water_ghost', 'tombstone_ghost'] },
-  { floor: 5, name: 'Bandit Stronghold B5F', theme: 'crypt', recommendedLevel: 13, isBossFloor: false, monsterTypes: ['bandit', 'bandit_archer', 'ghost_bug', 'yeoha'] },
-  { floor: 6, name: 'Bandit Keep B6F', theme: 'crypt', recommendedLevel: 17, isBossFloor: true, bossId: 'bandit_lord', bossName: 'Black Tiger Bandit Leader (Unique Boss)', monsterTypes: ['bandit_archer', 'water_ghost', 'ghost_bug', 'yeoha'] },
-  { floor: 7, name: 'Qin-Shi Tomb Ruins B7F', theme: 'ruins', recommendedLevel: 21, isBossFloor: false, monsterTypes: ['stone_ghost', 'earth_ghost', 'chakji', 'gunpowder_ghost'] },
-  { floor: 8, name: 'Tomb of the Emperor B8F', theme: 'ruins', recommendedLevel: 25, isBossFloor: false, monsterTypes: ['stone_ghost', 'earth_ghost', 'chakji', 'tombstone_ghost'] },
-  { floor: 9, name: 'Sanctum of the Tao B9F', theme: 'ruins', recommendedLevel: 28, isBossFloor: true, bossId: 'earth_king', bossName: 'Earth Taoist King (Unique Boss)', monsterTypes: ['chakji', 'stone_ghost', 'gunpowder_ghost', 'earth_ghost'] },
-  { floor: 10, name: 'Taklamakan Wastes B10F', theme: 'lava', recommendedLevel: 32, isBossFloor: false, monsterTypes: ['white_tiger', 'blue_tiger', 'devil_bug', 'hyungno'] },
-  { floor: 11, name: 'Blue Mountain Caverns B11F', theme: 'lava', recommendedLevel: 36, isBossFloor: false, monsterTypes: ['white_tiger', 'blue_tiger', 'devil_bug', 'hyungno'] },
-  { floor: 12, name: 'Sovereign Pinnacle B12F', theme: 'lava', recommendedLevel: 40, isBossFloor: true, bossId: 'blue_tiger_boss', bossName: 'Blue Tiger Sovereign (Unique Boss)', monsterTypes: ['blue_tiger', 'devil_bug', 'hyungno', 'chakji'] },
-  { floor: 13, name: 'Niwa Netherworld B13F', theme: 'boss', recommendedLevel: 44, isBossFloor: false, monsterTypes: ['hyungno', 'chakji', 'gunpowder_ghost', 'blue_tiger'] },
-  { floor: 14, name: 'Temple of the Underworld B14F', theme: 'boss', recommendedLevel: 48, isBossFloor: false, monsterTypes: ['hyungno', 'chakji', 'gunpowder_ghost', 'stone_ghost'] },
-  { floor: 15, name: 'Heart of Hyeongcheon B15F', theme: 'boss', recommendedLevel: 52, isBossFloor: true, bossId: 'hyeongcheon', bossName: 'Hyeongcheon the Immortal (Unique Boss)', monsterTypes: ['hyungno', 'gunpowder_ghost', 'blue_tiger', 'earth_ghost'] }
+  {
+    floor: 1, name: 'Donwhang Stone Cave B1F', sroDungeon: 'donhwang', decorProfile: 'donhwang_b1', layoutStyle: 'cavern_branch',
+    subtitle: 'Donwhang Taş Mağarası -1. Kat — Entrance Galleries',
+    theme: 'cave', recommendedLevel: 1, isBossFloor: false,
+    portalStyle: 'jade_gate',
+    floorTexture: '/assets/sro/dun/tex/donhwang_floor.png', wallTexture: '/assets/sro/dun/tex/donhwang_wall.png',
+    themeOverride: { floorColor: 0x6f7368, altFloorColor: 0x5c6055, wallColor: 0x868a7c, trimColor: 0x7aa874, torchColor: 0x4ade80, portalColor: 0x38bdf8 },
+    atmosphere: { fogColor: 0x101815, fogNear: 20, fogFar: 62, ambientColor: 0xd1fae5, ambientIntensity: 0.98, keyLightColor: 0x6ee7b7, keyLightIntensity: 1.24, weather: 'spores', weatherColor: 0x6ee7b7 },
+    monsterTypes: ['mangyang', 'gyo_weasel', 'bigeye_ghost', 'tiger', 'bug_ghost', 'water_ghost', 'yeoha', 'work_earth_ghost']
+  },
+  {
+    floor: 2, name: 'Donwhang Stone Cave B2F — Earth Vaults', sroDungeon: 'donhwang', decorProfile: 'donhwang_b2', layoutStyle: 'cavern_branch',
+    subtitle: 'Donwhang Taş Mağarası -2. Kat — Earth Ghosts & Buddha Alcoves',
+    theme: 'cave', recommendedLevel: 3, isBossFloor: false,
+    portalStyle: 'amber_cavern',
+    floorTexture: '/assets/sro/dun/tex/donhwang_floor.png', wallTexture: '/assets/sro/dun/tex/donhwang_wall.png',
+    themeOverride: { floorColor: 0x7a6d59, altFloorColor: 0x635746, wallColor: 0x8f7e67, trimColor: 0xd4a359, torchColor: 0xf59e0b, portalColor: 0xfbbf24 },
+    atmosphere: { fogColor: 0x19150d, fogNear: 19, fogFar: 60, ambientColor: 0xfef3c7, ambientIntensity: 0.94, keyLightColor: 0xfbbf24, keyLightIntensity: 1.26, weather: 'spores', weatherColor: 0xf59e0b },
+    monsterTypes: ['bug_ghost', 'work_earth_ghost', 'soldier_earth_ghost', 'earth_ghost', 'stone_ghost', 'blindmon', 'yeoha', 'bandit', 'bandit_archer']
+  },
+  {
+    floor: 3, name: 'Donwhang Stone Cave B3F — Tiger Lair', sroDungeon: 'donhwang', decorProfile: 'donhwang_b3', layoutStyle: 'cavern_branch',
+    subtitle: 'Donwhang Taş Mağarası -3. Kat — Lair of Tiger Girl',
+    theme: 'cave', recommendedLevel: 5, isBossFloor: true, bossId: 'tiger_girl', bossName: 'Tiger Girl',
+    portalStyle: 'crimson_tiger',
+    floorTexture: '/assets/sro/dun/tex/donhwang_floor.png', wallTexture: '/assets/sro/dun/tex/donhwang_wall.png',
+    themeOverride: { floorColor: 0x6e5f58, altFloorColor: 0x574a44, wallColor: 0x857168, trimColor: 0xea580c, torchColor: 0xf97316, portalColor: 0xf97316 },
+    atmosphere: { fogColor: 0x1c110d, fogNear: 18, fogFar: 60, ambientColor: 0xfed7aa, ambientIntensity: 0.95, keyLightColor: 0xfb923c, keyLightIntensity: 1.32, weather: 'spores', weatherColor: 0xfb923c },
+    monsterTypes: ['soldier_earth_ghost', 'blindmon', 'nachal', 'yacha', 'demon_horse', 'taese', 'chakji', 'stone_ghost', 'earth_ghost']
+  },
+  {
+    floor: 4, name: 'Black Robber Den B4F', sroDungeon: 'karakoram', decorProfile: 'karakoram_b4', layoutStyle: 'stronghold_wing',
+    subtitle: 'Black Robber Mağarası — Oasis & Karakorum Raider Outpost',
+    theme: 'crypt', recommendedLevel: 9, isBossFloor: false,
+    portalStyle: 'bandit_lantern',
+    floorTexture: '/assets/sro/dun/tex/karakoram_floor.png', wallTexture: '/assets/sro/dun/tex/karakoram_wall.png',
+    themeOverride: { floorColor: 0x6d6157, altFloorColor: 0x574c44, wallColor: 0x847467, trimColor: 0xd97706, torchColor: 0xf59e0b, portalColor: 0x38bdf8 },
+    atmosphere: { fogColor: 0x17131c, fogNear: 20, fogFar: 62, ambientColor: 0xe2e8f0, ambientIntensity: 0.95, keyLightColor: 0xfde68a, keyLightIntensity: 1.24, weather: 'mist', weatherColor: 0x94a3b8 },
+    monsterTypes: ['black_robber', 'black_robber_archer', 'red_eye_ghost', 'ong', 'scorpion', 'red_scorpion', 'desert_trunkz', 'bandit', 'bandit_archer']
+  },
+  {
+    floor: 5, name: 'Karakoram Dark Cave B5F', sroDungeon: 'karakoram', decorProfile: 'karakoram_b5', layoutStyle: 'stronghold_wing',
+    subtitle: 'Kara Mağara — Frozen Salt Crags & Yeti Caverns',
+    theme: 'crypt', recommendedLevel: 13, isBossFloor: false,
+    portalStyle: 'frost_runes',
+    floorTexture: '/assets/sro/dun/tex/karakoram_floor.png', wallTexture: '/assets/sro/dun/tex/karakoram_wall.png',
+    themeOverride: { floorColor: 0x58697c, altFloorColor: 0x465464, wallColor: 0x6f859c, trimColor: 0x38bdf8, torchColor: 0x67e8f9, portalColor: 0x67e8f9 },
+    atmosphere: { fogColor: 0x0d1824, fogNear: 19, fogFar: 60, ambientColor: 0xcffafe, ambientIntensity: 0.98, keyLightColor: 0x7dd3fc, keyLightIntensity: 1.26, weather: 'mist', weatherColor: 0xbae6fd },
+    monsterTypes: ['ishade', 'planar', 'yeti', 'penon_fighter', 'penon_warrior', 'snow_spider', 'white_spider', 'blue_tiger', 'white_tiger']
+  },
+  {
+    floor: 6, name: 'Black Robber Citadel B6F', sroDungeon: 'karakoram', decorProfile: 'karakoram_b6', layoutStyle: 'stronghold_wing',
+    subtitle: 'Karakoram Stronghold — Domain of Uruchi',
+    theme: 'crypt', recommendedLevel: 17, isBossFloor: true, bossId: 'uruchi', bossName: 'Uruchi',
+    portalStyle: 'obsidian_uruchi',
+    floorTexture: '/assets/sro/dun/tex/karakoram_floor.png', wallTexture: '/assets/sro/dun/tex/karakoram_wall.png',
+    themeOverride: { floorColor: 0x4f495f, altFloorColor: 0x3f394c, wallColor: 0x685f7d, trimColor: 0xa855f7, torchColor: 0xc084fc, portalColor: 0xa855f7 },
+    atmosphere: { fogColor: 0x160f24, fogNear: 18, fogFar: 60, ambientColor: 0xe9d5ff, ambientIntensity: 0.94, keyLightColor: 0xc084fc, keyLightIntensity: 1.28, weather: 'mist', weatherColor: 0xc4b5fd },
+    monsterTypes: ['red_scorpion', 'desert_trunkz', 'big_spider', 'yeowa', 'black_robber', 'black_robber_archer', 'penon_fighter', 'penon_warrior', 'yeti', 'white_tiger', 'blue_tiger', 'gunpowder_ghost']
+  },
+  {
+    floor: 7, name: "Qin-Shi Emperor's Tomb B1F", sroDungeon: 'qinshi', decorProfile: 'qinshi_b7', layoutStyle: 'tomb_grid',
+    subtitle: 'Qin-Shi İmparatoru Mezarlığı Seviye 1 — Terracotta Galleries',
+    theme: 'ruins', recommendedLevel: 21, isBossFloor: false,
+    portalStyle: 'terracotta_seal',
+    floorTexture: '/assets/sro/dun/tex/qinshi_floor.png', wallTexture: '/assets/sro/dun/tex/qinshi_wall.png',
+    themeOverride: { floorColor: 0x67756a, altFloorColor: 0x546157, wallColor: 0x7f8f83, trimColor: 0xc8a464, torchColor: 0xfde047, portalColor: 0x22d3ee },
+    atmosphere: { fogColor: 0x171813, fogNear: 20, fogFar: 62, ambientColor: 0xfef08a, ambientIntensity: 0.96, keyLightColor: 0xfde047, keyLightIntensity: 1.26, weather: 'incense', weatherColor: 0xfef08a },
+    monsterTypes: ['tombstone_ghost', 'tomb_stone_spirit', 'tomb_bug_ghost', 'bomb_stone_ghost', 'qinshi_tombstone', 'tomb_soldier', 'tomb_archer', 'tomb_general', 'royal_soldier']
+  },
+  {
+    floor: 8, name: "Qin-Shi Emperor's Tomb B2F", sroDungeon: 'qinshi', decorProfile: 'qinshi_b8', layoutStyle: 'tomb_grid',
+    subtitle: 'Qin-Shi İmparatoru Mezarlığı Seviye 2 — Serpent Lantern Wing',
+    theme: 'ruins', recommendedLevel: 25, isBossFloor: false,
+    portalStyle: 'jade_serpent',
+    floorTexture: '/assets/sro/dun/tex/qinshi_floor.png', wallTexture: '/assets/sro/dun/tex/qinshi_wall.png',
+    themeOverride: { floorColor: 0x4f7668, altFloorColor: 0x406155, wallColor: 0x669182, trimColor: 0x34d399, torchColor: 0x34d399, portalColor: 0x34d399 },
+    atmosphere: { fogColor: 0x0e1c18, fogNear: 19, fogFar: 62, ambientColor: 0xa7f3d0, ambientIntensity: 0.95, keyLightColor: 0x6ee7b7, keyLightIntensity: 1.28, weather: 'incense', weatherColor: 0x34d399 },
+    monsterTypes: ['snake_slave', 'snake_man', 'snake_demon', 'snake_general', 'snake_woman', 'black_snake', 'tomb_soldier', 'tomb_archer', 'devil_bug']
+  },
+  {
+    floor: 9, name: "Qin-Shi Emperor's Tomb B3F — Snake Sanctum", sroDungeon: 'qinshi', decorProfile: 'qinshi_b9', layoutStyle: 'tomb_grid',
+    subtitle: 'Qin-Shi Mezarlığı Merkez Mağara — Sanctum of Isyutaru',
+    theme: 'ruins', recommendedLevel: 28, isBossFloor: true, bossId: 'isyutaru', bossName: 'Isyutaru',
+    portalStyle: 'imperial_tetra',
+    floorTexture: '/assets/sro/dun/tex/qinshi_floor.png', wallTexture: '/assets/sro/dun/tex/qinshi_wall.png',
+    themeOverride: { floorColor: 0x5c687a, altFloorColor: 0x4a5463, wallColor: 0x738296, trimColor: 0xfacc15, torchColor: 0x38bdf8, portalColor: 0x38bdf8 },
+    atmosphere: { fogColor: 0x101826, fogNear: 18, fogFar: 63, ambientColor: 0xbae6fd, ambientIntensity: 0.97, keyLightColor: 0x60a5fa, keyLightIntensity: 1.32, weather: 'incense', weatherColor: 0x67e8f9 },
+    monsterTypes: ['east_guardian', 'west_guardian', 'north_guardian', 'south_guardian', 'royal_soldier', 'tomb_general', 'snake_general', 'snake_woman', 'hyungno']
+  },
+  {
+    floor: 10, name: 'Flame Mountain B10F — Ash Passage', sroDungeon: 'flame', decorProfile: 'flame_b10', layoutStyle: 'caldera_ring',
+    subtitle: 'Alev Dağı İçinde — Scorched Taklamakan Border',
+    theme: 'lava', recommendedLevel: 32, isBossFloor: false,
+    portalStyle: 'ember_caldera',
+    floorTexture: '/assets/sro/dun/tex/flame_floor.png', wallTexture: '/assets/sro/dun/tex/flame_wall.png',
+    themeOverride: { floorColor: 0x875043, altFloorColor: 0x6f4136, wallColor: 0x9e5f50, trimColor: 0xf59e0b, torchColor: 0xfb923c, portalColor: 0xfb923c },
+    atmosphere: { fogColor: 0x261409, fogNear: 21, fogFar: 64, ambientColor: 0xfed7aa, ambientIntensity: 0.96, keyLightColor: 0xfb923c, keyLightIntensity: 1.30, weather: 'sand', weatherColor: 0xf59e0b },
+    monsterTypes: ['flame_ghost', 'flame_evil', 'flame_salamander', 'flame_witch', 'flame_archer', 'ghost_bug', 'devil_bug']
+  },
+  {
+    floor: 11, name: 'Flame Mountain B11F — Magma Galleries', sroDungeon: 'flame', decorProfile: 'flame_b11', layoutStyle: 'caldera_ring',
+    subtitle: 'Alev Dağı İçinde — Volcanic Basalt & Death Bone Necropolis',
+    theme: 'lava', recommendedLevel: 36, isBossFloor: false,
+    portalStyle: 'ossuary_pyre',
+    floorTexture: '/assets/sro/dun/tex/flame_floor.png', wallTexture: '/assets/sro/dun/tex/flame_wall.png',
+    themeOverride: { floorColor: 0x6f424b, altFloorColor: 0x59343c, wallColor: 0x87505b, trimColor: 0xef4444, torchColor: 0xf87171, portalColor: 0xf43f5e },
+    atmosphere: { fogColor: 0x240c10, fogNear: 20, fogFar: 64, ambientColor: 0xfecdd3, ambientIntensity: 0.94, keyLightColor: 0xfb7185, keyLightIntensity: 1.28, weather: 'sand', weatherColor: 0xf43f5e },
+    monsterTypes: ['bone_soldier', 'bone_hunter', 'bone_mage', 'bone_general', 'bone_lord', 'devil_eye', 'edimmu', 'death_kara', 'hyeongcheon']
+  },
+  {
+    floor: 12, name: 'Flame Mountain B12F — Flame Sprite Gorge', sroDungeon: 'flame', decorProfile: 'flame_b12', layoutStyle: 'caldera_ring',
+    subtitle: 'Flame Sprite Geçidi — Sovereign Domain of Lord Yarkan',
+    theme: 'lava', recommendedLevel: 40, isBossFloor: true, bossId: 'lord_yarkan', bossName: 'Lord Yarkan',
+    portalStyle: 'sovereign_blaze',
+    floorTexture: '/assets/sro/dun/tex/flame_floor.png', wallTexture: '/assets/sro/dun/tex/flame_wall.png',
+    themeOverride: { floorColor: 0x803d2e, altFloorColor: 0x663024, wallColor: 0x994a38, trimColor: 0xfbbf24, torchColor: 0xfacc15, portalColor: 0xfbbf24 },
+    atmosphere: { fogColor: 0x291106, fogNear: 19, fogFar: 66, ambientColor: 0xfef08a, ambientIntensity: 0.98, keyLightColor: 0xf59e0b, keyLightIntensity: 1.35, weather: 'sand', weatherColor: 0xfbbf24 },
+    monsterTypes: ['flame_captain', 'flame_adjutant', 'flame_cow_king', 'flame_giant', 'flame_gigantic', 'flame_crazy', 'flame_witch', 'flame_archer', 'hyungno', 'hyeongcheon']
+  },
+  {
+    floor: 13, name: "Holy Water Temple B13F — Pharaoh's Hall", sroDungeon: 'holywater', decorProfile: 'holywater', layoutStyle: 'basilica_wings',
+    subtitle: 'Kutsal Su Tapınağı & Pharaoh Mezarı — Halls of Horus, Isis & Seth',
+    theme: 'boss', recommendedLevel: 44, isBossFloor: false,
+    portalStyle: 'solar_pharaoh',
+    floorTexture: '/assets/sro/dun/tex/holywater_floor.png', wallTexture: '/assets/sro/dun/tex/holywater_wall.png',
+    themeOverride: { floorColor: 0x87744b, altFloorColor: 0x6e5d3a, wallColor: 0xa38e5e, trimColor: 0xd4af37, torchColor: 0x38bdf8, portalColor: 0x22d3ee },
+    atmosphere: { fogColor: 0x101c26, fogNear: 21, fogFar: 66, ambientColor: 0xfef3c7, ambientIntensity: 0.99, keyLightColor: 0x67e8f9, keyLightIntensity: 1.30, weather: 'embers', weatherColor: 0x38bdf8 },
+    monsterTypes: ['sand_mummy', 'aker', 'anubis', 'heron', 'keisas', 'apriest', 'spector', 'sphinx', 'sandman', 'sd_raider', 'bastet', 'mont', 'sekhmet', 'haroeris', 'osiris', 'isis', 'neith', 'selkis', 'seth']
+  },
+  {
+    floor: 14, name: 'Jupiter Temple B14F — Hall of Worship', sroDungeon: 'jupiter', decorProfile: 'jupiter', layoutStyle: 'basilica_wings',
+    subtitle: 'Jupiter Tapınağı & Tanrıların Bahçesi — Sanctum of the Pantheon',
+    theme: 'boss', recommendedLevel: 48, isBossFloor: false,
+    portalStyle: 'olympus_lightning',
+    floorTexture: '/assets/sro/dun/tex/jupiter_floor.png', wallTexture: '/assets/sro/dun/tex/jupiter_wall.png',
+    themeOverride: { floorColor: 0x736c82, altFloorColor: 0x5c5669, wallColor: 0x938ca3, trimColor: 0xfacc15, torchColor: 0xfde047, portalColor: 0x60a5fa },
+    atmosphere: { fogColor: 0x141628, fogNear: 21, fogFar: 66, ambientColor: 0xe0e7ff, ambientIntensity: 0.99, keyLightColor: 0xfef08a, keyLightIntensity: 1.32, weather: 'embers', weatherColor: 0xfde047 },
+    monsterTypes: ['babilion', 'mino', 'griffin', 'charm_witch', 'fear_serpent', 'fanaticism', 'desire_watcher', 'devil_dog', 'dark_dog', 'devil_dark', 'immortal_warden', 'nike_lion', 'the_earth', 'yuno', 'jupiter_sentinel', 'baal']
+  },
+  {
+    floor: 15, name: "Shambhala Abyss B15F — Guardian's Chamber", sroDungeon: 'demon', decorProfile: 'demon', layoutStyle: 'tomb_grid',
+    subtitle: 'Koruyucunun Odası — Demon Shaitan Guards Roc Mountain Summit',
+    theme: 'boss', recommendedLevel: 52, isBossFloor: true, bossId: 'demon_shaitan', bossName: 'Demon Shaitan',
+    portalStyle: 'shambhala_void',
+    floorTexture: '/assets/sro/dun/tex/demon_floor.png', wallTexture: '/assets/sro/dun/tex/demon_wall.png',
+    themeOverride: { floorColor: 0x613c4f, altFloorColor: 0x4c2d3d, wallColor: 0x7a4a62, trimColor: 0xf87171, torchColor: 0xef4444, portalColor: 0xa855f7 },
+    atmosphere: { fogColor: 0x21090e, fogNear: 20, fogFar: 66, ambientColor: 0xfecaca, ambientIntensity: 0.96, keyLightColor: 0xef4444, keyLightIntensity: 1.32, weather: 'embers', weatherColor: 0xef4444 },
+    monsterTypes: ['wendigo', 'succubus', 'void_devil', 'dark_guardian', 'goat_demon', 'garm', 'shamoot', 'underworld_knight', 'shambhala_mage', 'narun', 'dm_soldier', 'andras']
+  },
+  {
+    floor: 16, name: 'Mountain Roc Peak — Sky Nest Sanctum', sroDungeon: 'roc_nest', decorProfile: 'roc_nest', layoutStyle: 'roc_sanctum',
+    subtitle: 'Roc Dağı Zirvesi (Roc Odası) — Final Confrontation',
+    theme: 'boss', recommendedLevel: 58, isBossFloor: true, isFinalBossFloor: true, bossId: 'roc', bossName: 'Roc',
+    portalStyle: 'celestial_roc',
+    floorTexture: '/assets/sro/dun/tex/roc_floor.png', wallTexture: '/assets/sro/dun/tex/roc_wall.png',
+    themeOverride: { floorColor: 0x766c8f, altFloorColor: 0x5e5573, wallColor: 0x9185ad, trimColor: 0xfbbf24, torchColor: 0xfde047, portalColor: 0x38bdf8 },
+    atmosphere: { fogColor: 0x19142b, fogNear: 24, fogFar: 74, ambientColor: 0xfef3c7, ambientIntensity: 1.02, keyLightColor: 0xfbbf24, keyLightIntensity: 1.38, weather: 'embers', weatherColor: 0xfbbf24 },
+    monsterTypes: ['rocky', 'feather_mask', 'wing_tribe', 'wing_tribe_spear', 'mountain_spirit', 'bone_roc', 'antelope', 'mountain_goat', 'devil_saytan']
+  },
+  // Secret floors accessible via Secret Rift Portals in vault / special rooms
+  {
+    floor: 101, name: 'Forgotten World — Togui Village S1F', sroDungeon: 'togui', decorProfile: 'togui', layoutStyle: 'cavern_branch',
+    subtitle: 'Unutulan Dünya (Togui Köyü) — Cursed Doll Shrine',
+    theme: 'cave', recommendedLevel: 15, isBossFloor: false, isSecretFloor: true, returnFloor: 4,
+    portalStyle: 'togui_mask',
+    floorTexture: '/assets/sro/dun/tex/togui_floor.png', wallTexture: '/assets/sro/dun/tex/donhwang_wall.png',
+    themeOverride: { floorColor: 0x6b7c68, altFloorColor: 0x576654, wallColor: 0x7d8c78, trimColor: 0xc97b42, torchColor: 0xf97316, portalColor: 0xec4899 },
+    atmosphere: { fogColor: 0x18130e, fogNear: 19, fogFar: 60, ambientColor: 0xfde68a, ambientIntensity: 0.94, keyLightColor: 0xfb923c, keyLightIntensity: 1.25, weather: 'spores', weatherColor: 0xf97316 },
+    monsterTypes: ['togui_doll', 'togui_boom', 'togui_soldier', 'togui_magic', 'togui_strong', 'togui_general', 'togui_elder', 'togui_chieftain']
+  },
+  {
+    floor: 102, name: 'Forgotten World — Shipwreck Hold S2F', sroDungeon: 'wreck', decorProfile: 'wreck', layoutStyle: 'stronghold_wing',
+    subtitle: 'Unutulan Dünya (Batık Kalyon) — Ghost Captain Vault',
+    theme: 'crypt', recommendedLevel: 30, isBossFloor: false, isSecretFloor: true, returnFloor: 7,
+    portalStyle: 'ghost_galleon',
+    floorTexture: '/assets/sro/dun/tex/wreck_floor.png', wallTexture: '/assets/sro/dun/tex/wreck_wall.png',
+    themeOverride: { floorColor: 0x6b5a4b, altFloorColor: 0x57483b, wallColor: 0x826d5c, trimColor: 0x38bdf8, torchColor: 0x38bdf8, portalColor: 0x38bdf8 },
+    atmosphere: { fogColor: 0x0d1a22, fogNear: 19, fogFar: 62, ambientColor: 0xbae6fd, ambientIntensity: 0.96, keyLightColor: 0x38bdf8, keyLightIntensity: 1.26, weather: 'mist', weatherColor: 0x38bdf8 },
+    monsterTypes: ['ghost_pirate', 'ghost_marauder', 'ghost_beast', 'ghost_curse', 'ghost_gluttony', 'ghost_specter', 'ghost_seiren', 'ghost_undine', 'ghost_king_nipper', 'ghost_commander', 'ghost_wreck']
+  },
+  {
+    floor: 103, name: 'Qin-Shi Tomb B6F — Chamber of Medusa S3F', sroDungeon: 'qinshi_b6', decorProfile: 'qinshi_b6', layoutStyle: 'tomb_grid',
+    subtitle: 'Qin-Shi İmparatoru Mezarlığı Seviye 6 — Beyaz Yılan Tapınağı',
+    theme: 'ruins', recommendedLevel: 45, isBossFloor: true, bossId: 'medusa', bossName: 'Medusa', isSecretFloor: true, returnFloor: 10,
+    portalStyle: 'white_viper',
+    floorTexture: '/assets/sro/dun/tex/qinshi_floor.png', wallTexture: '/assets/sro/dun/tex/qinshi_wall.png',
+    themeOverride: { floorColor: 0x4b7063, altFloorColor: 0x3d5c51, wallColor: 0x658f80, trimColor: 0x34d399, torchColor: 0x34d399, portalColor: 0x10b981 },
+    atmosphere: { fogColor: 0x0a1e17, fogNear: 18, fogFar: 64, ambientColor: 0xd1fae5, ambientIntensity: 0.98, keyLightColor: 0x34d399, keyLightIntensity: 1.32, weather: 'incense', weatherColor: 0x10b981 },
+    monsterTypes: ['snake_slave', 'snake_man', 'snake_demon', 'snake_general', 'snake_woman', 'black_snake', 'tomb_general', 'royal_soldier', 'east_guardian', 'west_guardian', 'north_guardian', 'south_guardian']
+  }
 ];
+
+export const CHALLENGE_TYPES = {
+  survival_60: {
+    id: 'survival_60',
+    name: '60s Swarm Survival',
+    duration: 60,
+    waveInterval: 4.5,
+    waveCount: 5,
+    maxAlive: 16,
+    eliteChance: 0.35,
+    mobHpMult: 1.45,
+    mobAtkMult: 1.28,
+    mobSpdMult: 1.12,
+    hazardElement: 'physical',
+    hazardInterval: 4.8,
+    hazardDamageMult: 1.15,
+    overdriveAt: 18,
+    overdriveGiant: true,
+    color: 0xf59e0b,
+    chestTiers: ['rare', 'epic', 'epic'],
+    desc: 'Endure escalating ambushes & shockwaves for 60s — Overdrive unleashes an Executioner Giant!'
+  },
+  blitz_45: {
+    id: 'blitz_45',
+    name: '45s Storm Blitz',
+    duration: 45,
+    waveInterval: 3.4,
+    waveCount: 6,
+    maxAlive: 18,
+    eliteChance: 0.5,
+    mobHpMult: 1.55,
+    mobAtkMult: 1.38,
+    mobSpdMult: 1.18,
+    hazardElement: 'lightning',
+    hazardInterval: 3.8,
+    hazardDamageMult: 1.3,
+    overdriveAt: 16,
+    overdriveGiant: true,
+    color: 0xa855f7,
+    chestTiers: ['rare', 'epic', 'boss'],
+    desc: 'Survive relentless rapid-fire demon & lightning waves for 45 seconds to win a Boss Chest!'
+  },
+  unique_trial: {
+    id: 'unique_trial',
+    name: '60s Dual Warden Trial',
+    duration: 60,
+    waveInterval: 4.8,
+    waveCount: 4,
+    maxAlive: 14,
+    spawnGiant: true,
+    wardenCount: 2,
+    eliteChance: 0.45,
+    mobHpMult: 1.65,
+    mobAtkMult: 1.42,
+    mobSpdMult: 1.16,
+    hazardElement: 'fire',
+    hazardInterval: 4.0,
+    hazardDamageMult: 1.35,
+    overdriveAt: 20,
+    color: 0xef4444,
+    chestTiers: ['epic', 'epic', 'boss'],
+    desc: 'Vanquish Twin Shadow Wardens amidst falling meteors — or endure 60 seconds!'
+  },
+  inferno_crucible: {
+    id: 'inferno_crucible',
+    name: '65s Hellfire Crucible',
+    duration: 65,
+    waveInterval: 4.0,
+    waveCount: 6,
+    maxAlive: 18,
+    eliteChance: 0.52,
+    mobHpMult: 1.72,
+    mobAtkMult: 1.46,
+    mobSpdMult: 1.16,
+    hazardElement: 'fire',
+    hazardInterval: 3.1,
+    hazardDamageMult: 1.45,
+    overdriveAt: 20,
+    overdriveGiant: true,
+    color: 0xf97316,
+    chestTiers: ['epic', 'boss', 'boss'],
+    desc: 'Taklamakan magma rains across the coliseum while fiery elites converge from every gate!'
+  },
+  cursed_obelisk: {
+    id: 'cursed_obelisk',
+    name: '70s Qin-Shi Cursed Siege',
+    duration: 70,
+    waveInterval: 4.2,
+    waveCount: 6,
+    maxAlive: 18,
+    eliteChance: 0.55,
+    mobHpMult: 1.85,
+    mobAtkMult: 1.45,
+    mobSpdMult: 1.15,
+    hazardElement: 'ice',
+    hazardInterval: 3.5,
+    hazardDamageMult: 1.35,
+    overdriveAt: 22,
+    overdriveGiant: true,
+    color: 0x06b6d4,
+    chestTiers: ['epic', 'epic', 'boss'],
+    desc: 'Armored terracotta champions & freezing obelisk pulses test endurance for 70 seconds!'
+  },
+  blood_coliseum: {
+    id: 'blood_coliseum',
+    name: '55s Abyssal Coliseum',
+    duration: 55,
+    waveInterval: 3.6,
+    waveCount: 5,
+    maxAlive: 16,
+    spawnGiant: true,
+    wardenCount: 1,
+    eliteChance: 0.65,
+    mobHpMult: 1.75,
+    mobAtkMult: 1.52,
+    mobSpdMult: 1.22,
+    hazardElement: 'dark',
+    hazardInterval: 3.4,
+    hazardDamageMult: 1.4,
+    overdriveAt: 18,
+    overdriveGiant: true,
+    color: 0xdc2626,
+    chestTiers: ['epic', 'boss', 'boss'],
+    desc: 'High-lethality Elite Coliseum crowned by an Abyssal Warden and shadow shockwaves!'
+  }
+};
 
 export const VILLAGE_NPCS = [
   {
     id: 'chief',
     npcId: 'chief',
     name: 'Elder Aldric',
-    title: 'Village Chief',
+    title: 'Jangan Governor & Questmaster',
     role: 'chief',
     actionType: 'quest',
-    x: 0,
-    z: -7.5,
-    rotationY: 0,
-    prompt: 'Talk to Elder Aldric (Quests & Lore) [E]',
+    x: -9.5,
+    z: -34.5,
+    rotationY: 0.45,
+    prompt: 'Speak with Elder Aldric (Quests, Chronicle & Bounties) [E]',
     dialogue: [
-      'Welcome to Oakhaven, traveler. Dark tremors beneath the old ruins have awakened the dungeon monsters.',
-      'Speak with our merchants, hone your skills, and descend through the portal when you are ready.'
+      'Welcome to the walled metropolis of Jangan, adventurer. Evil chi rises from the ancient Chin Tomb and Donwhang ruins beyond the north pass.',
+      'Prove your strength against the Jangan wilds up to Level 10, clear every dungeon floor completely to break the ancient seals, and aid our guild masters.'
     ]
   },
   {
@@ -193,15 +580,15 @@ export const VILLAGE_NPCS = [
     npcId: 'blacksmith',
     shopId: 'blacksmith',
     name: 'Blacksmith Gorn',
-    title: 'Weapons & Armor',
+    title: 'Master Weapons & Armor Smith',
     role: 'blacksmith',
     actionType: 'shop',
-    x: -9.5,
-    z: -3.0,
-    rotationY: Math.PI * 0.35,
-    prompt: 'Trade with Blacksmith Gorn (Weapons & Armor) [E]',
+    x: -16.5,
+    z: 14.5,
+    rotationY: Math.PI * 0.45,
+    prompt: 'Trade with Blacksmith Gorn (Weapons, Shields & Armor) [E]',
     dialogue: [
-      'Need cold steel for the dark below? My forge burns day and night.'
+      'Forged in the western fires of Jangan! Upgrade your cold steel here before facing White Tigers or entering Donwhang Stone Cave.'
     ]
   },
   {
@@ -209,30 +596,30 @@ export const VILLAGE_NPCS = [
     npcId: 'merchant',
     shopId: 'merchant',
     name: 'Alchemist Elara',
-    title: 'Potions & Scrolls',
+    title: 'Pharmacy & Caravan Provisions',
     role: 'merchant',
     actionType: 'shop',
-    x: 9.5,
-    z: -3.0,
-    rotationY: -Math.PI * 0.35,
-    prompt: 'Trade with Alchemist Elara (Potions & Scrolls) [E]',
+    x: 16.5,
+    z: 14.5,
+    rotationY: -Math.PI * 0.45,
+    prompt: 'Trade with Alchemist Elara (Potions, Elixirs & Scrolls) [E]',
     dialogue: [
-      'Never step into the dungeon without potions and a Return Scroll!'
+      'Every seasoned traveler on the Silk Road carries Return Scrolls, Haste Drafts, and ample potions before leaving the city gates!'
     ]
   },
   {
     id: 'trainer',
     npcId: 'trainer',
     name: 'Battle Master Kael',
-    title: 'Skill Master',
+    title: 'Martial Arts & Skill Master',
     role: 'skill_master',
     actionType: 'skills',
-    x: -8.5,
-    z: 5.5,
+    x: -19.5,
+    z: 32.0,
     rotationY: Math.PI * 0.65,
-    prompt: 'Train with Battle Master Kael (Skill Tree [K / E])',
+    prompt: 'Train with Battle Master Kael (Skills, Passives & Quests) [K / E]',
     dialogue: [
-      'Strength alone will not save you in the deeper floors. Master both Battle and Passive arts!'
+      'Even the Mangyang and Yeoha of Jangan strike with elemental techniques. Master your active combos and passive stances here!'
     ]
   },
   {
@@ -240,30 +627,77 @@ export const VILLAGE_NPCS = [
     npcId: 'composer',
     shopId: 'composer',
     name: 'Crystal Sage Lyra',
-    title: 'Composing Master',
+    title: 'Alchemy & +N Enhancement Sage',
     role: 'composer',
     actionType: 'compose',
-    x: 8.5,
-    z: 5.5,
+    x: 18.0,
+    z: -20.5,
     rotationY: -Math.PI * 0.65,
-    prompt: 'Consult Crystal Sage Lyra (Composing Station [O / E])',
+    prompt: 'Consult Crystal Sage Lyra (Alchemy +N & Elixirs [O / E])',
     dialogue: [
-      'Every crystal holds dormant elemental power. Combine crystals or infuse your gear!'
+      'Bring Elixirs, Luck Powders, and Magic Stones to elevate your gear toward Seal of Sun brilliance!'
     ]
   },
   {
     id: 'storage',
     npcId: 'storage',
     name: 'Quartermaster Bram',
-    title: 'Storage & Supplies',
+    title: 'General Shared Vault Steward',
     role: 'storage',
     actionType: 'storage',
-    x: -3.8,
-    z: 8.5,
-    rotationY: Math.PI,
-    prompt: 'Speak with Quartermaster Bram (Inventory & Save) [E]',
+    x: -9.5,
+    z: 22.0,
+    rotationY: 0.25,
+    prompt: 'Open General Shared Storage with Quartermaster Bram [E]',
     dialogue: [
-      'Running out of room in your pack? Keep your spare gear safe and chronicle your progress.'
+      'Our Caravan Storage Chests and Ledger link across every character in your realm—store items, excess gold, and crafting materials safely.'
+    ]
+  },
+  {
+    id: 'pet_merchant',
+    npcId: 'pet_merchant',
+    name: 'Beast Tamer Zara',
+    title: 'Silkroad Companion & Stables Master',
+    role: 'merchant',
+    actionType: 'pet_shop',
+    x: -34.5,
+    z: 26.5,
+    rotationY: 0.45,
+    prompt: 'Speak with Beast Tamer Zara (Pets & Quests) [E]',
+    dialogue: [
+      'Fine Silkroad companions, tamed along the Jangan canals! Loyal grab spirits and ferocious tiger cubs await beside the western stables.'
+    ]
+  },
+  {
+    id: 'accessory_trader',
+    npcId: 'accessory_trader',
+    shopId: 'accessory_trader',
+    name: 'Specialty Trader Jodaesan',
+    title: 'Silk Jewels, Talismans & Coffers',
+    role: 'merchant',
+    actionType: 'shop',
+    x: 21.5,
+    z: 28.5,
+    rotationY: -0.55,
+    prompt: 'Trade with Specialty Trader Jodaesan (Accessories & Coffers) [E]',
+    dialogue: [
+      'Finest jade rings, amulets, Magic Stones, and sealed coffers from Changan caravans! Take my caravan request if you head south-east.'
+    ]
+  },
+  {
+    id: 'hunter_master',
+    npcId: 'hunter_master',
+    shopId: 'hunter_master',
+    name: 'Hunter Associate Gwakwi',
+    title: 'Hunter Guild Master & Outskirts Armory',
+    role: 'guard_spear',
+    actionType: 'shop',
+    x: 29.0,
+    z: -10.5,
+    rotationY: -Math.PI * 0.5,
+    prompt: 'Speak with Hunter Associate Gwakwi (Guild Armory & Bounties) [E]',
+    dialogue: [
+      'Black Robber scouts and Water Ghosts stalk the canal road! Stock up on Hunter Guild weapons and clear the Jangan roads!'
     ]
   }
 ];
@@ -339,6 +773,7 @@ export class DungeonGenerator {
     this.solidObstacles = [];
     this.bossRoom = null;
     this.bossArena = null;
+    this.bossGate = null;
     this.puzzle = null;
     this.puzzleProps = [];
     this.specialRoomType = null;
@@ -433,6 +868,7 @@ export class DungeonGenerator {
 
     while (this.rootGroup.children.length > 0) {
       const child = this.rootGroup.children.pop();
+      disposeObject3D(child);
       this.rootGroup.remove(child);
     }
 
@@ -453,10 +889,17 @@ export class DungeonGenerator {
     this.solidObstacles = [];
     this.bossRoom = null;
     this.bossArena = null;
+    this.bossGate = null;
     this.puzzle = null;
     this.puzzleProps = [];
     this.specialRoomType = null;
     this._reserved = [];
+    this._placedDecor = [];
+    this._sroPropsPlaced = [];
+    this.outskirtCamps = [];
+    this.townWallHalf = 55;
+    this.townWallHalf = 25;
+    this.exitLockedByClear = false;
     this._lightSources = [];
     this._lightPool = [];
     this._batch = null;
@@ -503,11 +946,16 @@ export class DungeonGenerator {
       return {
         floor: def.floor,
         name: custom?.name || def.name,
+        subtitle: def.subtitle || '',
         theme: def.theme,
+        sroDungeon: def.sroDungeon,
+        portalStyle: def.portalStyle || 'jade_gate',
         unlocked: def.floor <= maxUnlocked,
         recommendedLevel: custom?.recommendedLevel || def.recommendedLevel,
+        minDungeonLevel: MIN_DUNGEON_LEVEL,
         isBossFloor: def.isBossFloor,
-        bossName: custom?.bossName || def.bossName || null
+        bossName: custom?.bossName || def.bossName || null,
+        monsterTypes: Array.isArray(def.monsterTypes) ? [...def.monsterTypes] : []
       };
     });
   }
@@ -537,8 +985,8 @@ export class DungeonGenerator {
     }
 
     this.tileSize = 2.0;
-    this.gridWidth = 26;
-    this.gridHeight = 26;
+    this.gridWidth = 140;
+    this.gridHeight = 140;
     this.originX = -(this.gridWidth * this.tileSize) * 0.5;
     this.originZ = -(this.gridHeight * this.tileSize) * 0.5;
 
@@ -549,9 +997,11 @@ export class DungeonGenerator {
       })
     );
 
-    // Silk-Road caravan town (see villageBuilder.js)
+    // Silk-Road Jangan metropolis & expanded hunting outskirts (see villageBuilder.js)
     const vb = this._buildVillageScenery();
     this.villageBuild = vb;
+    this.outskirtCamps = vb?.outskirtCamps || [];
+    this.townWallHalf = vb?.townWallHalf || 55;
     this.hotSprings = vb?.hotSprings || {
       x: HOT_SPRINGS.center.x,
       z: HOT_SPRINGS.center.z,
@@ -594,59 +1044,97 @@ export class DungeonGenerator {
       this.solidObstacles.push({ x: npcDef.x, z: npcDef.z, radius: 0.65 });
     }
 
-    // Northern Dungeon Entrance Portal + Floor Selector Obelisk
-    const dungeonPortalMesh = (this.models3d?.createPortalMesh || createPortalMesh)(0x38bdf8, 'dungeon');
-    dungeonPortalMesh.position.set(0, 0, -16.5);
+    // Well-spaced district portals across the metropolis (50m-76m apart):
+    // 1. North Palace Plaza: Abyssal Dungeon Entrance Gate
+    const dpPos = vb?.portalPos || { x: 9.0, y: 0, z: -33.0 };
+    const dungeonPortalMesh = (this.models3d?.createPortalMesh || createPortalMesh)({ color: 0x38bdf8, portalStyle: 'jade_gate' }, 'dungeon');
+    dungeonPortalMesh.position.set(dpPos.x, 0, dpPos.z);
     this.rootGroup.add(dungeonPortalMesh);
     if (this.renderer?.addPointLight) {
-      this.renderer.addPointLight(new THREE.Vector3(0, 1.8, -16.5), 0x38bdf8, 2.2, 12, true);
+      this.renderer.addPointLight(new THREE.Vector3(dpPos.x, 1.8, dpPos.z), 0x38bdf8, 2.2, 14, true);
     }
 
     this.portals.push({
       id: 'dungeon_entrance',
       type: 'portal',
       portalType: 'dungeon_entrance',
-      name: 'Abyssal Dungeon Gate',
+      name: 'Abyssal Dungeon Gate (Lv 10+)',
       targetFloor: 1,
-      x: 0,
+      minLevel: MIN_DUNGEON_LEVEL,
+      x: dpPos.x,
       y: 0,
-      z: -16.5,
-      position: { x: 0, y: 0, z: -16.5 },
-      prompt: 'Enter Dungeon / Select Floor [E]',
+      z: dpPos.z,
+      position: { x: dpPos.x, y: 0, z: dpPos.z },
+      prompt: `Enter Dungeon (Requires Lv ${MIN_DUNGEON_LEVEL}) [E]`,
       mesh: dungeonPortalMesh
     });
 
-    // Floor Selector Runestone Pillar right next to the portal
-    const selectorMesh = (this.models3d?.createPortalMesh || createPortalMesh)(0xa855f7, 'selector');
-    selectorMesh.position.set(3.2, 0, -15.2);
+    // 2. West Celestial Temple Courtyard: Waystone Floor Teleporter (50m from North Gate)
+    const spPos = vb?.selectorPos || { x: -38.0, y: 0, z: -10.0 };
+    const selectorMesh = (this.models3d?.createPortalMesh || createPortalMesh)({ color: 0xa855f7, portalStyle: 'celestial_roc' }, 'selector');
+    selectorMesh.position.set(spPos.x, 0, spPos.z);
     this.rootGroup.add(selectorMesh);
 
     this.portals.push({
       id: 'floor_selector',
       type: 'portal',
       portalType: 'floor_selector',
-      name: 'Waystone Floor Teleporter',
-      x: 3.2,
+      name: 'West Temple Waystone Teleporter',
+      x: spPos.x,
       y: 0,
-      z: -15.2,
-      position: { x: 3.2, y: 0, z: -15.2 },
-      prompt: 'Use Waystone Floor Selector [M / E]',
+      z: spPos.z,
+      position: { x: spPos.x, y: 0, z: spPos.z },
+      prompt: 'Use Temple Waystone Floor Selector [M / E]',
       mesh: selectorMesh
     });
 
-    // Practice breakable barrels & crates near Skill Master Kyle
+    // 3. East Monster Stadium Courtyard: Frontier Coliseum Waystone (76m from West Temple)
+    const apPos = vb?.arenaPortalPos || { x: 38.0, y: 0, z: -10.0 };
+    const arenaPortalMesh = (this.models3d?.createPortalMesh || createPortalMesh)({ color: 0xf59e0b, portalStyle: 'crimson_coliseum' }, 'selector');
+    arenaPortalMesh.position.set(apPos.x, 0, apPos.z);
+    this.rootGroup.add(arenaPortalMesh);
+
+    this.portals.push({
+      id: 'arena_waystone',
+      type: 'portal',
+      portalType: 'floor_selector',
+      name: 'East Coliseum Dimensional Gate',
+      x: apPos.x,
+      y: 0,
+      z: apPos.z,
+      position: { x: apPos.x, y: 0, z: apPos.z },
+      prompt: 'Use East Coliseum Floor Teleporter [M / E]',
+      mesh: arenaPortalMesh
+    });
+
+    // Practice breakable barrels & crates in SW Martial Training Courtyard
     const practiceProps = [
-      { x: -13.0, z: 2.8, type: 'barrel' },
-      { x: -14.0, z: 3.9, type: 'crate' },
-      { x: -12.6, z: 5.4, type: 'barrel' },
-      { x: 12.0, z: 0.5, type: 'urn' }
+      { x: -24.5, z: 29.0, type: 'barrel' },
+      { x: -26.5, z: 30.2, type: 'crate' },
+      { x: -23.0, z: 33.8, type: 'barrel' },
+      { x: 19.0, z: 12.0, type: 'urn' }
     ];
     practiceProps.forEach((p, idx) => {
       this._spawnBreakable(p.x, p.z, p.type, `village_prop_${idx}`);
     });
 
-    // Starter Supply Chest in Village
-    this._spawnChest(3.8, 7.6, 'normal', 'village_starter_chest');
+    // Reusable Account-Wide General Shared Storage Chests (Central Bazaar + North Gate Plaza)
+    const chestSpots = vb?.storageChestSpots || {
+      village_starter_chest: { x: -7.2, z: 23.2 },
+      village_north_vault: { x: 6.5, z: -35.5 }
+    };
+    this._spawnStorageChest(
+      chestSpots.village_starter_chest.x,
+      chestSpots.village_starter_chest.z,
+      'village_starter_chest',
+      'General Shared Storage Chest'
+    );
+    this._spawnStorageChest(
+      chestSpots.village_north_vault.x,
+      chestSpots.village_north_vault.z,
+      'village_north_vault',
+      'Expedition General Storage Vault'
+    );
 
     // Single main room for minimap display
     this.rooms = [
@@ -662,7 +1150,7 @@ export class DungeonGenerator {
       }
     ];
 
-    this.spawnPoint = { x: 0, y: 0, z: 4.2 };
+    this.spawnPoint = vb?.spawnPoint ? { ...vb.spawnPoint } : { x: 0, y: 0, z: 7.5 };
     return this.getFloorState();
   }
 
@@ -730,33 +1218,49 @@ export class DungeonGenerator {
 
     this.clearWorld();
 
-    const floorDef = FLOOR_DEFINITIONS[(fNum - 1) % FLOOR_DEFINITIONS.length] || FLOOR_DEFINITIONS[0];
-    const isBossFloor = fNum % 3 === 0 || Boolean(floorDef.isBossFloor);
+    const floorDef = (fNum >= 100 ? FLOOR_DEFINITIONS.find(d => d.floor === fNum) : null)
+      || FLOOR_DEFINITIONS[(fNum - 1) % FLOOR_DEFINITIONS.length]
+      || FLOOR_DEFINITIONS[0];
+    const isBossFloor = Boolean(floorDef.isBossFloor) || (fNum < 100 && fNum % 3 === 0);
     const themeKey = typeof themeOrScene === 'string' && DUNGEON_THEMES[themeOrScene]
       ? themeOrScene
       : floorDef.theme;
 
-    this.theme = DUNGEON_THEMES[themeKey] || DUNGEON_THEMES.cave;
+    const baseTheme = DUNGEON_THEMES[themeKey] || DUNGEON_THEMES.cave;
+    this.floorDef = floorDef;
+    this.sroDungeon = floorDef.sroDungeon || themeKey;
+    this.decorProfile = floorDef.decorProfile || this.sroDungeon;
+    this.theme = {
+      ...baseTheme,
+      ...(floorDef.themeOverride || {}),
+      subtitle: floorDef.subtitle || baseTheme.subtitle,
+      floorTexture: floorDef.floorTexture || baseTheme.floorTexture,
+      wallTexture: floorDef.wallTexture || baseTheme.wallTexture,
+      portalStyle: floorDef.portalStyle || 'jade_gate',
+      decorProfile: this.decorProfile,
+      atmosphere: { ...(baseTheme.atmosphere || {}), ...(floorDef.atmosphere || {}) },
+      sroDungeon: this.sroDungeon
+    };
     this.zone = 'dungeon';
     this.currentFloor = fNum;
-    this.floorName = fNum <= FLOOR_DEFINITIONS.length
+    this.floorName = floorDef.name || (fNum <= FLOOR_DEFINITIONS.length
       ? floorDef.name
-      : `${this.theme.name} B${fNum}F`;
+      : `${this.theme.name} B${fNum}F`);
 
     if (fNum > this.unlockedMaxFloor) {
       this.unlockedMaxFloor = fNum;
     }
 
     if (this.renderer?.setEnvironmentTheme) {
-      this.renderer.setEnvironmentTheme(isBossFloor ? 'boss' : this.theme.id);
+      this.renderer.setEnvironmentTheme(this.theme.id);
     }
 
     const rand = seededRandom(fNum * 9973 + 1337);
     this.specialRoomType = SPECIAL_ROOM_CYCLE[(fNum - 1) % SPECIAL_ROOM_CYCLE.length];
 
     this.tileSize = 2.0;
-    this.gridWidth = isBossFloor ? 44 : 48;
-    this.gridHeight = isBossFloor ? 44 : 48;
+    this.gridWidth = fNum === 16 ? 68 : isBossFloor ? 66 : 64;
+    this.gridHeight = fNum === 16 ? 76 : isBossFloor ? 72 : 64;
     this.originX = -(this.gridWidth * this.tileSize) * 0.5;
     this.originZ = -(this.gridHeight * this.tileSize) * 0.5;
 
@@ -764,8 +1268,9 @@ export class DungeonGenerator {
       Array.from({ length: this.gridWidth }, () => TILE.WALL)
     );
 
-    // Build deterministic connected room layout
-    const generatedRooms = this._layoutDungeonRooms(fNum, isBossFloor, rand);
+    // Build deterministic connected room layout modeled on Silkroad dungeon wings
+    this._plannedEdges = null;
+    const generatedRooms = this._layoutDungeonRooms(fNum, isBossFloor, rand, floorDef.layoutStyle);
 
     // Carve rooms into grid
     for (const room of generatedRooms) {
@@ -776,13 +1281,42 @@ export class DungeonGenerator {
       }
     }
 
-    // Carve 3-tile-wide corridors connecting rooms in sequence + extra loop
-    for (let i = 0; i < generatedRooms.length - 1; i++) {
-      this._carveCorridor(generatedRooms[i], generatedRooms[i + 1]);
+    // Carve 3-tile-wide corridors connecting rooms (explicit palace graph or wing loops)
+    if (Array.isArray(this._plannedEdges)) {
+      for (const [a, b] of this._plannedEdges) {
+        if (generatedRooms[a] && generatedRooms[b]) {
+          this._carveCorridor(generatedRooms[a], generatedRooms[b]);
+        }
+      }
+    } else {
+      for (let i = 0; i < generatedRooms.length - 1; i++) {
+        this._carveCorridor(generatedRooms[i], generatedRooms[i + 1]);
+      }
+      if (generatedRooms.length >= 5) {
+        this._carveCorridor(generatedRooms[1], generatedRooms[3]);
+      }
+      if (generatedRooms.length >= 7 && (floorDef.layoutStyle === 'tomb_grid' || floorDef.layoutStyle === 'basilica_wings')) {
+        // Cross-axis Silkroad tomb / basilica wing junction through central nave
+        this._carveCorridor(generatedRooms[2], generatedRooms[5]);
+      }
     }
-    if (generatedRooms.length >= 5) {
-      this._carveCorridor(generatedRooms[1], generatedRooms[3]);
-    }
+
+    const COMBAT_ARCHETYPES = [
+      'vanguard_courtyard',
+      'pillared_cloister',
+      'crucible_sanctum',
+      'reliquary_hall',
+      'barrack_ambush'
+    ];
+    const archetypeForRoom = (r, idx) => {
+      if (r.type === 'start' || r.type === 'boss') return r.type;
+      if (r.type === 'processional') return 'processional';
+      if (r.type === 'treasure') return 'reliquary_hall';
+      if (r.type === 'trap') return 'trap_gallery';
+      if (r.type === 'shrine' || r.type === 'spring') return 'crucible_sanctum';
+      if (r.type === 'exit') return 'vanguard_courtyard';
+      return COMBAT_ARCHETYPES[(fNum * 3 + idx) % COMBAT_ARCHETYPES.length];
+    };
 
     // Convert grid rooms to world space descriptors
     this.rooms = generatedRooms.map((r, idx) => {
@@ -794,7 +1328,8 @@ export class DungeonGenerator {
       const roomObj = {
         id: idx,
         type: r.type,
-        special: r.type === 'treasure' ? 'vault' : (r.type === 'trap' ? 'trap_gallery' : r.type === 'processional' ? 'processional' : r.type === 'shrine' ? 'shrine' : null),
+        archetype: archetypeForRoom(r, idx),
+        special: r.type === 'treasure' ? 'vault' : (r.type === 'trap' ? 'trap_gallery' : r.type === 'processional' ? 'processional' : r.type === 'shrine' ? 'shrine' : r.type === 'spring' ? 'celestial_spring' : null),
         gx: r.gx,
         gz: r.gz,
         gw: r.gw,
@@ -807,7 +1342,8 @@ export class DungeonGenerator {
         centerX: center.x,
         centerZ: center.z,
         explored: idx === 0,
-        cleared: idx === 0
+        cleared: idx === 0,
+        encounterPlan: null
       };
       if (r.type === 'boss') {
         this.bossRoom = roomObj;
@@ -824,55 +1360,152 @@ export class DungeonGenerator {
     return this.getFloorState();
   }
 
-  _layoutDungeonRooms(floorNum, isBossFloor, rand) {
-    // Structured 3x3 sector layout guarantees non-overlapping, rich multi-room dungeons
+  _layoutDungeonRooms(floorNum, isBossFloor, rand, layoutStyle = 'cavern_branch') {
+    const mkRoom = (id, type, gx, gz, gw, gh) => ({
+      id,
+      type,
+      gx,
+      gz,
+      gw,
+      gh,
+      cx: Math.floor(gx + gw * 0.5),
+      cz: Math.floor(gz + gh * 0.5)
+    });
+
+    // Dedicated Grand Final Boss Sanctum on Floor 16 (Mountain Roc Peak — Sky Nest):
+    // Ceremonal Sky Gate Foyer -> Wing Sanctuaries -> Imperial Processional Bridge -> Colossal 52m x 48m Sky Nest Throne
+    if (floorNum === 16) {
+      this._plannedEdges = [
+        [0, 2], [0, 4], [4, 3], [3, 2], [2, 1], [2, 5]
+      ];
+      return [
+        mkRoom(0, 'start', 27, 55, 14, 12),
+        mkRoom(1, 'spring', 6, 35, 14, 13),
+        mkRoom(2, 'processional', 26, 33, 16, 15),
+        mkRoom(3, 'shrine', 48, 35, 14, 13),
+        mkRoom(4, 'treasure', 48, 54, 14, 12),
+        mkRoom(5, 'boss', 21, 4, 26, 24)
+      ];
+    }
+
     const special = SPECIAL_ROOM_CYCLE[(floorNum - 1) % SPECIAL_ROOM_CYCLE.length];
-    const sectors = [
-      { sx: 0, sz: 2, defaultType: 'start' },
-      { sx: 1, sz: 2, defaultType: 'combat' },
-      { sx: 2, sz: 2, defaultType: 'treasure' },
-      { sx: 2, sz: 1, defaultType: special === 'trap_gallery' ? 'trap' : 'combat' },
-      { sx: 1, sz: 1, defaultType: special === 'processional' ? 'processional' : 'combat' },
-      { sx: 0, sz: 1, defaultType: special === 'shrine' ? 'shrine' : 'combat' },
-      { sx: 0, sz: 0, defaultType: 'combat' },
-      { sx: 1, sz: 0, defaultType: isBossFloor ? 'boss' : 'exit' }
-    ];
+    const centerSpecial = special === 'processional' ? 'processional' : special === 'celestial_spring' ? 'spring' : 'combat';
+    const sideSpecial = special === 'shrine' ? 'shrine' : 'combat';
+    const trapOrCombat = special === 'trap_gallery' ? 'trap' : 'combat';
+
+    // Dedicated Grand Boss Amphitheater Floors (F3, F6, F9, F12, F15, S3F):
+    // Symmetrical multi-wing approaches feeding into a massive 48m x 40m (24x20 tiles) Sovereign Arena
+    if (isBossFloor) {
+      const swapSides = rand() < 0.5;
+      const westCol = swapSides ? 46 : 4;
+      const eastCol = swapSides ? 4 : 46;
+      const wingGx = swapSides ? 49 : 4;
+      this._plannedEdges = [
+        [0, 1], [1, 3], [3, 5], [0, 2], [2, 4], [4, 6], [3, 6], [0, 6], [6, 7]
+      ];
+      return [
+        mkRoom(0, 'start', 25, 50, 16, 14),
+        mkRoom(1, 'combat', westCol, 49, 16, 14),
+        mkRoom(2, 'treasure', eastCol, 49, 16, 14),
+        mkRoom(3, sideSpecial, westCol, 27, 16, 16),
+        mkRoom(4, trapOrCombat, eastCol, 27, 16, 16),
+        mkRoom(5, 'combat', wingGx, 5, 14, 16),
+        mkRoom(6, centerSpecial === 'combat' ? 'processional' : centerSpecial, 25, 27, 16, 16),
+        mkRoom(7, 'boss', 21, 3, 24, 20)
+      ];
+    }
+
+    // Structured 3x3 sector blueprint per Silkroad dungeon archetype (expanded 64x64 grid, 24m..34m halls)
+    const finalType = 'exit';
+    let sectors;
+    if (layoutStyle === 'tomb_grid') {
+      sectors = [
+        { sx: 1, sz: 2, defaultType: 'start' },
+        { sx: 1, sz: 1, defaultType: centerSpecial === 'combat' ? 'processional' : centerSpecial },
+        { sx: 0, sz: 1, defaultType: sideSpecial },
+        { sx: 0, sz: 0, defaultType: 'combat' },
+        { sx: 2, sz: 1, defaultType: trapOrCombat },
+        { sx: 2, sz: 2, defaultType: 'treasure' },
+        { sx: 2, sz: 0, defaultType: 'combat' },
+        { sx: 1, sz: 0, defaultType: finalType }
+      ];
+    } else if (layoutStyle === 'basilica_wings') {
+      sectors = [
+        { sx: 1, sz: 2, defaultType: 'start' },
+        { sx: 0, sz: 2, defaultType: 'combat' },
+        { sx: 0, sz: 1, defaultType: sideSpecial },
+        { sx: 1, sz: 1, defaultType: centerSpecial === 'combat' ? 'processional' : centerSpecial },
+        { sx: 2, sz: 1, defaultType: trapOrCombat },
+        { sx: 2, sz: 2, defaultType: 'treasure' },
+        { sx: 0, sz: 0, defaultType: 'combat' },
+        { sx: 1, sz: 0, defaultType: finalType }
+      ];
+    } else if (layoutStyle === 'stronghold_wing') {
+      sectors = [
+        { sx: 1, sz: 2, defaultType: 'start' },
+        { sx: 0, sz: 2, defaultType: 'combat' },
+        { sx: 0, sz: 1, defaultType: sideSpecial },
+        { sx: 1, sz: 1, defaultType: centerSpecial },
+        { sx: 2, sz: 2, defaultType: 'treasure' },
+        { sx: 2, sz: 1, defaultType: trapOrCombat },
+        { sx: 0, sz: 0, defaultType: 'combat' },
+        { sx: 1, sz: 0, defaultType: finalType }
+      ];
+    } else if (layoutStyle === 'caldera_ring') {
+      sectors = [
+        { sx: 0, sz: 2, defaultType: 'start' },
+        { sx: 1, sz: 2, defaultType: 'combat' },
+        { sx: 2, sz: 2, defaultType: 'treasure' },
+        { sx: 2, sz: 1, defaultType: trapOrCombat },
+        { sx: 2, sz: 0, defaultType: 'combat' },
+        { sx: 1, sz: 1, defaultType: centerSpecial },
+        { sx: 0, sz: 1, defaultType: sideSpecial },
+        { sx: 1, sz: 0, defaultType: finalType }
+      ];
+    } else {
+      sectors = [
+        { sx: 0, sz: 2, defaultType: 'start' },
+        { sx: 1, sz: 2, defaultType: 'combat' },
+        { sx: 2, sz: 2, defaultType: 'treasure' },
+        { sx: 2, sz: 1, defaultType: trapOrCombat },
+        { sx: 1, sz: 1, defaultType: centerSpecial },
+        { sx: 0, sz: 1, defaultType: sideSpecial },
+        { sx: 0, sz: 0, defaultType: 'combat' },
+        { sx: 1, sz: 0, defaultType: finalType }
+      ];
+    }
 
     const cellW = Math.floor((this.gridWidth - 6) / 3);
     const cellH = Math.floor((this.gridHeight - 6) / 3);
     const rooms = [];
+    const isAxialArchitecture = layoutStyle === 'tomb_grid' || layoutStyle === 'basilica_wings';
 
     sectors.forEach((sec, idx) => {
-      const isBossRoom = sec.defaultType === 'boss';
       const isHall = sec.defaultType === 'processional';
       const isGallery = sec.defaultType === 'trap';
-      const rw = isBossRoom ? Math.min(cellW + 4, 14)
-        : isHall ? Math.min(cellW - 1, 13)
-        : isGallery ? 9
-        : Math.max(7, Math.floor(7 + rand() * 3));
-      const rh = isBossRoom ? Math.min(cellH + 4, 14)
-        : isHall ? 9
-        : isGallery ? 9
-        : Math.max(7, Math.floor(7 + rand() * 3));
+      const baseDim = layoutStyle === 'caldera_ring' ? 13 : 12;
+      const rw = isHall ? Math.min(cellW - 2, 17)
+        : isGallery ? 14
+        : isAxialArchitecture ? Math.min(cellW - 3, 15)
+        : Math.max(baseDim, Math.floor(baseDim + rand() * 5));
+      const rh = isHall ? 14
+        : isGallery ? 14
+        : isAxialArchitecture ? Math.min(cellH - 3, 14)
+        : Math.max(baseDim, Math.floor(baseDim + rand() * 5));
 
       const baseGx = 3 + sec.sx * cellW;
       const baseGz = 3 + sec.sz * cellH;
-      const offsetX = isBossRoom ? 0 : Math.floor(rand() * Math.max(1, cellW - rw - 1));
-      const offsetZ = isBossRoom ? 0 : Math.floor(rand() * Math.max(1, cellH - rh - 1));
+      const offsetX = isAxialArchitecture
+        ? Math.floor(Math.max(0, (cellW - rw) * 0.5))
+        : Math.floor(rand() * Math.max(1, cellW - rw - 1));
+      const offsetZ = isAxialArchitecture
+        ? Math.floor(Math.max(0, (cellH - rh) * 0.5))
+        : Math.floor(rand() * Math.max(1, cellH - rh - 1));
 
       const gx = Math.min(this.gridWidth - rw - 3, Math.max(3, baseGx + offsetX));
       const gz = Math.min(this.gridHeight - rh - 3, Math.max(3, baseGz + offsetZ));
 
-      rooms.push({
-        id: idx,
-        type: sec.defaultType,
-        gx,
-        gz,
-        gw: rw,
-        gh: rh,
-        cx: Math.floor(gx + rw * 0.5),
-        cz: Math.floor(gz + rh * 0.5)
-      });
+      rooms.push(mkRoom(idx, sec.defaultType, gx, gz, rw, rh));
     });
 
     return rooms;
@@ -956,10 +1589,31 @@ export class DungeonGenerator {
     const floorMat = new THREE.MeshStandardMaterial({
       color: 0xffffff,
       emissive: new THREE.Color(this.theme.floorColor),
-      emissiveIntensity: 0.22,
-      roughness: 0.74,
+      emissiveIntensity: 0.14,
+      roughness: 0.72,
       metalness: 0.05
     });
+
+    const applySurfaceTexture = (mat, texUrl) => {
+      if (typeof window === 'undefined' || !texUrl) return;
+      try {
+        const texLoader = new THREE.TextureLoader();
+        texLoader.load(texUrl, (tex) => {
+          tex.wrapS = THREE.RepeatWrapping;
+          tex.wrapT = THREE.RepeatWrapping;
+          tex.repeat.set(1, 1);
+          tex.colorSpace = THREE.SRGBColorSpace;
+          mat.map = tex;
+          mat.needsUpdate = true;
+        });
+      } catch (e) {
+        // Safe fallback in headless/test environments
+      }
+    };
+
+    // Apply authentic Silkroad dungeon floor texture extracted from SilkroadTR Data.pk2
+    applySurfaceTexture(floorMat, this.theme?.floorTexture);
+
     const floorInst = new THREE.InstancedMesh(floorGeo, floorMat, Math.max(1, floorTiles.length));
     floorInst.receiveShadow = true;
 
@@ -970,7 +1624,8 @@ export class DungeonGenerator {
 
     floorTiles.forEach((tile, i) => {
       const pos = this.gridToWorld(tile.gx, tile.gz);
-      dummy.position.set(pos.x, -0.08 + (rand() - 0.5) * 0.03, pos.z);
+      // Fixed at -0.08 with height 0.16 so top face is flush at exactly y = 0.00 everywhere
+      dummy.position.set(pos.x, -0.08, pos.z);
       dummy.scale.set(0.985, 1, 0.985);
       dummy.updateMatrix();
       floorInst.setMatrixAt(i, dummy.matrix);
@@ -986,19 +1641,30 @@ export class DungeonGenerator {
     if (floorInst.instanceColor) floorInst.instanceColor.needsUpdate = true;
     this.rootGroup.add(floorInst);
 
-    // Instanced perimeter wall blocks
-    const wallHeight = 2.7;
+    // Instanced perimeter wall blocks with authentic Silkroad dungeon wall masonry/carving textures
+    const wallHeight = this.zone === 'challenge' ? 3.5 : (this.bossRoom ? 3.55 : 3.05);
     const wallGeo = new THREE.BoxGeometry(this.tileSize, wallHeight, this.tileSize);
     const wallMat = new THREE.MeshStandardMaterial({
       color: 0xffffff,
       emissive: new THREE.Color(this.theme.wallColor),
-      emissiveIntensity: 0.18,
+      emissiveIntensity: 0.13,
       roughness: 0.7,
       metalness: 0.06
     });
+    applySurfaceTexture(wallMat, this.theme?.wallTexture);
     const wallInst = new THREE.InstancedMesh(wallGeo, wallMat, Math.max(1, wallTiles.length));
     wallInst.castShadow = true;
     wallInst.receiveShadow = true;
+
+    // Carved trim cornice cap atop perimeter walls (single instanced batch for architectural framing)
+    const corniceGeo = new THREE.BoxGeometry(this.tileSize * 1.08, 0.2, this.tileSize * 1.08);
+    const corniceMat = new THREE.MeshStandardMaterial({
+      color: this.theme.trimColor || 0x94a3b8,
+      roughness: 0.55,
+      metalness: 0.25
+    });
+    const corniceInst = new THREE.InstancedMesh(corniceGeo, corniceMat, Math.max(1, wallTiles.length));
+    corniceInst.receiveShadow = true;
 
     const baseWallCol = new THREE.Color(this.theme.wallColor);
     wallTiles.forEach((tile, i) => {
@@ -1011,15 +1677,21 @@ export class DungeonGenerator {
 
       color.copy(baseWallCol).multiplyScalar(0.9 + rand() * 0.2);
       wallInst.setColorAt(i, color);
+
+      dummy.position.set(pos.x, wallHeight * hScale + 0.08, pos.z);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      corniceInst.setMatrixAt(i, dummy.matrix);
     });
     wallInst.instanceMatrix.needsUpdate = true;
     if (wallInst.instanceColor) wallInst.instanceColor.needsUpdate = true;
-    this.rootGroup.add(wallInst);
+    corniceInst.instanceMatrix.needsUpdate = true;
+    this.rootGroup.add(wallInst, corniceInst);
   }
 
   /** True when a prop of `radius` can be dropped at (x, z) without clipping other solids/traps/doorways. */
-  _spotFree(x, z, radius = 0.5) {
-    if (nearOpening(this, x, z, 1)) return false;
+  _spotFree(x, z, radius = 0.5, pad = 3) {
+    if (nearOpening(this, x, z, pad)) return false;
     for (const r of this._reserved) {
       if (Math.hypot(x - r.x, z - r.z) < r.r) return false;
     }
@@ -1047,7 +1719,10 @@ export class DungeonGenerator {
 
     // Return-to-Village portal in start room, outside interaction reach of the spawn point so
     // pressing E right after arriving does not bounce the player straight back to town
-    const returnPortalMesh = (this.models3d?.createPortalMesh || createPortalMesh)(0x38bdf8, 'village');
+    const returnPortalMesh = (this.models3d?.createPortalMesh || createPortalMesh)(
+      { color: 0x38bdf8, portalStyle: this.theme.portalStyle },
+      'village'
+    );
     const returnPortalPos = {
       x: startRoom.centerX - 2.8,
       y: 0,
@@ -1092,20 +1767,27 @@ export class DungeonGenerator {
 
     // --- Per-room content --------------------------------------------------------------------
     this.rooms.forEach((room, idx) => {
-      // Corner torches: emissive instances, lit by the pooled lights
+      // Corner torches: emissive instances pinned tight to corners, lit by pooled lights
       const torchOffsets = [
-        [room.x + 1.8, room.z + 1.8],
-        [room.x + room.w - 1.8, room.z + 1.8],
-        [room.x + 1.8, room.z + room.h - 1.8],
-        [room.x + room.w - 1.8, room.z + room.h - 1.8]
+        [room.x + 0.85, room.z + 0.85],
+        [room.x + room.w - 0.85, room.z + 0.85],
+        [room.x + 0.85, room.z + room.h - 0.85],
+        [room.x + room.w - 0.85, room.z + room.h - 0.85]
       ];
       torchOffsets.forEach(([tx, tz]) => {
-        this._spawnTorch(tx, tz, this.theme.torchColor);
+        if (!nearOpening(this, tx, tz, 3.2)) {
+          this._spawnTorch(tx, tz, this.theme.torchColor);
+        }
       });
 
       if (room.type === 'start') {
-        this._spawnBreakable(room.centerX + 2.8, room.centerZ - 2.0, 'barrel', `f${floorNum}_b_start1`);
-        this._spawnBreakable(room.centerX + 3.5, room.centerZ - 1.2, 'crate', `f${floorNum}_b_start2`);
+        const wallOffset = 0.75;
+        const startX = room.x + wallOffset;
+        const startZ = room.z + room.h - wallOffset;
+        if (!nearOpening(this, startX, startZ, 4)) {
+          this._spawnBreakable(startX, startZ - 1.0, 'barrel', `f${floorNum}_b_start1`);
+          this._spawnBreakable(startX + 0.9, startZ, 'crate', `f${floorNum}_b_start2`);
+        }
       } else if (room.type === 'treasure') {
         // Treasure vault: 2-3 chests inside the gated alcove
         const mainTier = floorNum >= 9 ? 'epic' : floorNum >= 4 ? 'rare' : 'magic';
@@ -1134,12 +1816,25 @@ export class DungeonGenerator {
       } else if (room.type === 'processional') {
         dressSpecialRoom(this, batch, room, 'processional', rand);
         this._spawnChest(room.x + room.w - 2.4, room.centerZ, 'rare', `f${floorNum}_chest_hall`);
+      } else if (room.type === 'spring') {
+        this._buildCelestialSpring(room, floorNum, rand);
+        dressSpecialRoom(this, batch, room, 'spring', rand);
       } else if (room.type === 'exit') {
+        const floorDef = (floorNum >= 100 ? FLOOR_DEFINITIONS.find(d => d.floor === floorNum) : null)
+          || FLOOR_DEFINITIONS[(floorNum - 1) % FLOOR_DEFINITIONS.length]
+          || FLOOR_DEFINITIONS[0];
+        const returnFl = floorDef.returnFloor ?? (floorNum >= 100 ? 0 : floorNum + 1);
+        const exitPrompt = returnFl === 0 ? 'Return to Village [E]' : `Descend to Floor ${returnFl} [E]`;
+        const exitName = returnFl === 0 ? 'Portal to Village' : `Passage to Floor ${returnFl}`;
+
         const stairsMesh = (this.models3d?.createStairsMesh || createStairsMesh)('down');
-        stairsMesh.position.set(room.centerX, 0, room.centerZ - 2.2);
+        stairsMesh.position.set(room.centerX - 3.0, 0, room.centerZ - 2.6);
         this.rootGroup.add(stairsMesh);
 
-        const nextPortalMesh = (this.models3d?.createPortalMesh || createPortalMesh)(this.theme.portalColor, 'next_floor');
+        const nextPortalMesh = (this.models3d?.createPortalMesh || createPortalMesh)(
+          { color: this.theme.portalColor, portalStyle: this.theme.portalStyle },
+          'next_floor'
+        );
         nextPortalMesh.position.set(room.centerX, 0, room.centerZ);
         this.rootGroup.add(nextPortalMesh);
 
@@ -1149,14 +1844,14 @@ export class DungeonGenerator {
         this.portals.push({
           id: `next_floor_f${floorNum}`,
           type: 'portal',
-          portalType: 'next_floor',
-          name: `Stairs to Floor ${floorNum + 1}`,
-          targetFloor: floorNum + 1,
+          portalType: returnFl === 0 ? 'village' : 'next_floor',
+          name: exitName,
+          targetFloor: returnFl,
           x: room.centerX,
           y: 0,
           z: room.centerZ,
           position: { x: room.centerX, y: 0, z: room.centerZ },
-          prompt: `Descend to Floor ${floorNum + 1} [E]`,
+          prompt: exitPrompt,
           mesh: nextPortalMesh
         });
 
@@ -1165,24 +1860,445 @@ export class DungeonGenerator {
         this._decorateBossArena(room, floorNum);
       }
 
-      // Scatter breakables (skipped where they would clog a puzzle, vault, trap lane or doorway)
+      // Breakables: Yerleşim kesinlikle kapı/koridor ağızlarından uzak (>= 4.5m), derin duvar kenarlarına ve kör köşelerine yakın
       if (room.type !== 'start' && room.type !== 'trap') {
-        const count = 2 + Math.floor(rand() * 3);
-        const breakTypes = this.theme.breakableTypes || ['barrel', 'crate', 'urn'];
-        for (let b = 0; b < count; b++) {
-          const bx = room.centerX + (rand() - 0.5) * (room.w - 4.2);
-          const bz = room.centerZ + (rand() - 0.5) * (room.h - 4.2);
-          if (Math.hypot(bx - room.centerX, bz - room.centerZ) < 2.2) continue;
-          if (!this._spotFree(bx, bz, 0.5)) continue;
-          const bType = breakTypes[Math.floor(rand() * breakTypes.length)];
-          this._spawnBreakable(bx, bz, bType, `f${floorNum}_r${idx}_b${b}`);
+        const breakTypes = (this.theme.breakableTypes || ['barrel', 'crate', 'urn']).filter((t) => t !== 'crystal');
+        const targetCount = 3 + Math.floor(rand() * 3);
+        let placed = 0;
+        let attempts = 0;
+
+        // Odaya bağlanan kapı ve koridor geçiş noktalarını topla (eşikler ve açıklıklar)
+        const roomDoorways = [];
+        for (let gx = room.gx; gx < room.gx + room.gw; gx++) {
+          const tN = this.getTileAtGrid(gx, room.gz - 1);
+          if (tN === TILE.CORRIDOR || tN === TILE.DOOR_CLOSED) {
+            roomDoorways.push(this.gridToWorld(gx, room.gz));
+            roomDoorways.push(this.gridToWorld(gx, room.gz - 1));
+          }
+          const tS = this.getTileAtGrid(gx, room.gz + room.gh);
+          if (tS === TILE.CORRIDOR || tS === TILE.DOOR_CLOSED) {
+            roomDoorways.push(this.gridToWorld(gx, room.gz + room.gh - 1));
+            roomDoorways.push(this.gridToWorld(gx, room.gz + room.gh));
+          }
+        }
+        for (let gz = room.gz; gz < room.gz + room.gh; gz++) {
+          const tW = this.getTileAtGrid(room.gx - 1, gz);
+          if (tW === TILE.CORRIDOR || tW === TILE.DOOR_CLOSED) {
+            roomDoorways.push(this.gridToWorld(room.gx, gz));
+            roomDoorways.push(this.gridToWorld(room.gx - 1, gz));
+          }
+          const tE = this.getTileAtGrid(room.gx + room.gw, gz);
+          if (tE === TILE.CORRIDOR || tE === TILE.DOOR_CLOSED) {
+            roomDoorways.push(this.gridToWorld(room.gx + room.gw - 1, gz));
+            roomDoorways.push(this.gridToWorld(room.gx + room.gw, gz));
+          }
+        }
+        for (const g of this.gates) {
+          roomDoorways.push({ x: g.x, z: g.z });
+        }
+
+        const isSafeSpot = (bx, bz) => {
+          // 1. Duvardan uzaklık kontrolü (kesinlikle 0.7 - 1.25 birim aralığında olmalı)
+          const dW = bx - room.x;
+          const dE = (room.x + room.w) - bx;
+          const dN = bz - room.z;
+          const dS = (room.z + room.h) - bz;
+          const distToWall = Math.min(dW, dE, dN, dS);
+          if (distToWall < 0.68 || distToWall > 1.25) return false;
+
+          // 2. Odanın orta alanı dövüş ve hareket için temiz, ferah kalsın
+          if (Math.hypot(bx - room.centerX, bz - room.centerZ) < 3.2) return false;
+
+          // 3. Grid tile kontrolü (zemin üzerinde olmalı)
+          const { gx, gz } = this.worldToGrid(bx, bz);
+          if (this.getTileAtGrid(gx, gz) !== TILE.FLOOR) return false;
+
+          // 4. Kapı veya koridor açıklıklarına yakın olmamalı (sıkı denetim pad = 3)
+          if (nearOpening(this, bx, bz, 3)) return false;
+
+          // 5. Odaların kapı geçiş noktalarından (kapı eşiklerinden) en az 4.5 birim uzakta olmalı
+          for (let i = 0; i < roomDoorways.length; i++) {
+            const dw = roomDoorways[i];
+            if (Math.hypot(bx - dw.x, bz - dw.z) < 4.5) return false;
+          }
+
+          // 6. Diğer engeller, reserved alanlar, sandıklar, portallar ile çakışmamalı
+          if (!this._spotFree(bx, bz, 0.48, 3)) return false;
+
+          // 7. Daha önce yerleştirilmiş diğer breakable'larla çakışmamalı
+          if (this.breakables.some((b) => Math.hypot(bx - b.x, bz - b.z) < 0.65)) return false;
+
+          return true;
+        };
+
+        const corners = [
+          { cx: room.x, cz: room.z, sx: 1, sz: 1 },
+          { cx: room.x + room.w, cz: room.z, sx: -1, sz: 1 },
+          { cx: room.x, cz: room.z + room.h, sx: 1, sz: -1 },
+          { cx: room.x + room.w, cz: room.z + room.h, sx: -1, sz: -1 }
+        ];
+
+        // Kapılardan ve koridorlardan uzak kör köşeleri belirle
+        const blindCorners = corners.filter((c) => {
+          if (roomDoorways.some((dw) => Math.hypot(c.cx - dw.x, c.cz - dw.z) < 4.8)) return false;
+          if (nearOpening(this, c.cx + c.sx * 1.2, c.cz + c.sz * 1.2, 3)) return false;
+          return true;
+        });
+        const pickCorners = blindCorners.length > 0 ? blindCorners : corners;
+
+        while (placed < targetCount && attempts < 80) {
+          attempts++;
+          let candX = 0;
+          let candZ = 0;
+          const wallDist = 0.78 + rand() * 0.38; // 0.78 ~ 1.16 birim
+
+          if (rand() < 0.65 && pickCorners.length > 0) {
+            // Kör köşe kümelenmesi
+            const corner = pickCorners[Math.floor(rand() * pickCorners.length)];
+            const mode = rand();
+            if (mode < 0.45) {
+              candX = corner.cx + corner.sx * wallDist;
+              candZ = corner.cz + corner.sz * (wallDist + (rand() * 1.6));
+            } else if (mode < 0.9) {
+              candX = corner.cx + corner.sx * (wallDist + (rand() * 1.6));
+              candZ = corner.cz + corner.sz * wallDist;
+            } else {
+              candX = corner.cx + corner.sx * (wallDist + 0.35);
+              candZ = corner.cz + corner.sz * (wallDist + 0.35);
+            }
+          } else {
+            // Derin duvar kenarı boyunca dizilim
+            const side = Math.floor(rand() * 4);
+            if (side === 0) {
+              // Kuzey duvarı
+              candZ = room.z + wallDist;
+              candX = room.x + 3.0 + rand() * Math.max(1, room.w - 6.0);
+            } else if (side === 1) {
+              // Güney duvarı
+              candZ = room.z + room.h - wallDist;
+              candX = room.x + 3.0 + rand() * Math.max(1, room.w - 6.0);
+            } else if (side === 2) {
+              // Batı duvarı
+              candX = room.x + wallDist;
+              candZ = room.z + 3.0 + rand() * Math.max(1, room.h - 6.0);
+            } else {
+              // Doğu duvarı
+              candX = room.x + room.w - wallDist;
+              candZ = room.z + 3.0 + rand() * Math.max(1, room.h - 6.0);
+            }
+          }
+
+          if (isSafeSpot(candX, candZ)) {
+            const bType = breakTypes[Math.floor(rand() * breakTypes.length)];
+            this._spawnBreakable(candX, candZ, bType, `f${floorNum}_r${idx}_b${placed}`);
+            placed++;
+          }
         }
       }
     });
 
+    // Ensure every dungeon floor has at least one dynamic Power Shrine to discover
+    if (floorNum >= 1 && !this.shrines.some((s) => s.type === 'shrine')) {
+      const combatRooms = this.rooms.filter((r) => r.type === 'combat' && r.w >= 10 && r.h >= 10);
+      const fallbackRooms = combatRooms.length > 0 ? combatRooms : this.rooms.filter((r) => r.type !== 'start' && r.type !== 'boss' && r.w >= 8 && r.h >= 8);
+      const shrinePool = ['shrine_berserk', 'shrine_fortune', 'shrine_haste', 'shrine_sanctuary'];
+      const chosenRoom = fallbackRooms.length > 0 ? fallbackRooms[Math.floor(rand() * fallbackRooms.length)] : null;
+      if (chosenRoom) {
+        const pickedKind = shrinePool[Math.floor(rand() * shrinePool.length)];
+        const candidates = [
+          [chosenRoom.centerX + (rand() - 0.5) * 2.0, chosenRoom.centerZ + (rand() - 0.5) * 2.0],
+          [chosenRoom.centerX, chosenRoom.centerZ],
+          [chosenRoom.centerX + 2.2, chosenRoom.centerZ],
+          [chosenRoom.centerX - 2.2, chosenRoom.centerZ],
+        ];
+        for (const [sx, sz] of candidates) {
+          if (this._spotFree(sx, sz, 0.9, 1.5)) {
+            this._spawnShrine(sx, sz, floorNum, pickedKind);
+            this._reserved.push({ x: sx, z: sz, r: 1.5 });
+            break;
+          }
+        }
+      }
+    }
+
+    // Spawn 1 to 3 genuinely randomized Timed Challenge Portals per regular dungeon floor
+    if (floorNum >= 1 && floorNum < 100 && floorNum !== 16) {
+      const chKeys = Object.keys(CHALLENGE_TYPES);
+      const rollCount = Math.random();
+      const targetPortals = rollCount < 0.22 ? 1 : rollCount < 0.65 ? 2 : 3;
+
+      const eligible = this.rooms.filter(
+        (r) => !['start', 'boss', 'exit', 'trap'].includes(r.type) && r.w >= 10 && r.h >= 10
+      );
+      const poolRooms = [...(eligible.length > 0 ? eligible : this.rooms.filter((r) => r.type !== 'start' && r.type !== 'boss'))];
+      for (let i = poolRooms.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [poolRooms[i], poolRooms[j]] = [poolRooms[j], poolRooms[i]];
+      }
+
+      const usedTypes = new Set();
+      let spawnedCh = 0;
+      const roomIsClearOfEntities = (cx, cz) => {
+        if (!this.isWalkable(cx, cz, 0.55) || nearOpening(this, cx, cz, 2.6)) return false;
+        if (!this._spotFree(cx, cz, 2.25, 2.0)) return false;
+        if (Math.hypot(cx - this.spawnPoint.x, cz - this.spawnPoint.z) < 4.5) return false;
+        if (this.shrines.some((s) => Math.hypot(cx - s.x, cz - s.z) < 3.6)) return false;
+        if (this.chests.some((c) => Math.hypot(cx - c.x, cz - c.z) < 3.1)) return false;
+        if (this.portals.some((p) => Math.hypot(cx - p.x, cz - p.z) < 4.8)) return false;
+        if (this.traps.some((t) => Math.hypot(cx - t.x, cz - t.z) < 2.8)) return false;
+        if (this.gates.some((g) => Math.hypot(cx - g.x, cz - g.z) < 3.2)) return false;
+        if ((this._placedDecor || []).some((d) => Math.hypot(cx - d.x, cz - d.z) < (d.r || 0.6) + 2.15)) return false;
+        return true;
+      };
+
+      for (const rm of poolRooms) {
+        if (spawnedCh >= targetPortals) break;
+        let pickedType;
+        if (floorNum === 1 && spawnedCh === 0) {
+          pickedType = 'survival_60';
+        } else {
+          const unused = chKeys.filter((k) => !usedTypes.has(k));
+          const typePool = unused.length > 0 ? unused : chKeys;
+          pickedType = typePool[Math.floor(Math.random() * typePool.length)];
+        }
+        usedTypes.add(pickedType);
+
+        const ox = Math.max(2.4, rm.w * 0.5 - 3.2);
+        const oz = Math.max(2.4, rm.h * 0.5 - 3.2);
+        const candidates = [
+          [rm.centerX - ox * 0.72, rm.centerZ - oz * 0.72],
+          [rm.centerX + ox * 0.72, rm.centerZ - oz * 0.72],
+          [rm.centerX - ox * 0.72, rm.centerZ + oz * 0.72],
+          [rm.centerX + ox * 0.72, rm.centerZ + oz * 0.72],
+          [rm.centerX + (Math.random() - 0.5) * ox * 0.8, rm.centerZ + (Math.random() - 0.5) * oz * 0.8],
+          [rm.centerX, rm.centerZ],
+          [rm.centerX + 2.8, rm.centerZ],
+          [rm.centerX - 2.8, rm.centerZ]
+        ];
+        // Shuffle non-center candidates so even the exact nook inside a room feels unpredictable
+        for (let i = candidates.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+        }
+        for (const [cx, cz] of candidates) {
+          if (roomIsClearOfEntities(cx, cz)) {
+            this._spawnChallengePortal(cx, cz, floorNum, pickedType, spawnedCh);
+            this._reserved.push({ x: cx, z: cz, r: 2.35 });
+            spawnedCh++;
+            break;
+          }
+        }
+      }
+    }
+
+    // Build tactical encounter formations per room after all props & solids are placed
+    this._buildRoomEncounterPlans(floorNum, rand);
+
     void st;
     this._decorMeshCount = batch.flush(this.rootGroup);
     this._createLightPool();
+  }
+
+  _buildCelestialSpring(room, floorNum, rand) {
+    const cx = room.centerX;
+    const cz = room.centerZ;
+    this._reserved.push({ x: cx, z: cz, r: 2.5 });
+
+    const springEntity = {
+      id: `spring_f${floorNum}`,
+      type: 'celestial_spring',
+      name: 'Celestial Spring of Vigour',
+      x: cx,
+      y: 0,
+      z: cz,
+      position: { x: cx, y: 0, z: cz },
+      radius: 2.5,
+      used: false,
+      prompt: 'Drink from Celestial Spring (Full Restore & 15% Blessing) [E]'
+    };
+    this.shrines.push(springEntity);
+
+    this._lightSources.push({
+      x: cx,
+      y: 1.8,
+      z: cz,
+      color: 0x38bdf8,
+      intensity: 2.4,
+      distance: 10
+    });
+  }
+
+  _spawnSecretPortal(x, z, targetFloor) {
+    const portalMesh = (this.models3d?.createPortalMesh || createPortalMesh)(
+      { color: 0xec4899, portalStyle: this.theme?.portalStyle },
+      'secret_rift'
+    );
+    portalMesh.position.set(x, 0, z);
+    this.rootGroup.add(portalMesh);
+    this._lightSources.push({ x, y: 1.8, z, color: 0xec4899, intensity: 2.8, distance: 12 });
+
+    const secretPortal = {
+      id: `secret_portal_f${this.currentFloor}`,
+      type: 'portal',
+      portalType: 'secret_portal',
+      name: `Rift to Secret Floor S${targetFloor - 100}F`,
+      targetFloor,
+      x,
+      y: 0,
+      z,
+      position: { x, y: 0, z },
+      prompt: `Enter Secret Rift (Floor S${targetFloor - 100}F) [E]`,
+      mesh: portalMesh
+    };
+    this.portals.push(secretPortal);
+  }
+
+  _spawnChallengePortal(x, z, floorNum, challengeType = 'survival_60', index = 0) {
+    const cfg = CHALLENGE_TYPES[challengeType] || CHALLENGE_TYPES.survival_60;
+    const portalMesh = (this.models3d?.createPortalMesh || createPortalMesh)(
+      { color: cfg.color, portalStyle: this.theme?.portalStyle },
+      'challenge'
+    );
+    portalMesh.position.set(x, 0, z);
+    this.rootGroup.add(portalMesh);
+    this._lightSources.push({ x, y: 2.2, z, color: cfg.color, intensity: 3.1, distance: 13 });
+
+    // Ornate runic ground seal & flanking obelisk beacons under every Trial Portal
+    if (this._batch) {
+      this._batch.add('cyl', x, 0.014, z, 3.1, 0.028, 3.1, 0, 0x1e293b);
+      this._batch.add('glowTorus', x, 0.032, z, 2.75, 2.75, 0.16, 0, cfg.color, Math.PI / 2);
+      for (const sx of [-1.45, 1.45]) {
+        this._batch.add('box', x + sx, 0.42, z, 0.34, 0.84, 0.34, 0, 0x334155);
+        this._batch.add('glowBox', x + sx, 1.0, z, 0.24, 0.32, 0.24, 0, cfg.color);
+      }
+    }
+
+    const portal = {
+      id: index === 0 ? `challenge_portal_f${floorNum}` : `challenge_portal_f${floorNum}_${index}`,
+      type: 'portal',
+      portalType: 'challenge_portal',
+      challengeType: cfg.id,
+      challengeCfg: cfg,
+      floorNum,
+      completed: false,
+      name: cfg.name,
+      x,
+      y: 0,
+      z,
+      position: { x, y: 0, z },
+      prompt: `⚔️ Enter Challenge: ${cfg.name} (${cfg.duration}s) [E]`,
+      mesh: portalMesh
+    };
+    this.portals.push(portal);
+    return portal;
+  }
+
+  _buildRoomEncounterPlans(floorNum, rand) {
+    const ARCHETYPE_SLOTS = {
+      vanguard_courtyard: [
+        [-0.28, 0.45, 'vanguard', false, false],
+        [0.28, 0.45, 'vanguard', false, false],
+        [0, 0.22, 'vanguard', false, false],
+        [-0.48, -0.25, 'ranged', false, false],
+        [0.48, -0.25, 'ranged', false, false],
+        [0, -0.42, 'captain', true, false]
+      ],
+      pillared_cloister: [
+        [-0.55, -0.55, 'ambusher', false, true],
+        [-0.42, -0.45, 'ambusher', false, true],
+        [0.55, -0.55, 'ambusher', false, true],
+        [0.42, -0.45, 'ambusher', false, true],
+        [-0.52, 0.52, 'ranged', false, false],
+        [0.52, 0.52, 'ranged', false, false],
+        [0, 0, 'captain', true, false]
+      ],
+      crucible_sanctum: [
+        [-0.32, -0.32, 'ritualist', false, false],
+        [0.32, -0.32, 'ritualist', false, false],
+        [-0.32, 0.32, 'ritualist', false, false],
+        [0.32, 0.32, 'ritualist', false, false],
+        [0, 0.58, 'vanguard', false, false],
+        [0, -0.58, 'captain', true, false]
+      ],
+      reliquary_hall: [
+        [-0.36, -0.22, 'vanguard', false, false],
+        [0.36, -0.22, 'vanguard', false, false],
+        [0, -0.44, 'captain', true, false],
+        [-0.56, 0.26, 'ranged', false, false],
+        [0.56, 0.26, 'ranged', false, false],
+        [0, 0.46, 'ambusher', false, true]
+      ],
+      barrack_ambush: [
+        [-0.54, 0.28, 'ambusher', false, true],
+        [-0.42, 0.42, 'ambusher', false, true],
+        [0.54, 0.28, 'ambusher', false, true],
+        [0.42, 0.42, 'ambusher', false, true],
+        [-0.25, -0.42, 'ranged', false, false],
+        [0.25, -0.42, 'vanguard', false, false],
+        [0, 0, 'captain', true, false]
+      ],
+      processional: [
+        [-0.34, 0.35, 'vanguard', false, false],
+        [0.34, 0.35, 'vanguard', false, false],
+        [-0.34, -0.35, 'ranged', false, false],
+        [0.34, -0.35, 'ranged', false, false],
+        [0, 0, 'captain', true, false]
+      ],
+      trap_gallery: [
+        [-0.48, 0.48, 'ranged', false, false],
+        [0.48, 0.48, 'ranged', false, false],
+        [0, -0.52, 'vanguard', false, false]
+      ]
+    };
+
+    for (const room of this.rooms) {
+      if (room.type === 'start' || room.type === 'boss' || room.type === 'village') continue;
+      const targetCount = room.type === 'combat'
+        ? Math.min(22, 8 + Math.floor(floorNum * 1.1))
+        : room.type === 'exit'
+          ? Math.min(8, 3 + Math.floor(floorNum * 0.45))
+          : Math.min(6, 2 + Math.floor(floorNum * 0.35));
+
+      const blueprint = ARCHETYPE_SLOTS[room.archetype] || ARCHETYPE_SLOTS.vanguard_courtyard;
+      const halfW = Math.max(2.0, room.w * 0.5 - 2.4);
+      const halfH = Math.max(2.0, room.h * 0.5 - 2.4);
+      const plan = [];
+
+      const findValidSpot = (wx, wz) => {
+        if (this.isWalkable(wx, wz, 0.5) && this._spotFree(wx, wz, 0.45, 1.3)) return { x: wx, z: wz };
+        for (let k = 0; k < 8; k++) {
+          const a = (k / 8) * Math.PI * 2;
+          const nx = wx + Math.cos(a) * 1.3;
+          const nz = wz + Math.sin(a) * 1.3;
+          if (this.isWalkable(nx, nz, 0.5) && this._spotFree(nx, nz, 0.45, 1.3)) return { x: nx, z: nz };
+        }
+        return null;
+      };
+
+      for (let i = 0; i < targetCount; i++) {
+        const tmpl = blueprint[i % blueprint.length];
+        const ring = Math.floor(i / blueprint.length);
+        const jitterX = ring > 0 ? (rand() - 0.5) * 2.2 : (rand() - 0.5) * 0.9;
+        const jitterZ = ring > 0 ? (rand() - 0.5) * 2.2 : (rand() - 0.5) * 0.9;
+        const rawX = room.centerX + tmpl[0] * halfW + jitterX;
+        const rawZ = room.centerZ + tmpl[1] * halfH + jitterZ;
+        const clampedX = Math.max(room.x + 2.0, Math.min(room.x + room.w - 2.0, rawX));
+        const clampedZ = Math.max(room.z + 2.0, Math.min(room.z + room.h - 2.0, rawZ));
+        const pt = findValidSpot(clampedX, clampedZ);
+        if (!pt) continue;
+        const packIdx = Math.floor(i / 3);
+        const keepSleeping = Boolean(tmpl[4]) && room.type !== 'exit';
+        plan.push({
+          x: Number(pt.x.toFixed(2)),
+          z: Number(pt.z.toFixed(2)),
+          role: tmpl[2],
+          isElite: Boolean(tmpl[3]) && i === blueprint.findIndex((s) => s[3]),
+          packId: `pack_f${floorNum}_r${room.id}_p${packIdx}`,
+          sleeping: keepSleeping
+        });
+      }
+      room.encounterPlan = plan;
+    }
   }
 
   _buildTrapGallery(room, floorNum, rand) {
@@ -1234,7 +2350,7 @@ export class DungeonGenerator {
       }
       if (order.join() === BELL_PITCHES.join()) order.reverse(); // never the trivial order
       this.puzzle = { type: 'bells', solved: false, gateId, order, progress: [] };
-      const slots = [at(1.8, 1.8), at(1.8, 3.8), at(1.8, 5.8)];
+      const slots = [at(1.8, 1.2), at(1.8, 2.8), at(1.8, 4.4), at(1.8, 6.0), at(1.8, 7.6)];
       const pitches = BELL_PITCHES.slice();
       for (let i = pitches.length - 1; i > 0; i--) {
         const j = Math.floor(rand() * (i + 1));
@@ -1248,30 +2364,31 @@ export class DungeonGenerator {
       addProp('stele', buildSteleMesh(st.stone), at(4.6, 1.3), 'Ancient Stele', 'Read Stele [E]', 0.6, {
         text: `The stele reads: ${order.join(' – ')}`
       });
-      this._reserved.push({ x: at(3.0, 3.6).x, z: at(3.0, 3.6).z, r: 4.6 });
+      this._reserved.push({ x: at(3.0, 4.4).x, z: at(3.0, 4.4).z, r: 5.6 });
     } else {
-      // three guardians face the altar from three sides; each interaction turns one by 90 degrees
+      // Four guardians face the altar from four cardinal sides with linked turning
       const altarPos = at(4.6, 4.6);
       const dirs = [
-        { x: altarPos.x + corner.sx * 2.6, z: altarPos.z, face: [-corner.sx, 0] },
-        { x: altarPos.x, z: altarPos.z + corner.sz * 2.6, face: [0, -corner.sz] },
-        { x: altarPos.x - corner.sx * 2.6, z: altarPos.z, face: [corner.sx, 0] }
+        { x: altarPos.x + 2.8, z: altarPos.z, face: [-1, 0], idx: 0 },
+        { x: altarPos.x - 2.8, z: altarPos.z, face: [1, 0], idx: 1 },
+        { x: altarPos.x, z: altarPos.z + 2.8, face: [0, -1], idx: 2 },
+        { x: altarPos.x, z: altarPos.z - 2.8, face: [0, 1], idx: 3 }
       ];
       this.puzzle = { type: 'statues', solved: false, gateId, statues: [] };
       addProp('altar', buildAltarMesh(), altarPos, 'Guardian Altar', 'Altar of Guardians', 0.7);
       dirs.forEach((d, i) => {
         const target = ((Math.round(Math.atan2(d.face[0], d.face[1]) / (Math.PI / 2)) % 4) + 4) % 4;
         let rot = Math.floor(rand() * 4);
-        if (i === 0 && rot === target) rot = (target + 1 + Math.floor(rand() * 3)) % 4;
+        if (rot === target) rot = (target + 1 + Math.floor(rand() * 3)) % 4;
         const mesh = buildPuzzleStatueMesh(st.stone);
         mesh.rotation.y = rot * (Math.PI / 2);
-        const p = addProp('puzzle_statue', mesh, d, 'Guardian Statue', 'Turn Statue [E]', 0.5, { rot, target });
+        const p = addProp('puzzle_statue', mesh, d, 'Guardian Statue', 'Turn Statue [E]', 0.5, { rot, target, index: i });
         this.puzzle.statues.push(p);
       });
       addProp('stele', buildSteleMesh(st.stone), at(1.4, 1.4), 'Ancient Stele', 'Read Stele [E]', 0.6, {
-        text: 'The stele reads: Let every guardian turn its gaze upon the altar flame.'
+        text: 'The stele reads: Four guardians watch the four cardinal winds. Turn each to face the sacred altar flame.'
       });
-      this._reserved.push({ x: altarPos.x, z: altarPos.z, r: 5.2 });
+      this._reserved.push({ x: altarPos.x, z: altarPos.z, r: 5.8 });
     }
   }
 
@@ -1381,39 +2498,129 @@ export class DungeonGenerator {
       if (!src) { slot.light.intensity = 0; continue; }
       slot.level += (slot.target - slot.level) * Math.min(1, dt * 6);
       const wave = Math.sin(time * 9 + slot.phase) * 0.1 + Math.cos(time * 15 + slot.phase * 1.7) * 0.06;
-      slot.light.intensity = Math.max(0, src.intensity * 1.45 * (1 + wave) * slot.level);
+      slot.light.intensity = Math.max(0, src.intensity * 1.05 * (1 + wave) * slot.level);
     }
+  }
+
+  _findBossRoomEntrance(bossRoom) {
+    if (!bossRoom) return null;
+    let corridorTiles = [];
+    // 1. Scan west wall
+    for (let gz = bossRoom.gz; gz < bossRoom.gz + bossRoom.gh; gz++) {
+      if (this.getTileAtGrid(bossRoom.gx - 1, gz) === TILE.CORRIDOR) {
+        corridorTiles.push(gz);
+      }
+    }
+    if (corridorTiles.length > 0) {
+      const midGz = corridorTiles.reduce((a, b) => a + b, 0) / corridorTiles.length;
+      const worldPos = this.gridToWorld(bossRoom.gx - 0.5, midGz);
+      return { x: worldPos.x, z: worldPos.z, rotationY: Math.PI / 2 };
+    }
+
+    // 2. Scan south wall
+    corridorTiles = [];
+    for (let gx = bossRoom.gx; gx < bossRoom.gx + bossRoom.gw; gx++) {
+      if (this.getTileAtGrid(gx, bossRoom.gz + bossRoom.gh) === TILE.CORRIDOR) {
+        corridorTiles.push(gx);
+      }
+    }
+    if (corridorTiles.length > 0) {
+      const midGx = corridorTiles.reduce((a, b) => a + b, 0) / corridorTiles.length;
+      const worldPos = this.gridToWorld(midGx, bossRoom.gz + bossRoom.gh + 0.5);
+      return { x: worldPos.x, z: worldPos.z, rotationY: 0 };
+    }
+
+    // 3. Scan north wall
+    corridorTiles = [];
+    for (let gx = bossRoom.gx; gx < bossRoom.gx + bossRoom.gw; gx++) {
+      if (this.getTileAtGrid(gx, bossRoom.gz - 1) === TILE.CORRIDOR) {
+        corridorTiles.push(gx);
+      }
+    }
+    if (corridorTiles.length > 0) {
+      const midGx = corridorTiles.reduce((a, b) => a + b, 0) / corridorTiles.length;
+      const worldPos = this.gridToWorld(midGx, bossRoom.gz - 0.5);
+      return { x: worldPos.x, z: worldPos.z, rotationY: 0 };
+    }
+
+    // 4. Default west boundary
+    const defPos = this.gridToWorld(bossRoom.gx - 0.5, Math.floor(bossRoom.gz + bossRoom.gh * 0.5));
+    return { x: defPos.x, z: defPos.z, rotationY: Math.PI / 2 };
   }
 
   _decorateBossArena(bossRoom, floorNum) {
     // Pillar ring, braziers and dais (instanced) + arena metadata for the coordinator
     this.bossArena = decorateBossArenaProps(this, this._batch, bossRoom, seededRandom(floorNum * 31 + 7));
 
-    // Boss Victory Chest & Next Floor Portal at the north end of the Boss Arena
-    // Rift pavilion on the north axis between the diagonal braziers; chest beside it on the dais
-    const chestPos = { x: bossRoom.centerX - 3.0, z: bossRoom.centerZ - 2.6 };
+    // Locked Boss Gate at the entrance corridor archway to the Boss Chamber (Final Floor 16 opens straight into the Sanctum)
+    const BOSS_GATE_NAMES = {
+      donhwang: 'Donwhang Cave Seal Gate',
+      karakoram: 'Karakoram Black Robber Gate',
+      qinshi: 'Qin-Shi Seal Gate',
+      qinshi_b6: 'Medusa Chamber Seal Gate',
+      flame: 'Flame Mountain Magma Gate',
+      holywater: 'Holy Water Sanctum Gate',
+      jupiter: 'Jupiter Inner Sanctum Gate',
+      demon: 'Shambhala Guardian Gate',
+      togui: 'Togui Elder Gate',
+      wreck: 'Sunken Captain Gate'
+    };
+    const entrance = this._findBossRoomEntrance(bossRoom);
+    if (entrance && floorNum !== 16) {
+      const gateId = `f${floorNum}_boss_gate`;
+      const gate = this._spawnGate(entrance.x, entrance.z, gateId, false);
+      gate.isBossGate = true;
+      gate.radius = 2.4;
+      gate.name = BOSS_GATE_NAMES[this.sroDungeon] || 'Chamber of the Sovereign Gate';
+      if (gate.mesh) {
+        gate.mesh.rotation.y = entrance.rotationY;
+      }
+      this.bossGate = gate;
+      this._reserved.push({ x: entrance.x, z: entrance.z, r: 2.5 });
+    }
+
+    // Boss Victory Chest & Next Floor Portal at the north apse of the expanded Boss Arena
+    const chestPos = {
+      x: bossRoom.centerX - 3.8,
+      z: bossRoom.centerZ - (floorNum === 16 ? 10.5 : 7.2)
+    };
     const bossChest = this._spawnChest(chestPos.x, chestPos.z, 'boss', `f${floorNum}_boss_chest`);
     bossChest.lockedByBoss = true;
 
-    const isFinalFloor = floorNum >= FLOOR_DEFINITIONS.length;
-    const nextPortalMesh = (this.models3d?.createPortalMesh || createPortalMesh)(0xef4444, 'boss_exit');
-    const portalPos = { x: bossRoom.centerX, y: 0, z: bossRoom.centerZ - 4.9 };
+    const maxNormalFloor = FLOOR_DEFINITIONS.filter((f) => !f.isSecretFloor).length;
+    const isFinalFloor = floorNum >= maxNormalFloor;
+    const leadsToFinalBoss = floorNum === 15;
+    const nextPortalMesh = (this.models3d?.createPortalMesh || createPortalMesh)(
+      { color: leadsToFinalBoss ? 0xa855f7 : 0xef4444, portalStyle: this.theme?.portalStyle },
+      'boss_exit'
+    );
+    const portalPos = { x: bossRoom.centerX, y: 0, z: bossRoom.centerZ - (floorNum === 16 ? 13.5 : 9.4) };
     nextPortalMesh.position.set(portalPos.x, 0, portalPos.z);
     nextPortalMesh.userData.setLocked?.(true);
     this.rootGroup.add(nextPortalMesh);
+    this._reserved.push({ x: portalPos.x, z: portalPos.z, r: 2.35 });
 
     this.portals.push({
       id: `boss_exit_f${floorNum}`,
       type: 'portal',
       portalType: isFinalFloor ? 'village' : 'next_floor',
-      name: isFinalFloor ? 'Abyssal Rift to Oakhaven' : `Abyssal Rift to Floor ${floorNum + 1}`,
+      name: isFinalFloor
+        ? 'Victory Rift to Oakhaven'
+        : leadsToFinalBoss
+          ? 'Abyssal Gate to Mountain Roc Peak — Sky Nest'
+          : `Abyssal Rift to Floor ${floorNum + 1}`,
       targetFloor: isFinalFloor ? 0 : floorNum + 1,
       lockedByBoss: true,
+      lockedByClear: Boolean(this.exitLockedByClear),
       x: portalPos.x,
       y: 0,
       z: portalPos.z,
       position: portalPos,
-      prompt: isFinalFloor ? 'Return to Oakhaven [E]' : `Enter Rift to Floor ${floorNum + 1} [E]`,
+      prompt: isFinalFloor
+        ? 'Victory Complete! Return to Oakhaven [E]'
+        : leadsToFinalBoss
+          ? 'Enter Mountain Roc Peak — Sky Nest [E]'
+          : `Enter Rift to Floor ${floorNum + 1} [E]`,
       mesh: nextPortalMesh
     });
   }
@@ -1427,7 +2634,7 @@ export class DungeonGenerator {
     for (const portal of this.portals) {
       if (portal.lockedByBoss) {
         portal.lockedByBoss = false;
-        portal.mesh?.userData?.setLocked?.(false);
+        portal.mesh?.userData?.setLocked?.(Boolean(portal.lockedByClear));
       }
     }
     for (const gate of this.gates) {
@@ -1439,6 +2646,19 @@ export class DungeonGenerator {
 
   onBossDefeated() {
     return this.unlockBossRoomRewards();
+  }
+
+  setExitLockedByClear(locked) {
+    this.exitLockedByClear = Boolean(locked);
+    for (const portal of this.portals) {
+      if (
+        portal.portalType === 'next_floor'
+        || (portal.portalType === 'village' && String(portal.id || '').startsWith('boss_exit'))
+      ) {
+        portal.lockedByClear = Boolean(locked);
+        portal.mesh?.userData?.setLocked?.(Boolean(portal.lockedByClear || portal.lockedByBoss));
+      }
+    }
   }
 
   _spawnTorch(x, z, color = 0xffaa44) {
@@ -1455,6 +2675,37 @@ export class DungeonGenerator {
       this.renderer.addPointLight(new THREE.Vector3(x, 2.2, z), color, 2.5, 18.0, true);
     }
     this.torches.push({ x, y: 0.85, z, color, mesh });
+  }
+
+  _spawnStorageChest(x, z, id = 'village_starter_chest', name = 'General Shared Storage Chest') {
+    const mesh = createSilkroadCofferMesh('legendary', false);
+    mesh.scale.setScalar(1.22);
+    mesh.position.set(x, 0, z);
+    this.rootGroup.add(mesh);
+
+    if (this.renderer?.addPointLight) {
+      this.renderer.addPointLight(new THREE.Vector3(x, 1.4, z), 0xfbbf24, 1.5, 9.0, false);
+    }
+
+    const chestObj = {
+      id,
+      type: 'storage_chest',
+      isStorageChest: true,
+      reusable: true,
+      tier: 'storage',
+      name,
+      isOpen: false,
+      lockedByBoss: false,
+      x,
+      y: 0,
+      z,
+      position: { x, y: 0, z },
+      prompt: `Open ${name} (Shared Gold & Items) [E]`,
+      mesh
+    };
+    this.chests.push(chestObj);
+    this.solidObstacles.push({ x, z, radius: 0.62 });
+    return chestObj;
   }
 
   _spawnChest(x, z, tier = 'normal', id = null) {
@@ -1483,16 +2734,24 @@ export class DungeonGenerator {
   }
 
   _spawnBreakable(x, z, kind = 'barrel', id = null) {
+    // Küçük mavi kristalleri kırılabilir nesne olarak kaldır - temaya uygun fallback yap
+    let validKind = kind;
+    if (validKind === 'crystal') {
+      validKind = (this.theme?.breakableTypes && this.theme.breakableTypes[0]) || 'barrel';
+    }
+    if (validKind === 'barrel' && this.currentFloor > 0 && Math.random() < 0.28) {
+      validKind = 'barrel_explosive';
+    }
     const breakableId = id || `breakable_${this.breakables.length + 1}`;
-    const mesh = (this.models3d?.createBreakableMesh || createBreakableMesh)(kind);
+    const mesh = (this.models3d?.createBreakableMesh || createBreakableMesh)(validKind);
     mesh.position.set(x, 0, z);
     this.rootGroup.add(mesh);
 
-    const maxHp = kind === 'crystal' ? 35 : 20;
+    const maxHp = validKind === 'urn' ? 15 : 25;
     const obj = {
       id: breakableId,
       type: 'breakable',
-      kind,
+      kind: validKind,
       hp: maxHp,
       maxHp,
       destroyed: false,
@@ -1600,15 +2859,50 @@ export class DungeonGenerator {
     return gate;
   }
 
-  _spawnShrine(x, z, floorNum) {
+  _spawnShrine(x, z, floorNum, shrineType = null) {
+    const SHRINE_TYPES = [
+      {
+        kind: 'shrine_berserk',
+        name: 'Hwan Berserk Obelisk',
+        color: 0xef4444,
+        emissive: 0xdc2626,
+        prompt: 'Touch Berserk Obelisk (Max 5 Hwan Orbs!) [E]'
+      },
+      {
+        kind: 'shrine_fortune',
+        name: 'Fortune Shrine',
+        color: 0xfacc15,
+        emissive: 0xeab308,
+        prompt: 'Touch Fortune Shrine (+60% Gold & +30% Magic Find) [E]'
+      },
+      {
+        kind: 'shrine_haste',
+        name: 'Wind Walker Shrine',
+        color: 0x38bdf8,
+        emissive: 0x0284c7,
+        prompt: 'Touch Wind Walker Shrine (+40% Move & +30% Atk Speed) [E]'
+      },
+      {
+        kind: 'shrine_sanctuary',
+        name: 'Sanctuary Blessing Shrine',
+        color: 0x4ade80,
+        emissive: 0x22c55e,
+        prompt: 'Drink Sanctuary Waters (Full Restore & Rapid Regen) [E]'
+      }
+    ];
+
+    const picked = shrineType
+      ? SHRINE_TYPES.find((s) => s.kind === shrineType) || SHRINE_TYPES[0]
+      : SHRINE_TYPES[Math.max(0, (floorNum || 1) - 1) % SHRINE_TYPES.length];
+
     const group = new THREE.Group();
     group.position.set(x, 0, z);
 
     const stoneMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.6 });
     const gemMat = new THREE.MeshStandardMaterial({
-      color: 0x4ade80,
-      emissive: new THREE.Color(0x22c55e),
-      emissiveIntensity: 0.85,
+      color: picked.color,
+      emissive: new THREE.Color(picked.emissive),
+      emissiveIntensity: 0.9,
       roughness: 0.2
     });
 
@@ -1621,18 +2915,20 @@ export class DungeonGenerator {
 
     this.rootGroup.add(group);
     this.solidObstacles.push({ x, z, radius: 0.65 });
+    this._lightSources.push({ x, y: 1.6, z, color: picked.color, intensity: 1.8, distance: 9 });
 
     this.shrines.push({
-      id: `shrine_f${floorNum}`,
+      id: `shrine_f${floorNum}_${this.shrines.length + 1}`,
       type: 'shrine',
-      name: 'Sanctuary Blessing Shrine',
+      shrineKind: picked.kind,
+      name: picked.name,
       x,
       y: 0,
       z,
       position: { x, y: 0, z },
       used: false,
       reusable: false,
-      prompt: 'Touch Blessing Shrine (Restore HP/MP & Buff) [E]',
+      prompt: picked.prompt,
       mesh: group
     });
   }
@@ -1645,6 +2941,14 @@ export class DungeonGenerator {
       gate.mesh.userData.barsGroup.position.y = gate.isOpen ? -2.1 : 0;
     }
     return true;
+  }
+
+  /**
+   * Check whether an entity can navigate to/stand on (x, z).
+   * Delegates to isWalkable, which respects walls, closed gates, and solid obstacles.
+   */
+  canMoveTo(posOrX, zOrRadius = 0, maybeRadius = 0.4) {
+    return this.isWalkable(posOrX, zOrRadius, maybeRadius);
   }
 
   /**
@@ -1823,7 +3127,9 @@ export class DungeonGenerator {
     }
 
     for (const chest of this.chests) {
-      if (!chest.isOpen) {
+      if (chest.type === 'storage_chest' || chest.isStorageChest) {
+        consider(chest, 'storage_chest', chest.prompt || `Open ${chest.name || 'General Shared Storage'} [E]`, 0.35);
+      } else if (!chest.isOpen) {
         const prompt = chest.lockedByBoss
           ? 'Locked (Defeat the Floor Boss first!)'
           : chest.prompt;
@@ -1848,10 +3154,19 @@ export class DungeonGenerator {
       }
     }
 
+    const heroLv = Number(this.gameContext?.gameState?.hero?.level ?? this.gameContext?.hero?.level ?? 0);
     for (const portal of this.portals) {
-      const prompt = portal.lockedByBoss
-        ? 'Sealed Rift (Defeat the Floor Boss first!)'
-        : portal.prompt;
+      let prompt = portal.prompt;
+      if (portal.lockedByClear) {
+        prompt = 'Sealed Gate (Defeat all monsters on this floor first!)';
+      } else if (portal.lockedByBoss) {
+        prompt = 'Sealed Rift (Defeat the Floor Boss first!)';
+      } else if (
+        heroLv > 0 && heroLv < MIN_DUNGEON_LEVEL
+        && (portal.portalType === 'dungeon_entrance' || (portal.portalType === 'next_floor' && (portal.targetFloor || 0) > 0))
+      ) {
+        prompt = `Dungeon Gate Locked — Reach Lv ${MIN_DUNGEON_LEVEL} in Oakhaven Outskirts (Lv ${heroLv}/${MIN_DUNGEON_LEVEL})`;
+      }
       consider(portal, 'portal', prompt, 0.4);
     }
 
@@ -1879,6 +3194,20 @@ export class DungeonGenerator {
     const entity = target.entity || target;
     const type = target.type || entity.type;
 
+    if (type === 'storage_chest' || entity.isStorageChest) {
+      entity.isOpen = !entity.isOpen;
+      entity.mesh?.userData?.setOpen?.(entity.isOpen);
+      ctx.menus?.openMenu?.('storage');
+      return {
+        ok: true,
+        type: 'storage_chest',
+        actionType: 'storage',
+        menu: 'storage',
+        entity,
+        message: 'Opened General Shared Storage Vault'
+      };
+    }
+
     if (type === 'chest') {
       return this.openChest(entity, ctx);
     }
@@ -1897,14 +3226,38 @@ export class DungeonGenerator {
         return { ok: false, reason: 'Shrine blessing already claimed.' };
       }
       entity.used = true;
-      if (ctx.gameState?.heal) {
-        ctx.gameState.heal(9999, 9999);
-      } else if (ctx.gameState?.hero) {
-        const stats = ctx.gameState.getStats ? ctx.gameState.getStats() : {};
-        ctx.gameState.hero.hp = stats.maxHp || ctx.gameState.hero.maxHp || 100;
-        ctx.gameState.hero.mp = stats.maxMp || ctx.gameState.hero.maxMp || 100;
+      const k = entity.shrineKind || 'shrine_sanctuary';
+
+      if (k === 'shrine_berserk') {
+        if (ctx.gameState) {
+          ctx.gameState.hero.berserkCharge = 5;
+          if (ctx.player?.tryActivateBerserk) ctx.player.tryActivateBerserk();
+          else if (ctx.gameState.triggerBerserk) ctx.gameState.triggerBerserk();
+        }
+        ctx.hud?.showToast?.('🔥 HWAN BERSERK UNLEASHED! (5 Orbs Charged!)', 'levelup');
+      } else if (k === 'shrine_fortune') {
+        if (ctx.gameState?.addBuff) {
+          ctx.gameState.addBuff({ id: 'shrine_fortune', name: 'Fortune Blessing', icon: '💰', duration: 60, mods: { goldFind: 60, magicFind: 30 } });
+        }
+        ctx.hud?.showToast?.('💰 Fortune Shrine: +60% Gold & +30% Magic Find (60s)!', 'loot');
+      } else if (k === 'shrine_haste') {
+        if (ctx.gameState?.addBuff) {
+          ctx.gameState.addBuff({ id: 'shrine_haste', name: 'Wind Walker Haste', icon: '💨', duration: 45, mods: { moveSpeedPct: 40, attackSpeedPct: 30 } });
+        }
+        ctx.hud?.showToast?.('💨 Wind Walker Shrine: +40% Speed & +30% Attack Speed (45s)!', 'info');
+      } else {
+        if (ctx.gameState?.heal) {
+          ctx.gameState.heal(9999, 9999);
+        } else if (ctx.gameState?.hero) {
+          const stats = ctx.gameState.getStats ? ctx.gameState.getStats() : {};
+          ctx.gameState.hero.hp = stats.maxHp || ctx.gameState.hero.maxHp || 100;
+          ctx.gameState.hero.mp = stats.maxMp || ctx.gameState.hero.maxMp || 100;
+        }
+        if (ctx.gameState?.addBuff) {
+          ctx.gameState.addBuff({ id: 'shrine_regen', name: 'Sanctuary Regeneration', icon: '✨', duration: 20, mods: { hpRegen: 35, mpRegen: 25 } });
+        }
+        ctx.hud?.showToast?.(`${entity.name}: Full HP & Mana Restored + Rapid Regen!`, 'heal');
       }
-      ctx.hud?.showToast?.(`${entity.name}: Full HP & Mana Restored!`, 'heal');
       return { ok: true, type: 'shrine', entity };
     }
 
@@ -1915,16 +3268,64 @@ export class DungeonGenerator {
       return { ok: true, type: 'stele', text: entity.text };
     }
 
+    if (type === 'celestial_spring') {
+      if (entity.used) {
+        ctx.hud?.showToast?.('The Celestial Spring is temporarily depleted.', 'info');
+        return { ok: false, reason: 'Already used' };
+      }
+      entity.used = true;
+      if (ctx.hero) {
+        const stats = ctx.gameState?.getDerivedStats?.() || ctx.hero;
+        ctx.hero.hp = stats.maxHp || ctx.hero.maxHp || 1000;
+        ctx.hero.mp = stats.maxMp || ctx.hero.maxMp || 500;
+      }
+      if (ctx.gameState?.fullRestore) {
+        ctx.gameState.fullRestore();
+      }
+      if (ctx.gameState?.addStatusEffect) {
+        ctx.gameState.addStatusEffect('celestial_blessing', {
+          name: 'Celestial Blessing',
+          duration: 300,
+          atkPct: 15,
+          defPct: 15,
+          icon: '✨'
+        });
+      }
+      const msg = '✨ Celestial Waters replenish your essence! Full HP & MP restored, +15% ATK & DEF!';
+      if (ctx.hud?.showToast) ctx.hud.showToast(msg, 'success');
+      ctx.sound?.play?.('buff') || ctx.sound?.play?.('potion');
+      return { ok: true, type: 'celestial_spring', entity };
+    }
+
     if (type === 'loot') {
       return this.pickupLoot(entity, ctx);
     }
 
     if (type === 'portal') {
+      if (entity.lockedByClear) {
+        const sealedMsg = 'Clear all remaining monsters on this floor to unlock the portal!';
+        if (ctx.hud?.showToast) ctx.hud.showToast(sealedMsg, 'warning');
+        else ctx.hud?.toast?.(sealedMsg, 'info');
+        return { ok: false, reason: 'Locked until floor cleared' };
+      }
       if (entity.lockedByBoss) {
         const sealedMsg = 'Defeat the Floor Boss to unseal this portal!';
         if (ctx.hud?.showToast) ctx.hud.showToast(sealedMsg, 'warning');
         else ctx.hud?.toast?.(sealedMsg, 'info');
         return { ok: false, reason: 'Locked by Boss' };
+      }
+      if (entity.portalType === 'challenge_portal') {
+        if (entity.completed) {
+          const doneMsg = 'This Challenge Rift has already been conquered!';
+          ctx.hud?.toast?.(doneMsg, 'info');
+          return { ok: false, reason: 'Already completed' };
+        }
+        ctx.enterChallenge?.(entity);
+        return { ok: true, type: 'portal', action: 'enter_challenge', challengeType: entity.challengeType, entity };
+      }
+      if (entity.portalType === 'challenge_return') {
+        ctx.exitChallenge?.({ died: false });
+        return { ok: true, type: 'portal', action: 'exit_challenge', entity };
       }
       if (entity.portalType === 'floor_selector') {
         if (ctx.menus?.openMenu) ctx.menus.openMenu('map');
@@ -1936,6 +3337,16 @@ export class DungeonGenerator {
         return { ok: true, type: 'portal', action: 'return_to_village', targetFloor: 0, entity };
       }
       const nextFloor = entity.targetFloor || (this.currentFloor + 1);
+      const heroLv = Number(ctx?.gameState?.hero?.level ?? ctx?.game?.hero?.level ?? ctx?.hero?.level);
+      if (
+        Number.isFinite(heroLv) && heroLv > 0 && heroLv < MIN_DUNGEON_LEVEL && nextFloor > 0
+        && (entity.portalType === 'dungeon_entrance' || entity.portalType === 'next_floor' || entity.portalType === 'secret_portal')
+      ) {
+        const gateMsg = `Dungeon entrance requires Level ${MIN_DUNGEON_LEVEL}! Train in Oakhaven Outskirts first (Lv ${heroLv}/${MIN_DUNGEON_LEVEL}).`;
+        if (ctx.hud?.showToast) ctx.hud.showToast(gateMsg, 'warn');
+        else ctx.hud?.toast?.(gateMsg, 'warn');
+        return { ok: false, reason: `Requires Level ${MIN_DUNGEON_LEVEL}` };
+      }
       ctx.enterFloor?.(nextFloor);
       return { ok: true, type: 'portal', action: 'enter_floor', targetFloor: nextFloor, entity };
     }
@@ -1959,7 +3370,14 @@ export class DungeonGenerator {
       ? this.chests.find((c) => c.id === chestOrId)
       : (chestOrId?.entity || chestOrId);
 
-    if (!chest || chest.isOpen) return { ok: false, opened: false, drops: [], gold: 0 };
+    if (!chest) return { ok: false, opened: false, drops: [], gold: 0 };
+    if (chest.isStorageChest || chest.type === 'storage_chest') {
+      chest.isOpen = !chest.isOpen;
+      chest.mesh?.userData?.setOpen?.(chest.isOpen);
+      ctx.menus?.openMenu?.('storage');
+      return { ok: true, opened: true, type: 'storage_chest', actionType: 'storage', menu: 'storage', chest, drops: [], gold: 0 };
+    }
+    if (chest.isOpen) return { ok: false, opened: false, drops: [], gold: 0 };
     if (chest.lockedByBoss) {
       ctx.hud?.showToast?.('The Boss Chest is sealed until the Floor Boss falls!', 'warning');
       return { ok: false, opened: false, locked: true, drops: [], gold: 0 };
@@ -1970,14 +3388,43 @@ export class DungeonGenerator {
 
     const floorLevel = Math.max(1, this.currentFloor || 1);
     const tierMult = chest.tier === 'boss' ? 4 : chest.tier === 'epic' ? 3 : chest.tier === 'rare' ? 2 : 1.3;
-    const goldAmount = Math.round((25 + floorLevel * 18) * tierMult);
+    const isVaultOrBoss = chest.tier === 'boss' || String(chest.id).includes('treasure') || Boolean(chest.isVaultChest) || this.specialRoomType === 'vault';
+    const goldMultiplier = isVaultOrBoss ? 3.2 : 1.0;
+    const goldAmount = Math.round((25 + floorLevel * (isVaultOrBoss ? 65 : 18)) * tierMult * goldMultiplier);
 
     const drops = [];
     // Spawn gold pile
     this.spawnGroundLoot(
       { x: chest.x + (Math.random() - 0.5) * 1.4, z: chest.z + 0.9 },
-      { type: 'gold', name: `${goldAmount} Gold`, amount: goldAmount, rarity: 'normal' }
+      { type: 'gold', name: `${goldAmount} Gold`, amount: goldAmount, rarity: isVaultOrBoss ? 'rare' : 'normal' }
     );
+
+    // Guaranteed Seal gear & Alchemy Elixirs for vault puzzle / boss chests
+    if (isVaultOrBoss && ctx.inventory?.generateItem) {
+      const sealKind = floorLevel >= 8 ? (Math.random() < 0.45 ? 'moon' : 'star') : 'star';
+      const sealGear = ctx.inventory.generateItem({ level: floorLevel, rarity: 'epic', seal: sealKind });
+      if (sealGear) {
+        drops.push(sealGear);
+        this.spawnGroundLoot({ x: chest.x + 1.25, z: chest.z + 0.5 }, sealGear);
+      }
+      const elxKinds = ['elixir_weapon', 'elixir_armor', 'elixir_shield', 'elixir_accessory'];
+      const elxBase = elxKinds[Math.floor(Math.random() * elxKinds.length)];
+      const elixirItem = ctx.inventory.generateItem({ baseId: elxBase, count: Math.floor(1 + Math.random() * 2) });
+      if (elixirItem) {
+        drops.push(elixirItem);
+        this.spawnGroundLoot({ x: chest.x - 1.25, z: chest.z + 0.5 }, elixirItem);
+      }
+    }
+
+    // Secret rift portal spawn upon unlocking high-tier vault / boss chest
+    if (isVaultOrBoss && this.currentFloor >= 3 && !this.secretPortalSpawned) {
+      const targetSecretFloor = this.currentFloor <= 5 ? 101 : (this.currentFloor <= 9 ? 102 : 103);
+      this._spawnSecretPortal(chest.x, chest.z - 2.8, targetSecretFloor);
+      this.secretPortalSpawned = true;
+      const riftMsg = `🌀 A shimmering Rift to Secret Floor S${targetSecretFloor - 100}F has manifested!`;
+      if (ctx.hud?.showToast) ctx.hud.showToast(riftMsg, 'legendary');
+      else ctx.hud?.toast?.(riftMsg, 'legendary');
+    }
 
     // Roll 1-3 items using inventory system if available, or procedural item descriptors
     const itemCount = chest.tier === 'boss' ? 3 : chest.tier === 'epic' || chest.tier === 'rare' ? 2 : 1;
@@ -2093,7 +3540,46 @@ export class DungeonGenerator {
       this.rootGroup.remove(brk.mesh);
     }
 
-    if (this.renderer?.spawnHitSparks) {
+    const isExplosive = brk.kind === 'barrel_explosive';
+    if (isExplosive) {
+      if (this.renderer?.spawnHitSparks) {
+        this.renderer.spawnHitSparks(new THREE.Vector3(brk.x, 0.4, brk.z), 0xef4444, 32);
+      }
+      if (this.renderer?.shake) {
+        this.renderer.shake(0.4, 0.28);
+      }
+
+      // Detonate AoE damage to nearby enemies within 3.8m
+      this.renderer?.spawnShockwave?.({ x: brk.x, y: 0.1, z: brk.z }, 3.8, 0xff5a2a, 0.35);
+      const enemiesMgr = context?.enemies || context?.enemyManager || this.gameContext?.enemies || this.gameContext?.enemyManager;
+      const enemyList = enemiesMgr?.enemies || enemiesMgr?.list || this.enemies || [];
+      const aoeDamage = 160 + (this.currentFloor || 1) * 30;
+      for (const e of [...enemyList]) {
+        if (!e || e.dead || e.isDead || e.hp <= 0) continue;
+        const dx = e.x - brk.x;
+        const dz = e.z - brk.z;
+        const ed = Math.hypot(dx, dz);
+        if (ed <= 3.8) {
+          const kbDir = ed > 0.01 ? { x: dx / ed, z: dz / ed } : null;
+          if (enemiesMgr && typeof enemiesMgr.damageEnemy === 'function') {
+            enemiesMgr.damageEnemy(e, aoeDamage, true, kbDir, 'fire');
+          } else if (typeof e.receiveDamage === 'function') {
+            e.receiveDamage(aoeDamage, { name: 'Explosive Barrel' }, { isCrit: true, element: 'fire' });
+          } else if (e.hp != null) {
+            e.hp -= aoeDamage;
+          }
+        }
+      }
+
+      // Detonate small feedback damage to player if too close (< 2.2m)
+      const p = context?.player || this.gameContext?.player;
+      if (p?.position && Math.hypot(p.position.x - brk.x, p.position.z - brk.z) <= 2.2) {
+        p.receiveHit?.(25, { name: 'Explosive Barrel' }, { element: 'fire' });
+      }
+
+      const hud = context?.hud || this.gameContext?.hud;
+      hud?.showToast?.('💥 EXPLOSIVE BARREL DETONATED! Heavy AoE Fire Blast!', 'warning');
+    } else if (this.renderer?.spawnHitSparks) {
       this.renderer.spawnHitSparks(new THREE.Vector3(brk.x, 0.4, brk.z), 0xfbbf24, 10);
     }
 
@@ -2210,10 +3696,12 @@ export class DungeonGenerator {
     return lootEntry;
   }
 
-  spawnGroundLoot(posOrX, itemOrZ, maybeItem = null, startOrigin = null) {
+  spawnGroundLoot(posOrX, itemOrZ, maybeItem = null, startOrigin = null, maybeOpts = null) {
     let x = 0;
     let z = 0;
     let item = itemOrZ;
+    let opts = (typeof startOrigin === 'object' && startOrigin && !('x' in startOrigin) ? startOrigin : maybeOpts) || {};
+    let origin = (startOrigin && 'x' in startOrigin ? startOrigin : null);
     if (typeof posOrX === 'object' && posOrX !== null) {
       x = Number(posOrX.x || 0);
       z = Number(posOrX.z || 0);
@@ -2229,8 +3717,8 @@ export class DungeonGenerator {
     const rarity = item.rarity || 'normal';
 
     const mesh = (this.models3d?.createLootMesh || createLootMesh)(isGold ? 'gold' : item, rarity);
-    const startX = startOrigin ? Number(startOrigin.x ?? x) : x;
-    const startZ = startOrigin ? Number(startOrigin.z ?? z) : z;
+    const startX = origin ? Number(origin.x ?? x) : x;
+    const startZ = origin ? Number(origin.z ?? z) : z;
     mesh.position.set(startX, 0.25, startZ);
     this.rootGroup.add(mesh);
 
@@ -2239,6 +3727,7 @@ export class DungeonGenerator {
       this._attachRarityBeam(mesh, RARITY_BEAMS[sealKey]);
     }
 
+    const pickupCooldown = Number(opts?.pickupCooldown) || 0;
     const lootEntry = {
       id: `ground_loot_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       type: 'loot',
@@ -2248,6 +3737,7 @@ export class DungeonGenerator {
       name: isGold ? `${goldAmount} Gold` : (item.name || 'Equipment'),
       rarity,
       collected: false,
+      canPickupAfter: pickupCooldown > 0 ? Date.now() + pickupCooldown : 0,
       x,
       y: 0.25,
       z,
@@ -2271,14 +3761,14 @@ export class DungeonGenerator {
       : lootOrId;
 
     if (!loot || loot.collected) return { ok: false };
-
-    loot.collected = true;
-    if (loot.mesh) {
-      loot.mesh.visible = false;
-      this.rootGroup.remove(loot.mesh);
-    }
+    if (loot.canPickupAfter && Date.now() < loot.canPickupAfter) return { ok: false };
 
     if (loot.isGold) {
+      loot.collected = true;
+      if (loot.mesh) {
+        loot.mesh.visible = false;
+        this.rootGroup.remove(loot.mesh);
+      }
       if (ctx.gameState?.addGold) {
         ctx.gameState.addGold(loot.goldAmount);
       } else if (ctx.gameState?.hero) {
@@ -2288,16 +3778,37 @@ export class DungeonGenerator {
     }
 
     if (loot.item) {
-      if (ctx.inventory?.addItem) {
-        ctx.inventory.addItem(loot.item);
-      } else if (ctx.gameState?.inventory?.addItem) {
-        ctx.gameState.inventory.addItem(loot.item);
+      const inv = ctx.inventory || ctx.gameState?.inventory;
+      if (inv?.addItem) {
+        const now = Date.now();
+        const suppressToast = Boolean(this._bagFullToastAt && now - this._bagFullToastAt < 2500);
+        const res = inv.addItem(loot.item, { silent: suppressToast });
+        if (res && res.ok === false) {
+          if (!suppressToast) {
+            this._bagFullToastAt = now;
+            if (!ctx.gameState) {
+              ctx.hud?.showToast?.('Bag is full — store items in your General Vault or sell gear!', 'warning');
+            }
+          }
+          return { ok: false, full: true, reason: res.msg || 'Bag is full' };
+        }
+        if (res?.leftover && res.leftover.count > 0) {
+          loot.item = res.leftover;
+          loot.name = `${loot.item.name || 'Item'} x${loot.item.count}`;
+          return { ok: true, partial: true, isGold: false, item: loot.item, name: loot.name };
+        }
       }
       if (ctx.quests?.onCollect) {
         ctx.quests.onCollect(loot.item.baseId || loot.item.id, 1);
       } else if (ctx.quests?.onItemCollected) {
         ctx.quests.onItemCollected(loot.item.baseId || loot.item.id);
       }
+    }
+
+    loot.collected = true;
+    if (loot.mesh) {
+      loot.mesh.visible = false;
+      this.rootGroup.remove(loot.mesh);
     }
 
     return { ok: true, isGold: false, item: loot.item, name: loot.name };
@@ -2497,7 +4008,7 @@ export class DungeonGenerator {
       for (const e of enemies) {
         if (e && !e.isDead && e.state !== 'DEAD' && e.state !== 'dead') {
           entities.push({
-            type: e.isBoss ? 'boss' : 'enemy',
+            type: e.isBoss ? 'boss' : e.isGiant ? 'miniboss' : 'enemy',
             x: Number(e.x ?? e.position?.x ?? 0),
             y: Number(e.z ?? e.position?.z ?? 0)
           });
@@ -2532,8 +4043,9 @@ export class DungeonGenerator {
       zone: this.zone,
       floor: this.currentFloor,
       name: this.floorName,
-      subtitle: this.theme?.subtitle || '',
+      subtitle: this.floorDef?.subtitle || this.theme?.subtitle || '',
       theme: this.theme?.id || 'cave',
+      sroDungeon: this.sroDungeon || this.theme?.id || 'donhwang',
       width: this.gridWidth,
       height: this.gridHeight,
       tileSize: this.tileSize,
@@ -2558,11 +4070,292 @@ export class DungeonGenerator {
       }) : null,
       bossRoom: this.bossRoom,
       bossArena: this.bossArena,
-      atmosphere: this.zone === 'dungeon' && this.theme?.atmosphere ? { ...this.theme.atmosphere } : null,
+      bossGate: this.bossGate,
+      atmosphere: this.theme?.atmosphere ? { ...this.theme.atmosphere } : null,
+      portalStyle: this.theme?.portalStyle || 'jade_gate',
+      monsterTypes: Array.isArray(this.floorDef?.monsterTypes) ? [...this.floorDef.monsterTypes] : [],
+      outskirtCamps: this.zone === 'village' ? (this.outskirtCamps || []) : [],
+      townWallHalf: this.zone === 'village' ? (this.townWallHalf || 55) : 0,
+      exitLockedByClear: Boolean(this.exitLockedByClear),
+      minDungeonLevel: MIN_DUNGEON_LEVEL,
       puzzle: this.puzzle,
       specialRoom: this.zone === 'dungeon' ? this.specialRoomType : null,
       puzzleProps: this.puzzleProps
     };
+  }
+
+  /**
+   * Suspend active dungeon floor geometry & entities without disposing meshes,
+   * so a timed Challenge Arena can run and restore exact floor progress afterward.
+   */
+  suspendFloorWorld() {
+    this._freeLightPool();
+    if (this.renderer?.clearDynamicLights) {
+      this.renderer.clearDynamicLights();
+    }
+    const rootChildren = [...this.rootGroup.children];
+    for (const child of rootChildren) {
+      this.rootGroup.remove(child);
+    }
+    return {
+      zone: this.zone,
+      currentFloor: this.currentFloor,
+      themeKey: this.themeKey,
+      theme: this.theme,
+      floorSeed: this.floorSeed,
+      gridWidth: this.gridWidth,
+      gridHeight: this.gridHeight,
+      originX: this.originX,
+      originZ: this.originZ,
+      grid: this.grid,
+      spawnPoint: { ...this.spawnPoint },
+      rooms: this.rooms,
+      corridors: this.corridors,
+      npcs: this.npcs,
+      chests: this.chests,
+      breakables: this.breakables,
+      portals: this.portals,
+      traps: this.traps,
+      torches: this.torches,
+      switches: this.switches,
+      gates: this.gates,
+      shrines: this.shrines,
+      groundLoot: this.groundLoot,
+      solidObstacles: this.solidObstacles,
+      bossRoom: this.bossRoom,
+      bossArena: this.bossArena,
+      bossGate: this.bossGate,
+      puzzle: this.puzzle,
+      puzzleProps: this.puzzleProps,
+      specialRoomType: this.specialRoomType,
+      _reserved: this._reserved,
+      _lightSources: this._lightSources,
+      _wallTiles: this._wallTiles,
+      rootChildren
+    };
+  }
+
+  restoreFloorWorld(snap) {
+    this.clearWorld();
+    if (!snap) return null;
+    this.zone = snap.zone || 'dungeon';
+    this.currentFloor = snap.currentFloor;
+    this.themeKey = snap.themeKey;
+    this.theme = snap.theme;
+    this.floorSeed = snap.floorSeed;
+    this.gridWidth = snap.gridWidth;
+    this.gridHeight = snap.gridHeight;
+    this.originX = snap.originX;
+    this.originZ = snap.originZ;
+    this.grid = snap.grid;
+    this.spawnPoint = snap.spawnPoint;
+    this.rooms = snap.rooms || [];
+    this.corridors = snap.corridors || [];
+    this.npcs = snap.npcs || [];
+    this.chests = snap.chests || [];
+    this.breakables = snap.breakables || [];
+    this.portals = snap.portals || [];
+    this.traps = snap.traps || [];
+    this.torches = snap.torches || [];
+    this.switches = snap.switches || [];
+    this.gates = snap.gates || [];
+    this.shrines = snap.shrines || [];
+    this.groundLoot = snap.groundLoot || [];
+    this.lootDrops = this.groundLoot;
+    this.solidObstacles = snap.solidObstacles || [];
+    this.bossRoom = snap.bossRoom || null;
+    this.bossArena = snap.bossArena || null;
+    this.bossGate = snap.bossGate || null;
+    this.puzzle = snap.puzzle || null;
+    this.puzzleProps = snap.puzzleProps || [];
+    this.specialRoomType = snap.specialRoomType || null;
+    this._reserved = snap._reserved || [];
+    this._lightSources = snap._lightSources || [];
+    this._wallTiles = snap._wallTiles || [];
+    for (const child of snap.rootChildren || []) {
+      this.rootGroup.add(child);
+    }
+    this._createLightPool();
+    return this.getFloorState();
+  }
+
+  getFloorDef(fNum) {
+    return (fNum >= 100 ? FLOOR_DEFINITIONS.find((d) => d.floor === fNum) : null)
+      || FLOOR_DEFINITIONS.find((d) => d.floor === fNum)
+      || FLOOR_DEFINITIONS[(fNum - 1) % FLOOR_DEFINITIONS.length]
+      || FLOOR_DEFINITIONS[0];
+  }
+
+  _getFloorDef(fNum) {
+    return this.getFloorDef(fNum);
+  }
+
+  /**
+   * Build a dedicated 24x24m Challenge Coliseum for timed trials.
+   */
+  generateChallengeArena(challengeCfg, floorNum = 1, rendererOverride = null, models3dOverride = null) {
+    if (models3dOverride) this.models3d = models3dOverride;
+    this._ensureSceneAttached(rendererOverride);
+    this.clearWorld();
+
+    const fNum = Math.max(1, Number(floorNum) || 1);
+    const cfg = typeof challengeCfg === 'string'
+      ? (CHALLENGE_TYPES[challengeCfg] || CHALLENGE_TYPES.survival_60)
+      : (challengeCfg || CHALLENGE_TYPES.survival_60);
+
+    const floorDef = this._getFloorDef(fNum);
+    this.zone = 'challenge';
+    this.currentFloor = fNum;
+    this.themeKey = floorDef.theme || 'boss';
+    this.theme = DUNGEON_THEMES[this.themeKey] || DUNGEON_THEMES.boss;
+    this.sroDungeon = floorDef?.sroDungeon || null;
+
+    const gw = 16;
+    const gh = 16;
+    this.gridWidth = 20;
+    this.gridHeight = 20;
+    this.originX = -(this.gridWidth * this.tileSize) * 0.5;
+    this.originZ = -(this.gridHeight * this.tileSize) * 0.5;
+    this.grid = Array.from({ length: this.gridHeight }, () => Array(this.gridWidth).fill(TILE.WALL));
+
+    for (let gz = 2; gz < 2 + gh; gz++) {
+      for (let gx = 2; gx < 2 + gw; gx++) {
+        this.grid[gz][gx] = TILE.FLOOR;
+      }
+    }
+
+    const topLeft = this.gridToWorld(2, 2);
+    const roomObj = {
+      id: 0,
+      type: 'challenge',
+      archetype: 'coliseum',
+      gx: 2,
+      gz: 2,
+      gw,
+      gh,
+      x: topLeft.x - this.tileSize * 0.5,
+      y: topLeft.z - this.tileSize * 0.5,
+      z: topLeft.z - this.tileSize * 0.5,
+      w: gw * this.tileSize,
+      h: gh * this.tileSize,
+      centerX: 0,
+      centerZ: 0,
+      explored: true,
+      cleared: false
+    };
+    this.rooms = [roomObj];
+    this.spawnPoint = { x: 0, y: 0, z: 6.0 };
+
+    const rand = seededRandom(fNum * 131 + cfg.duration);
+    this._buildDungeonGeometry(rand);
+
+    const accent = cfg.color || 0xf59e0b;
+
+    // Perimeter Arena Torches, Diagonal War Braziers & 12 Coliseum Pillars (32x32m)
+    const torchSpots = [
+      [-14.0, -14.0], [14.0, -14.0], [-14.0, 14.0], [14.0, 14.0],
+      [-14.4, 0], [14.4, 0], [0, -14.4], [0, 14.4]
+    ];
+    for (const [tx, tz] of torchSpots) {
+      this._spawnTorch(tx, tz, accent);
+    }
+
+    const brazierSpots = [
+      [-9.2, -9.2], [9.2, -9.2], [-9.2, 9.2], [9.2, 9.2]
+    ];
+    for (const [bx, bz] of brazierSpots) {
+      this._batch.add('box', bx, 0.22, bz, 1.35, 0.44, 1.35, 0, 0x1e293b);
+      this._batch.add('cyl', bx, 0.65, bz, 0.78, 0.46, 0.78, 0, 0x78350f);
+      this._batch.add('glowBox', bx, 0.96, bz, 0.56, 0.24, 0.56, 0, accent);
+      this.solidObstacles.push({ x: bx, z: bz, radius: 0.72 });
+    }
+
+    const pillarCount = 12;
+    const pillarRadius = 13.6;
+    for (let i = 0; i < pillarCount; i++) {
+      const ang = ((i + 0.5) / pillarCount) * Math.PI * 2;
+      const px = Math.cos(ang) * pillarRadius;
+      const pz = Math.sin(ang) * pillarRadius;
+      this._batch.add('box', px, 0.28, pz, 1.45, 0.56, 1.45, 0, 0x334155);
+      this._batch.add('cyl', px, 2.2, pz, 0.9, 3.4, 0.9, 0, 0x475569);
+      this._batch.add('box', px, 4.0, pz, 1.32, 0.4, 1.32, 0, 0x64748b);
+      this._batch.add('glowBox', px, 2.6, pz, 1.0, 0.26, 1.0, 0, accent);
+      this.solidObstacles.push({ x: px, z: pz, radius: 0.7 });
+    }
+
+    // Stepped center mosaic dais & cardinal bronze crossways (non-blocking)
+    this._batch.add('cyl', 0, 0.014, 0, 11.2, 0.025, 11.2, 0, 0x0f172a);
+    this._batch.add('cyl', 0, 0.02, 0, 7.6, 0.028, 7.6, 0, 0x1e293b);
+    this._batch.add('box', 0, 0.022, 0, 26.5, 0.024, 0.36, 0, 0xb45309);
+    this._batch.add('box', 0, 0.022, 0, 0.36, 0.024, 26.5, 0, 0xb45309);
+
+    for (const [innerR, outerR, opac] of [[4.8, 5.15, 0.48], [8.8, 9.15, 0.34], [12.1, 12.4, 0.26]]) {
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(innerR, outerR, 64),
+        new THREE.MeshBasicMaterial({ color: accent, side: THREE.DoubleSide, transparent: true, opacity: opac })
+      );
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = 0.036;
+      this.rootGroup.add(ring);
+    }
+
+    this._decorMeshCount = this._batch.flush(this.rootGroup);
+    this._createLightPool();
+    return {
+      ...this.getFloorState(),
+      challenge: cfg
+    };
+  }
+
+  /**
+   * Spawn reward chests inside the Challenge Arena upon survival/victory.
+   */
+  spawnChallengeRewardChests(challengeCfg = null, floorNum = this.currentFloor) {
+    const tiers = challengeCfg?.chestTiers || ['rare', 'rare', 'epic'];
+    const positions = [
+      [-3.8, -2.6],
+      [0, -3.2],
+      [3.8, -2.6]
+    ];
+    const spawned = [];
+    positions.forEach(([cx, cz], idx) => {
+      const tier = tiers[idx % tiers.length];
+      const chest = this._spawnChest(cx, cz, tier, `challenge_reward_f${floorNum}_${idx}_${Date.now()}`);
+      chest.isVaultChest = true;
+      spawned.push(chest);
+    });
+    return spawned;
+  }
+
+  /**
+   * Spawn an animated Return Portal inside the cleared Challenge Arena to warp back to the dungeon floor.
+   */
+  spawnChallengeReturnPortal(floorNum = this.currentFloor) {
+    const px = 0;
+    const pz = -10.0;
+    const portalMesh = (this.models3d?.createPortalMesh || createPortalMesh)(0x10b981, 'challenge_return');
+    portalMesh.position.set(px, 0, pz);
+    portalMesh.userData?.playSpawnAnimation?.();
+    this.rootGroup.add(portalMesh);
+    this._lightSources.push({ x: px, y: 2.2, z: pz, color: 0x10b981, intensity: 3.4, distance: 14 });
+    this._freeLightPool();
+    this._createLightPool();
+
+    const retPortal = {
+      id: `challenge_return_f${floorNum}`,
+      type: 'portal',
+      portalType: 'challenge_return',
+      name: `Return to Floor B${floorNum}F`,
+      targetFloor: floorNum,
+      x: px,
+      y: 0,
+      z: pz,
+      position: { x: px, y: 0, z: pz },
+      prompt: `✨ Challenge Complete! Return to Floor B${floorNum}F [E]`,
+      mesh: portalMesh
+    };
+    this.portals.push(retPortal);
+    return retPortal;
   }
 }
 

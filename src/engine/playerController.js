@@ -20,7 +20,7 @@ export class SoundFX {
   }
 
   _ensureContext() {
-    if (!this.enabled) return null;
+    if (!this.enabled || typeof window === 'undefined') return null;
     if (!this.ctx) {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       if (AudioCtx) {
@@ -363,6 +363,9 @@ export class PlayerController {
 
     this.position = new THREE.Vector3(0, 0, 0);
     this.velocity = new THREE.Vector3(0, 0, 0);
+    this._scratchMoveInput = new THREE.Vector3(0, 0, 0);
+    this._scratchDesiredMove = new THREE.Vector3(0, 0, 0);
+    this._scratchZeroVec = new THREE.Vector3(0, 0, 0);
     this.rotation = 0; // Yaw in radians (0 = +Z)
     this.radius = 0.42;
 
@@ -379,6 +382,7 @@ export class PlayerController {
 
     // Skill / Dash / Block timers
     this.skillTimer = 0;
+    this.skillCastSeq = 0;
     this.dashTimer = 0;
     this.dashCooldown = 0;
     this.dashDir = new THREE.Vector3(0, 0, 1);
@@ -406,7 +410,9 @@ export class PlayerController {
 
     // Input state
     this.keys = new Set();
-    this.mousePos = { x: window.innerWidth * 0.5, y: window.innerHeight * 0.5 };
+    this.mousePos = typeof window !== 'undefined'
+      ? { x: window.innerWidth * 0.5, y: window.innerHeight * 0.5 }
+      : { x: 400, y: 300 };
     this.isMouseDown = false;
     this.isRightMouseDown = false;
     this.inputEnabled = true;
@@ -415,7 +421,9 @@ export class PlayerController {
     const initialEquip = this._getEquipment();
     this.heroMesh = createHeroMesh(initialEquip, this._getLook());
     this.mesh = this.heroMesh;
-    this.renderer.scene.add(this.heroMesh);
+    if (this.renderer?.scene?.add) {
+      this.renderer.scene.add(this.heroMesh);
+    }
     this.applyHeroLook();
 
     this._bindEvents();
@@ -493,7 +501,7 @@ export class PlayerController {
   }
 
   _isShiftHeld() {
-    return this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
+    return this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') || this.keys.has('Shift');
   }
 
   _getLook() {
@@ -510,8 +518,9 @@ export class PlayerController {
    */
   applyHeroLook() {
     const look = this._getLook();
+    const equipped = this._getEquipment();
     if (this.heroMesh?.userData?.setLook) {
-      this.heroMesh.userData.setLook(look);
+      this.heroMesh.userData.setLook({ ...look, equipped });
     }
     this.syncEquipment();
     this.attackTimer = 0;
@@ -557,6 +566,7 @@ export class PlayerController {
   }
 
   _bindEvents() {
+    if (typeof window === 'undefined') return;
     this._onKeyDown = (e) => {
       if (!this.inputEnabled) return;
       const tag = document.activeElement?.tagName;
@@ -564,6 +574,7 @@ export class PlayerController {
 
       const code = e.code;
       this.keys.add(code);
+      if (e.shiftKey) this.keys.add('Shift');
 
       if (code === 'Space') {
         e.preventDefault();
@@ -589,10 +600,18 @@ export class PlayerController {
         this.triggerSkillSlot(0);
       } else if (code === 'KeyL') {
         this.triggerSkillSlot(1);
-      } else if (code === 'KeyH' || code === 'Digit6') {
-        this.useQuickPotion(0);
-      } else if (code === 'KeyG' || code === 'Digit7') {
-        this.useQuickPotion(1);
+      } else if (code === 'KeyH') {
+        this.useQuickPotion(0, { allowEmergencyFallback: true });
+      } else if (code === 'KeyG') {
+        this.useQuickPotion(1, { allowEmergencyFallback: true });
+      } else if (code === 'Digit6') {
+        this.triggerQuickSlot(0);
+      } else if (code === 'Digit7') {
+        this.triggerQuickSlot(1);
+      } else if (code === 'Digit8') {
+        this.triggerQuickSlot(2);
+      } else if (code === 'Digit9') {
+        this.triggerQuickSlot(3);
       } else if (code === 'BracketLeft') {
         this.renderer.rotateCamera(-0.35);
       } else if (code === 'BracketRight') {
@@ -602,6 +621,11 @@ export class PlayerController {
 
     this._onKeyUp = (e) => {
       this.keys.delete(e.code);
+      if (!e.shiftKey) {
+        this.keys.delete('Shift');
+        this.keys.delete('ShiftLeft');
+        this.keys.delete('ShiftRight');
+      }
     };
 
     this._onMouseDown = (e) => {
@@ -645,25 +669,49 @@ export class PlayerController {
     window.addEventListener('contextmenu', this._onContextMenu);
   }
 
-  useQuickPotion(slotIndex = 0) {
+  triggerQuickSlot(quickIndex = 0) {
+    const q = Number(quickIndex);
+    if (!Number.isInteger(q) || q < 0 || q > 3) return false;
+    const barSlot = 5 + q;
+    const assignedSkillId = Array.isArray(this.gameState?.skills?.hotbar) ? this.gameState.skills.hotbar[barSlot] : null;
+    if (assignedSkillId) {
+      return this.triggerSkillSlot(barSlot);
+    }
+    return this.useQuickPotion(q);
+  }
+
+  useQuickPotion(slotIndex = 0, opts = {}) {
     const inv = this.gameState?.inventory;
+    let res = null;
     let used = false;
     if (inv && typeof inv.useQuickSlot === 'function') {
-      const res = inv.useQuickSlot(slotIndex);
+      res = inv.useQuickSlot(slotIndex);
       used = Boolean(res && res.ok !== false);
     }
-    if (!used && this.gameState && typeof this.gameState.heal === 'function') {
-      // Fallback emergency potion if player has potions in bag
+    const hadAssigned = Boolean(inv?.quickSlots?.[slotIndex]);
+    if (!used && !hadAssigned && opts.allowEmergencyFallback && this.gameState && typeof this.gameState.heal === 'function') {
+      // Fallback emergency potion only for KeyH/KeyG when the slot itself is empty
       const bag = inv?.bag || [];
       const pot = bag.find((it) => it && (it.type === 'potion' || it.type === 'consumable' || String(it.name || '').toLowerCase().includes('potion')));
       if (pot && inv?.useItem) {
-        const r = inv.useItem(pot.uid || pot.id);
-        used = Boolean(r && r.ok !== false);
+        res = inv.useItem(pot.uid || pot.id);
+        used = Boolean(res && res.ok !== false);
       }
     }
     if (used) {
-      this.sound.play('potion');
-      this.renderer.spawnAura(this.position, slotIndex === 0 ? 0x22c55e : 0x38bdf8, slotIndex === 0 ? 'heal' : 'mana');
+      const eff = res?.effect || res?.item?.effect || {};
+      const isScrollOrBuff = Boolean(eff.buff || eff.townPortal || eff.berserkCharge || eff.mysteryBox || eff.cure || eff.resetAll || (eff.stamina && !eff.heal && !eff.mana));
+      if (isScrollOrBuff) {
+        this.sound.play('magic', { big: Boolean(eff.berserkCharge || eff.mysteryBox) });
+        this.renderer.spawnAura(this.position, eff.berserkCharge ? 0xef4444 : 0xfacc15, 'buff');
+      } else {
+        this.sound.play('potion');
+        const col = eff.mana && !eff.heal ? 0x38bdf8 : (eff.heal && eff.mana ? 0xfacc15 : 0x22c55e);
+        const auraKind = eff.mana && !eff.heal ? 'mana' : 'heal';
+        this.renderer.spawnAura(this.position, col, auraKind);
+      }
+    } else if (res?.msg && hadAssigned && this.onToast) {
+      this.onToast(res.msg, 'info');
     }
     return used;
   }
@@ -671,17 +719,24 @@ export class PlayerController {
   performDash(opts = {}) {
     const fromSkill = Boolean(opts && opts.fromSkill);
     if (!fromSkill && this.skillPhase) {
-      // Dodging out of a wind-up cancels it; recover / chain gaps lock the dodge
-      if (this.skillPhase.stage !== 'prep' || !this.interruptSkill('Interrupted')) return false;
+      // Dodging out of a wind-up cancels it smoothly
+      if (this.skillPhase.stage !== 'prep' || !this.interruptSkill(null)) return false;
     }
     if (this.dashTimer > 0 || (!fromSkill && this.dashCooldown > 0)) return false;
     if (!fromSkill && this.gameState && typeof this.gameState.useStamina === 'function') {
       if (!this.gameState.useStamina(18)) return false;
     }
 
-    this.dashTimer = 0.22;
-    this.dashCooldown = 0.65;
-    this.invulnerableTimer = 0.32;
+    const dashDist = Number(opts?.distance) || 0;
+    const stats = this.gameState?.getStats ? this.gameState.getStats() : {};
+    const moveSpeed = 6.4 * (Number(stats.moveSpeed) || 1.0);
+    const dur = dashDist > 0
+      ? Math.max(0.18, Math.min(0.38, dashDist / (moveSpeed * 2.55)))
+      : 0.22;
+
+    this.dashTimer = dur;
+    if (!fromSkill) this.dashCooldown = 0.65;
+    this.invulnerableTimer = Math.max(this.invulnerableTimer || 0, Number(opts?.invuln) || 0.32);
     this.state = 'dash';
 
     const moveVec = this._getMoveInputVector();
@@ -689,17 +744,29 @@ export class PlayerController {
       this.dashDir.copy(moveVec).normalize();
       this.rotation = Math.atan2(this.dashDir.x, this.dashDir.z);
     } else {
+      if (opts?.aimAtCursor) {
+        const pt = this.renderer.screenToGround?.(this.mousePos.x, this.mousePos.y, this.position.y);
+        if (pt) {
+          const dx = pt.x - this.position.x;
+          const dz = pt.z - this.position.z;
+          if (dx * dx + dz * dz > 0.04) this.rotation = Math.atan2(dx, dz);
+        }
+      }
       this.dashDir.set(Math.sin(this.rotation), 0, Math.cos(this.rotation));
     }
 
     this.sound.play('dash');
     this.renderer.spawnSkillEffect('dash_trail', this.position, this.rotation, { color: 0x38bdf8 });
-    return true;
+    return dur;
   }
 
   /**
    * Basic attack entry point (LMB / J). Dispatches on the hero class attackStyle.
    */
+  attack(faceCursor = false) {
+    return this.performMeleeAttack(faceCursor);
+  }
+
   performMeleeAttack(faceCursor = false) {
     if (this.state === 'attack' || this.state === 'dash' || this.state === 'skill' || this.skillPhase) return false;
 
@@ -731,32 +798,36 @@ export class PlayerController {
     }
 
     const stats = this.gameState?.getStats ? this.gameState.getStats() : {};
-    const atkSpeed = Math.max(0.6, Math.min(2.2, Number(stats.attackSpeed || 1.0)));
+    const atkSpeed = Math.max(0.5, Math.min(3.0, Number(stats.attackSpeed || 0.85)));
 
     this.state = 'attack';
     this.attackKind = style;
     this.attackHitTriggered = false;
+    this.skillCastSeq = (this.skillCastSeq || 0) + 1;
     this.comboWindowTimer = 0.85;
 
     if (style === 'melee_heavy') {
-      this.attackDuration = ((this.comboStage === 3 ? 0.34 : 0.24) * 1.35 + 0.08) / atkSpeed;
+      this.attackDuration = ((this.comboStage === 3 ? 0.38 : 0.28) * 1.35 + 0.08) / atkSpeed;
       this.attackHitAt = this.comboStage === 3 ? 0.55 : 0.42;
       this.comboWindowTimer = 1.0;
       this.sound.play('slash', { combo: 3 });
     } else if (style === 'magic_bolt') {
-      this.attackDuration = (this.comboStage === 3 ? 0.4 : 0.3) / atkSpeed;
+      this.attackDuration = (this.comboStage === 3 ? 0.45 : 0.34) / atkSpeed;
       this.attackHitAt = 0.4;
+      this.comboWindowTimer = 0.9;
     } else if (style === 'arrow') {
-      this.attackDuration = (this.comboStage === 3 ? 0.5 : 0.42) / atkSpeed;
-      this.attackHitAt = 0.7;
+      this.attackDuration = (this.comboStage === 3 ? 0.52 : 0.44) / atkSpeed;
+      this.attackHitAt = 0.65;
+      this.comboWindowTimer = 1.0;
     } else {
-      this.attackDuration = (this.comboStage === 3 ? 0.34 : 0.24) / atkSpeed;
+      this.attackDuration = (this.comboStage === 3 ? 0.38 : 0.28) / atkSpeed;
       this.attackHitAt = 0.35;
-      this.sound.play('slash', { combo: this.comboStage });
+      this.comboWindowTimer = 0.85;
+      this.sound?.play?.('slash', { combo: this.comboStage });
       const slashColor = imbueColor ?? (this.comboStage === 3 ? 0xfacc15 : this.comboStage === 2 ? 0x60a5fa : 0x38bdf8);
       const radius = this.comboStage === 3 ? 2.65 : 2.15;
       const arc = this.comboStage === 3 ? Math.PI * 1.15 : Math.PI * 0.9;
-      this.renderer.spawnSlashArc(this.position, this.rotation, radius, slashColor, arc, this.comboStage);
+      this.renderer?.spawnSlashArc?.(this.position, this.rotation, radius, slashColor, arc, this.comboStage);
       this.renderer?.spawnWeaponTrail?.(this.position, this.rotation, {
         reach: radius,
         imbueElement: this.gameState?.hero?.activeImbue?.element || this.gameState?.getActiveImbue?.()?.element
@@ -1056,6 +1127,8 @@ export class PlayerController {
         this.comboDecayTimer = 4.5;
       }
       this.renderer.shake(0.18, 0.14);
+    } else if (enemyTarget) {
+      this.renderer.shake?.(0.12, 0.1);
     }
   }
 
@@ -1263,22 +1336,38 @@ export class PlayerController {
   triggerSkillSlot(slotIndex = 0) {
     if (this.state === 'dash') return false;
 
+    // Fluid basic attack cancel: cancel recovery frames directly into skill
+    if (this.state === 'attack') {
+      this.state = 'idle';
+      this.attackTimer = 0;
+    }
+
     const skillsSys = this.gameState?.skills;
     let descriptor = null;
 
     // While a skill / chain is running only instant skills (imbue, buffs) may fire
     if (this.skillPhase && !this._slotIsInstant(slotIndex)) return false;
 
-    if (skillsSys && typeof skillsSys.castSlot === 'function') {
-      descriptor = skillsSys.castSlot(slotIndex);
-    } else if (skillsSys && Array.isArray(skillsSys.hotbar) && skillsSys.hotbar[slotIndex]) {
-      const skillId = skillsSys.hotbar[slotIndex];
-      if (typeof skillsSys.cast === 'function') {
-        descriptor = skillsSys.cast(skillId);
+    if (skillsSys) {
+      const assignedSkillId = Array.isArray(skillsSys.hotbar) ? skillsSys.hotbar[slotIndex] : null;
+      if (assignedSkillId) {
+        // The slot has an assigned skill in the hotbar!
+        const check = typeof skillsSys.canCast === 'function' ? skillsSys.canCast(slotIndex) : null;
+        if (check && !check.ok) {
+          // Skill is on cooldown, out of SP, or uncastable.
+          // Never trigger fallback skill when an assigned skill cannot be cast!
+          return false;
+        }
+        if (typeof skillsSys.castSlot === 'function') {
+          descriptor = skillsSys.castSlot(slotIndex);
+        } else if (typeof skillsSys.cast === 'function') {
+          descriptor = skillsSys.cast(assignedSkillId);
+        }
+        if (!descriptor) return false;
       }
     }
 
-    // If no skill assigned or learned yet in that slot, provide built-in ASJ battle skill fallback if off cooldown
+    // Only if the hotbar slot is completely empty (no assigned skill), provide fallback
     if (!descriptor) {
       const fb = FALLBACK_SKILLS[slotIndex];
       if (!fb) return false;
@@ -1325,16 +1414,20 @@ export class PlayerController {
 
     // Silkroad Martial Arts Class-Specific Animation Plans
     if (classId === 'wizard' || style === 'magic_bolt') {
-      return { prep: 'wizard_prep', release: 'wizard_release', recover: 'wizard_recover', combo: isChain ? 1 : 3, rel: 0.4 };
+      const wizCombo = isChain ? ((index % 2) + 1) : (kind === 'aoe' ? 2 : (desc?.element === 'fire' || kind === 'melee_arc') ? 3 : 1);
+      return { prep: 'wizard_prep', release: 'wizard_release', recover: 'wizard_recover', combo: wizCombo, rel: 0.4 };
     }
     if (classId === 'archer' || style === 'arrow') {
-      return { prep: 'archer_prep', release: 'archer_release', recover: 'archer_recover', combo: 1, rel: 0.72 };
+      const archerCombo = isChain ? 2 : (kind === 'aoe' ? 4 : desc?.pierce ? 3 : 1);
+      return { prep: 'archer_prep', release: 'archer_release', recover: 'archer_recover', combo: archerCombo, rel: 0.72 };
     }
     if (classId === 'axeman' || style === 'melee_heavy') {
-      return { prep: 'axeman_prep', release: 'axeman_release', recover: 'axeman_recover', combo, rel: combo === 3 ? 0.45 : 0.35 };
+      const axeCombo = isChain ? (index % 3) + 1 : (kind === 'nova' || kind === 'aoe') ? 3 : (kind === 'buff') ? 4 : (kind === 'dash') ? 2 : 1;
+      return { prep: 'axeman_prep', release: 'axeman_release', recover: 'axeman_recover', combo: axeCombo, rel: axeCombo === 3 ? 0.45 : 0.35 };
     }
     // Knight (Bicheon)
-    return { prep: 'knight_prep', release: 'knight_release', recover: 'knight_recover', combo, rel: combo === 3 ? 0.45 : 0.35 };
+    const knightCombo = isChain ? (index % 3) + 1 : (kind === 'projectile' || desc?.element === 'lightning') ? 3 : (kind === 'nova' || kind === 'aoe') ? 2 : 1;
+    return { prep: 'knight_prep', release: 'knight_release', recover: 'knight_recover', combo: knightCombo, rel: knightCombo === 3 ? 0.45 : 0.35 };
   }
 
   _setSkillAnim(plan, stage, g) {
@@ -1397,6 +1490,7 @@ export class PlayerController {
     this.attackTimer = 0;
     this.attackHitTriggered = true;
     this.skillTimer = 0;
+    this.skillCastSeq = (this.skillCastSeq || 0) + 1;
     this.state = 'skill';
 
     const plan = this._skillAnimPlan(first, 0, isChain);
@@ -1411,24 +1505,6 @@ export class PlayerController {
     };
     this._aimSkillAtCursor(first);
     this._setSkillAnim(plan, 'prep', 0);
-    if (prep > 0.05 && this.renderer?.spawnSkillIndicator) {
-      this.renderer.spawnSkillIndicator(first.kind || 'arc', this.position, this.rotation, {
-        range: first.range || 3.5,
-        radius: first.radius || first.range || 3.5,
-        angle: first.angle || Math.PI * 1.1,
-        duration: prep,
-        color: first.color
-      });
-    } else if (prep > 0.12) {
-      this.renderer.spawnHitSparks?.(this.position, desc.color || 0xa855f7, 4);
-    }
-
-    const cls = this._getHeroClass();
-    const classId = String(cls?.id || this.gameState?.classId || 'knight').toLowerCase();
-    if (classId === 'wizard' || this._getAttackStyle() === 'magic_bolt') {
-      // Wizard (Force) glowing magic circle ring on the ground during prep
-      this.renderer?.spawnShockwave?.(this.position, 2.2, desc.color || 0x818cf8, Math.max(0.4, prep));
-    }
 
     if (prep <= 0) this._advanceSkillPhase();
     return true;
@@ -1476,6 +1552,7 @@ export class PlayerController {
       ph.stage = 'gap';
       ph.timer = delay;
       ph.total = delay;
+      this.skillCastSeq = (this.skillCastSeq || 0) + 1;
       ph.plan = this._skillAnimPlan(this._chainSegmentDesc(ph.desc, next), next, true);
       this._setSkillAnim(ph.plan, 'prep', 0);
       return;
@@ -1512,11 +1589,6 @@ export class PlayerController {
   _updateSkillPhase(dt, moveInput) {
     const ph = this.skillPhase;
     if (!ph) return false;
-    // Moving during the head wind-up cancels it
-    if (ph.stage === 'prep' && moveInput && moveInput.lengthSq() > 0.001) {
-      this.interruptSkill('Interrupted');
-      return false;
-    }
     ph.timer -= dt;
     const g = 1 - Math.max(0, ph.timer) / ph.total;
     if (ph.stage === 'prep' || ph.stage === 'gap') {
@@ -1552,7 +1624,6 @@ export class PlayerController {
       const color = imbueColorOf(imbue) ?? desc.color ?? 0xffffff;
       this.heroMesh?.userData?.setImbue?.(this.gameState?.getActiveImbue?.() || imbue);
       this.renderer.spawnAura?.(this.position, color, 'imbue');
-      this.renderer.spawnShockwave?.(this.position, 1.6, color, 0.35);
       this.renderer.spawnFloatingText?.(this.position, desc.name || 'Imbued', { color, small: true });
       this.sound.play('magic', { big: false });
       return;
@@ -1590,7 +1661,6 @@ export class PlayerController {
 
     if (!inChain) this.sound.play('skill');
     else if (!isProjectile && !isTargetedAoe) this.sound.play('slash', { combo: (chainIndex % 3) + 1 });
-    this.renderer.shake(Math.min(0.5, Number(desc.shake) || 0.28) * (isProjectile ? 0.6 : inChain ? 0.75 : 1), 0.22);
 
     let cursorPt = null;
     if (isProjectile || isTargetedAoe) cursorPt = this._aimSkillAtCursor(desc);
@@ -1624,37 +1694,119 @@ export class PlayerController {
       return;
     }
 
-    if (kind === 'dash') this.performDash({ fromSkill: true });
-
     const radius = desc.radius || desc.range || 3.4;
-    let targets = [];
-    if (this.enemyManager) {
-      if (kind === 'melee_arc' && typeof this.enemyManager.getEnemiesInArc === 'function') {
-        targets = this.enemyManager.getEnemiesInArc(
-          this.position.x,
-          this.position.z,
-          this.rotation,
-          desc.range || 3.2,
-          desc.angle || Math.PI * 1.15
-        ) || [];
-      } else if (typeof this.enemyManager.getEnemiesInRange === 'function') {
-        targets = this.enemyManager.getEnemiesInRange(this.position.x, this.position.z, radius) || [];
+    if (kind === 'dash') {
+      const dashDur = Number(this.performDash({
+        fromSkill: true,
+        distance: desc.distance,
+        invuln: desc.invuln,
+        aimAtCursor: true
+      })) || 0.24;
+      if ((Number(desc.mult) || 0) <= 0) return;
+
+      const hitSet = new Set();
+      const applyDashImpact = (isLanding) => {
+        const hitRad = isLanding ? radius : Math.max(1.8, radius * 0.75);
+        const list = this.enemyManager?.getEnemiesInRange?.(this.position.x, this.position.z, hitRad) || [];
+        let landedHits = 0;
+        for (const enemy of list) {
+          if (!enemy || enemy.dead || hitSet.has(enemy)) continue;
+          hitSet.add(enemy);
+          landedHits++;
+          this._applyPlayerAttackToEnemy(enemy, {
+            mult: desc.mult || 2.0,
+            element,
+            knockback: desc.knockback || 2.5,
+            rollDamageFn: desc.rollDamage,
+            stun: desc.stun
+          });
+        }
+        if (isLanding) {
+          this.renderer?.spawnSkillEffect?.(desc.vfx || 'slam', this.position, this.rotation, { color, radius });
+          this.renderer?.spawnShockwave?.(this.position, radius, color, 0.35);
+          if (this.world?.getBreakablesInArc) {
+            const brks = this.world.getBreakablesInArc(this.position.x, this.position.z, this.rotation, radius, Math.PI * 2) || [];
+            for (const b of brks) this.world.damageBreakable?.(b, 40);
+          }
+        }
+        if (landedHits > 0) {
+          this.comboCount += landedHits;
+          this.comboDecayTimer = 4.5;
+          this.renderer?.shake?.(Math.min(0.38, Number(desc.shake) || 0.25), 0.18);
+        }
+      };
+
+      applyDashImpact(false);
+      this.delayedHits.push({ t: Math.max(0.12, dashDur * 0.85), fn: () => applyDashImpact(true) });
+      return;
+    }
+
+    const hits = kind === 'nova' ? Math.max(1, Math.min(6, Math.round(Number(desc.hits) || 1))) : 1;
+    const novaScale = hits > 1 ? 1.45 / hits : 1.0;
+    const pulseRoll = hits > 1 && typeof desc.rollDamage === 'function'
+      ? (defStats) => {
+        const res = desc.rollDamage(defStats);
+        if (res && !res.miss) {
+          res.damage = Math.max(1, Math.round(res.damage * novaScale));
+          if (res.imbue && res.imbue.extra) res.imbue = { ...res.imbue, extra: Math.max(1, Math.round(res.imbue.extra * novaScale)) };
+        }
+        return res;
       }
-    }
+      : desc.rollDamage;
 
-    for (const enemy of targets) {
-      this._applyPlayerAttackToEnemy(enemy, {
-        mult: desc.mult || 1.85,
-        element,
-        knockback: desc.knockback || 1.1,
-        rollDamageFn: desc.rollDamage,
-        stun: desc.stun
-      });
-    }
+    const executePulse = (pulseIdx) => {
+      let targets = [];
+      if (this.enemyManager) {
+        if (kind === 'melee_arc' && typeof this.enemyManager.getEnemiesInArc === 'function') {
+          targets = this.enemyManager.getEnemiesInArc(
+            this.position.x,
+            this.position.z,
+            this.rotation,
+            desc.range || 3.2,
+            desc.angle || Math.PI * 1.15
+          ) || [];
+        } else if (typeof this.enemyManager.getEnemiesInRange === 'function') {
+          targets = this.enemyManager.getEnemiesInRange(this.position.x, this.position.z, radius) || [];
+        }
+      }
 
-    if (targets.length > 0) {
-      this.comboCount += targets.length;
-      this.comboDecayTimer = 4.5;
+      for (const enemy of targets) {
+        this._applyPlayerAttackToEnemy(enemy, {
+          mult: (desc.mult || 1.85) * novaScale,
+          element,
+          knockback: pulseIdx === hits - 1 ? (desc.knockback || 1.1) : 0.4,
+          rollDamageFn: pulseRoll,
+          stun: pulseIdx === 0 ? desc.stun : 0
+        });
+      }
+
+      if (pulseIdx > 0) {
+        this.sound.play('slash', { combo: (pulseIdx % 3) + 1 });
+        this.renderer?.spawnWeaponTrail?.(this.position, this.rotation + pulseIdx * 2.1, {
+          reach: radius,
+          imbueElement: element !== 'physical' ? element : null
+        });
+        this.renderer?.spawnShockwave?.(this.position, radius * 0.85, color, 0.25);
+      } else if (this.world && typeof this.world.getBreakablesInArc === 'function') {
+        const brkArc = kind === 'melee_arc' ? (desc.angle || Math.PI * 1.15) : Math.PI * 2;
+        const brkRange = kind === 'melee_arc' ? (desc.range || 3.2) : radius;
+        const brks = this.world.getBreakablesInArc(this.position.x, this.position.z, this.rotation, brkRange, brkArc) || [];
+        for (const b of brks) {
+          this.world.damageBreakable?.(b, 40);
+        }
+      }
+
+      if (targets.length > 0) {
+        this.comboCount += targets.length;
+        this.comboDecayTimer = 4.5;
+        const shk = Math.min(0.38, Number(desc.shake) || 0.22);
+        this.renderer?.shake?.(pulseIdx === 0 ? shk : shk * 0.55, 0.16);
+      }
+    };
+
+    executePulse(0);
+    for (let i = 1; i < hits; i++) {
+      this.delayedHits.push({ t: i * 0.17, fn: () => executePulse(i) });
     }
   }
 
@@ -1694,7 +1846,6 @@ export class PlayerController {
       });
     }
     this.sound.play(visual === 'arrow' ? 'bow' : 'magic', { big: true });
-    this.renderer.spawnHitSparks({ x: origin.x, y: 0.3, z: origin.z }, color, 8);
   }
 
   /** Ranged 'aoe' skills (rain of arrows, meteor...) land at the cursor, clamped to range. */
@@ -1745,7 +1896,15 @@ export class PlayerController {
         this.comboCount += targets.length;
         this.comboDecayTimer = 4.5;
       }
+      if (idx === 0 && this.world?.getBreakablesInArc) {
+        const brks = this.world.getBreakablesInArc(tx, tz, 0, radius, Math.PI * 2) || [];
+        for (const b of brks) this.world.damageBreakable?.(b, 40);
+      }
       if (type !== 'meteor' && idx > 0) this.renderer.spawnShockwave?.({ x: tx, y: 0, z: tz }, radius * 0.6, color, 0.3);
+      if (targets.length > 0 || type === 'meteor') {
+        const shk = type === 'meteor' ? 0.32 : 0.18;
+        this.renderer?.shake?.(shk, 0.16);
+      }
     };
     for (let i = 0; i < hits; i++) {
       this.delayedHits.push({ t: firstDelay + i * 0.25, fn: () => hitOnce(i) });
@@ -1780,6 +1939,9 @@ export class PlayerController {
       this.sound.play('hurt');
       this.renderer.spawnFloatingText(this.position, `-${result.damage}`, { type: 'player_hit' });
       this.renderer.shake(0.24, 0.16);
+      if (result.damage > 0 && this.skillPhase && (this.skillPhase.stage === 'prep' || this.skillPhase.stage === 'gap')) {
+        this.interruptSkill('Interrupted');
+      }
     }
 
     if (this.heroMesh?.userData?.triggerHitFlash) {
@@ -1806,7 +1968,7 @@ export class PlayerController {
     if (this.keys.has('KeyA') || this.keys.has('ArrowLeft')) ix -= 1;
     if (this.keys.has('KeyD') || this.keys.has('ArrowRight')) ix += 1;
 
-    const vec = new THREE.Vector3(ix, 0, iz);
+    const vec = this._scratchMoveInput.set(ix, 0, iz);
     if (vec.lengthSq() > 0) {
       vec.normalize();
       // Rotate movement vector by camera yaw so W always moves away from camera
@@ -1846,7 +2008,7 @@ export class PlayerController {
     const stats = this.gameState?.getStats ? this.gameState.getStats() : {};
     const moveSpeed = 6.4 * (Number(stats.moveSpeed) || 1.0);
 
-    let desiredMove = new THREE.Vector3(0, 0, 0);
+    const desiredMove = this._scratchDesiredMove.set(0, 0, 0);
     let attackProgress = 0;
     let skillPhaseActive = false;
     if (this.skillPhase && this.dashTimer <= 0) {
@@ -1892,7 +2054,7 @@ export class PlayerController {
         this.skillAnim = null;
       }
     } else if (this.isBlocking) {
-      const moveInput = this.inputEnabled ? this._getMoveInputVector() : new THREE.Vector3();
+      const moveInput = this.inputEnabled ? this._getMoveInputVector() : this._scratchZeroVec;
       this.state = 'block';
       if (moveInput.lengthSq() > 0.001) {
         this.state = 'block_walk';
@@ -1900,7 +2062,7 @@ export class PlayerController {
         this.rotation = Math.atan2(moveInput.x, moveInput.z);
       }
     } else {
-      const moveInput = this.inputEnabled ? this._getMoveInputVector() : new THREE.Vector3();
+      const moveInput = this.inputEnabled ? this._getMoveInputVector() : this._scratchZeroVec;
       if (moveInput.lengthSq() > 0.001) {
         this.state = slowWalk ? 'walk_slow' : 'walk';
         desiredMove.copy(moveInput).multiplyScalar(slowWalk ? moveSpeed * 0.4 : moveSpeed);
@@ -1964,14 +2126,6 @@ export class PlayerController {
     this.heroMesh.position.copy(this.position);
     this.heroMesh.rotation.y = this.rotation;
 
-    // Wizard (Force) floating/levitating cast pose (+0.35m) during prep
-    const heroClass = this._getHeroClass();
-    const isForceMage = heroClass?.id === 'wizard' || this._getAttackStyle() === 'magic_bolt';
-    if (this.state === 'skill' && this.skillPhase && (this.skillPhase.stage === 'prep' || this.skillPhase.stage === 'gap') && isForceMage) {
-      const g = 1 - Math.max(0, this.skillPhase.timer) / this.skillPhase.total;
-      this.heroMesh.position.y += 0.35 * Math.sin(g * Math.PI * 0.5);
-    }
-
     // Keep Berserk 3D Aura synchronized
     const isBerserk = !!this.gameState?.hero?.berserkActive;
     this.renderer?.setBerserkAura?.(this.mesh, isBerserk);
@@ -1995,7 +2149,7 @@ export class PlayerController {
         animCombo = 3;
         attackProgress = this.skillAnimProgress || 0;
       }
-      this.heroMesh.userData.animate(animState, elapsed, dt, animCombo, attackProgress);
+      this.heroMesh.userData.animate(animState, elapsed, dt, animCombo, attackProgress, this.skillCastSeq || 0);
     }
   }
 }
